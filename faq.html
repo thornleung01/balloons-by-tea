@@ -16,7 +16,7 @@
     <a href="index.html" class="brand">
       <img src="images/logo.png" alt="Balloons by Tea" class="brand-logo"/>
     </a>
-    <ul class="nav-links">
+    <ul class="nav-links" id="navLinks">
       <li><a href="index.html" data-page="home" aria-label="Home"><svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path d="M4 11 12 4l8 7v1.2l-8-6.6-8 6.6z" fill="var(--coral)" stroke="var(--brown)" stroke-width="1.4" stroke-linejoin="round"/><path d="M6 10.6V20a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1v-9.4" fill="#fff" stroke="var(--brown)" stroke-width="1.6" stroke-linejoin="round"/><path d="M12 14.6a1.8 1.8 0 0 1 3.3-1c.5.8.2 1.8-.9 2.6L12 18l-2.4-1.8c-1.1-.8-1.4-1.8-.9-2.6a1.8 1.8 0 0 1 3.3 1z" fill="var(--coral)" stroke="var(--brown)" stroke-width="1" stroke-linejoin="round"/></svg><span>Home</span></a></li>
       <li class="nav-divider" aria-hidden="true"></li>
       <li><a href="all-products.html" data-page="shop" aria-label="Shop"><svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><rect x="4" y="10" width="16" height="10.5" rx="1.2" fill="#fff" stroke="var(--brown)" stroke-width="1.6"/><rect x="10.7" y="10" width="2.6" height="10.5" fill="var(--coral)"/><path d="M4 14.2h16" stroke="var(--brown)" stroke-width="1"/><path d="M12 10c-1.8 0-3.4-1-3.4-2.5C8.6 6.2 10 5.8 12 7.5c2-1.7 3.4-1.3 3.4.1C15.4 9 13.8 10 12 10z" fill="var(--coral)" stroke="var(--brown)" stroke-width="1.3" stroke-linejoin="round"/></svg><span>Shop</span></a></li>
@@ -27,11 +27,16 @@
       <li class="nav-divider" aria-hidden="true"></li>
       <li><a href="faq.html" data-page="faq" aria-label="FAQ"><svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path d="M10.5 11.5a2 2 0 0 1 2-2h5a2 2 0 0 1 2 2v3.3a2 2 0 0 1-2 2h-.8v2.1l-2.3-2.1h-1.9a2 2 0 0 1-2-2z" fill="var(--baby-blue)" stroke="var(--brown)" stroke-width="1.2" stroke-linejoin="round"/><path d="M3 6.8A2.3 2.3 0 0 1 5.3 4.5h9.4A2.3 2.3 0 0 1 17 6.8v5.4a2.3 2.3 0 0 1-2.3 2.3H11l-3.4 2.8v-2.8H5.3A2.3 2.3 0 0 1 3 12.2z" fill="var(--blush)" stroke="var(--brown)" stroke-width="1.4" stroke-linejoin="round"/><path d="M8.3 9c0-1 .8-1.7 1.9-1.7s1.9.6 1.9 1.5c0 1.3-1.9 1.2-1.9 2.7" stroke="var(--brown)" stroke-width="1.4" stroke-linecap="round" fill="none"/><circle cx="10.2" cy="13.2" r="0.85" fill="var(--brown)"/></svg><span>FAQ</span></a></li>
     </ul>
-    <button type="button" class="cart-btn" aria-label="Open cart">
-      <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path d="M3 4h2l2.2 11.2a2 2 0 0 0 2 1.6h7.6a2 2 0 0 0 2-1.6L20 8H6" fill="none" stroke="var(--brown)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><path d="M10.8 10.2a1.5 1.5 0 0 1 2.9-.6c.2-.4.7-.6 1.1-.6.9 0 1.6.7 1.6 1.5 0 1.2-1.6 2-2.9 2.9-1.3-.9-2.9-1.7-2.7-3.2z" fill="var(--coral)" stroke="var(--brown)" stroke-width="0.9" stroke-linejoin="round"/><circle cx="9" cy="20" r="1.4" fill="var(--brown)" stroke="none"/><circle cx="17" cy="20" r="1.4" fill="var(--brown)" stroke="none"/></svg>
-      <span>Cart</span>
-      <span class="cart-count" hidden>0</span>
-    </button>
+    <div class="nav-actions">
+      <button type="button" class="cart-btn" aria-label="Open cart">
+        <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path d="M3 4h2l2.2 11.2a2 2 0 0 0 2 1.6h7.6a2 2 0 0 0 2-1.6L20 8H6" fill="none" stroke="var(--brown)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><path d="M10.8 10.2a1.5 1.5 0 0 1 2.9-.6c.2-.4.7-.6 1.1-.6.9 0 1.6.7 1.6 1.5 0 1.2-1.6 2-2.9 2.9-1.3-.9-2.9-1.7-2.7-3.2z" fill="var(--coral)" stroke="var(--brown)" stroke-width="0.9" stroke-linejoin="round"/><circle cx="9" cy="20" r="1.4" fill="var(--brown)" stroke="none"/><circle cx="17" cy="20" r="1.4" fill="var(--brown)" stroke="none"/></svg>
+        <span>Cart</span>
+        <span class="cart-count" hidden>0</span>
+      </button>
+      <button type="button" class="nav-toggle" aria-label="Menu" aria-expanded="false" aria-controls="navLinks">
+        <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16" stroke-linecap="round"/></svg>
+      </button>
+    </div>
   </div>
 </nav>
 

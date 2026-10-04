@@ -275,7 +275,24 @@ button {
   align-items: center;
   min-height: 84px;
   gap: var(--space-3);
+  position: relative;
 }
+.nav-actions { display: flex; align-items: center; gap: 8px; justify-self: end; }
+.nav-toggle {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  flex-shrink: 0;
+  border: 1.5px solid var(--nav-pill-border);
+  border-radius: var(--radius-pill);
+  background: var(--nav-pill-bg);
+  color: var(--color-fg);
+  cursor: pointer;
+  transition: background 200ms var(--ease);
+}
+.nav-toggle:hover { background: var(--color-accent-tint); }
 .brand {
   display: flex;
   align-items: center;
@@ -372,7 +389,7 @@ button {
   line-height: 1;
 }
 
-@media (max-width: 1110px) {
+@media (max-width: 1110px) and (min-width: 701px) {
   .nav-row { gap: var(--space-2); }
   .nav-links { gap: 2px; }
   .nav-links a { padding: 12px; }
@@ -381,14 +398,49 @@ button {
   .cart-btn span { display: none; }
   .brand-logo { height: 84px; }
 }
+
+/* Below 700px: full-label + icon-only pill nav both run out of room once the
+   logo is this size, so the nav links collapse into a hamburger-toggled
+   dropdown instead of shrinking icons further. */
+@media (max-width: 700px) {
+  .nav-row { gap: var(--space-2); }
+  .brand-logo { height: 64px; }
+  .nav-toggle { display: flex; }
+  .cart-btn { padding: 10px; }
+  .cart-btn span { display: none; }
+  .nav-links {
+    position: absolute;
+    top: calc(100% + 10px);
+    left: 0;
+    right: 0;
+    z-index: 60;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 2px;
+    padding: 10px;
+    box-shadow: var(--shadow-lift);
+    border-radius: var(--radius-lg);
+    opacity: 0;
+    visibility: hidden;
+    transform: translateY(-8px);
+    transition: opacity 200ms var(--ease), transform 200ms var(--ease), visibility 200ms;
+    max-height: calc(100vh - 110px);
+    overflow-y: auto;
+  }
+  .nav-links.open {
+    opacity: 1;
+    visibility: visible;
+    transform: translateY(0);
+  }
+  .nav-links a { justify-content: flex-start; padding: 13px 16px; border-radius: var(--radius-sm); }
+  .nav-links a span { display: inline; }
+  .nav-links li.nav-divider { display: none; }
+}
 @media (max-width: 420px) {
-  .nav-divider { display: none; }
-  .nav-row { gap: var(--space-1); }
-  .nav-links { gap: 0; padding: 0 1px; }
-  .nav-links a { padding: 8px; }
-  .nav-links a svg { width: 18px; height: 18px; }
+  .brand-logo { height: 54px; }
   .cart-btn { padding: 8px; }
   .cart-btn svg { width: 18px; height: 18px; }
+  .nav-toggle { width: 38px; height: 38px; }
 }
 
 /* ==========================================================================
