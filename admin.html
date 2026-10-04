@@ -1,0 +1,134 @@
+﻿<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<meta name="robots" content="noindex, nofollow"/>
+<title>Admin | Aura Balloon Co.</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Playfair+Display:wght@500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/styles.css"/>
+<link rel="stylesheet" href="css/admin.css"/>
+</head>
+<body class="admin-body">
+
+<header class="admin-header">
+  <a href="index.html" class="brand">
+    <svg width="18" height="22" viewBox="0 0 20 24" fill="none" aria-hidden="true"><ellipse cx="10" cy="9" rx="8" ry="9" fill="#FF7F7F"/><path d="M8.5 17.5L10 20L11.5 17.5" fill="#FF7F7F"/></svg>
+    Aura <span class="brand-mark">Admin</span>
+  </a>
+  <div class="admin-header-actions">
+    <span id="whoAmI" hidden></span>
+    <a href="index.html" class="btn btn-ghost">View site</a>
+    <button type="button" id="logoutBtn" class="btn btn-outline btn-sm" hidden>Log out</button>
+  </div>
+</header>
+
+<main class="admin-main">
+
+  <!-- Shown when js/supabase-config.js hasn't been filled in yet -->
+  <div id="notConfiguredView" class="admin-card notice-card" hidden>
+    <h2>Admin isn't connected yet</h2>
+    <p>This page needs a Supabase project to store products in. Run
+      <code>supabase-setup.sql</code> in your Supabase project's SQL editor,
+      then paste your project URL and anon key into
+      <code>js/supabase-config.js</code>. Full steps are in
+      <code>README.md</code>, "Live admin page (Supabase)".</p>
+  </div>
+
+  <!-- Login -->
+  <div id="loginView" class="login-wrap" hidden>
+    <div class="admin-card login-card">
+      <h1>Admin Login</h1>
+      <p>Sign in to add, edit, or hide products.</p>
+      <form id="loginForm" novalidate>
+        <div class="field">
+          <label for="loginEmail">Email</label>
+          <input id="loginEmail" name="email" type="email" required autocomplete="username"/>
+        </div>
+        <div class="field">
+          <label for="loginPassword">Password</label>
+          <input id="loginPassword" name="password" type="password" required autocomplete="current-password"/>
+        </div>
+        <div class="form-status error" id="loginError"></div>
+        <button type="submit" class="btn btn-primary btn-block">Log in</button>
+      </form>
+    </div>
+  </div>
+
+  <!-- Dashboard -->
+  <div id="dashboardView" hidden>
+    <div class="admin-grid">
+      <div class="admin-card">
+        <h2 id="formTitle">Add Item</h2>
+        <form id="itemForm" novalidate>
+          <div class="field">
+            <label for="f-collection">Collection</label>
+            <select id="f-collection" name="collection" required>
+              <option value="anniversary">Anniversary</option>
+              <option value="birthday">Birthday</option>
+              <option value="kids">Kids</option>
+              <option value="other-occasions">Other Occasions</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="f-name">Item name</label>
+            <input id="f-name" name="name" type="text" required/>
+          </div>
+          <div class="field">
+            <label for="f-price">Price</label>
+            <input id="f-price" name="price" type="number" min="0" step="0.01" required/>
+          </div>
+          <div class="field">
+            <label for="f-description">Description</label>
+            <textarea id="f-description" name="description"></textarea>
+          </div>
+          <div class="field">
+            <label for="f-style">Style (used if no photo)</label>
+            <select id="f-style" name="style">
+              <option value="">Use collection default</option>
+              <option value="golden classic">Golden Classic</option>
+              <option value="ivory romance">Ivory Romance</option>
+              <option value="sage whisper">Sage Whisper</option>
+              <option value="charcoal noir">Charcoal Noir</option>
+              <option value="blush luxe">Blush Luxe</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="f-photo">Photo (optional)</label>
+            <div class="photo-field">
+              <div class="photo-preview" id="photoPreview">No photo</div>
+              <input id="f-photo" name="photo" type="file" accept="image/*"/>
+            </div>
+          </div>
+          <div class="field">
+            <label for="f-active" style="display:inline-flex;align-items:center;gap:8px;">
+              <input id="f-active" name="active" type="checkbox" style="width:auto;min-height:auto;" checked/>
+              Show on site
+            </label>
+          </div>
+          <div class="form-status" id="formStatus"></div>
+          <div class="modal-actions">
+            <button type="button" class="btn btn-outline" id="cancelEditBtn" hidden>Cancel edit</button>
+            <button type="submit" class="btn btn-primary btn-block" id="saveBtn">Add Item</button>
+          </div>
+        </form>
+      </div>
+
+      <div class="admin-card">
+        <h2>Current Items</h2>
+        <div id="itemList"></div>
+      </div>
+    </div>
+  </div>
+
+</main>
+
+<script src="js/products.js"></script>
+<script>window.COLLECTIONS = COLLECTIONS;</script>
+<script src="js/catalog.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<script src="js/supabase-config.js"></script>
+<script src="js/admin.js"></script>
+</body>
+</html>
