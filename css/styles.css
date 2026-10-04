@@ -104,33 +104,6 @@
   mask-size: 32px 16px, 100% calc(100% - 16px), 32px 16px;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --color-bg: #2A1E18;
-    --color-bg-alt: #33241C;
-    --color-surface: rgba(43, 31, 25, 0.72);
-    --color-surface-solid: #3A2A22;
-    --color-fg: #FBF2E9;
-    --color-fg-soft: #D9C4B8;
-    --color-fg-faint: #AD9789;
-    --color-accent: #FF9B86;
-    --color-accent-hover: #FFAE9B;
-    --color-accent-soft: #C97B6B;
-    --color-accent-tint: rgba(255, 155, 134, 0.16);
-    --color-border: #4A362C;
-    --color-border-input: #4A362C;
-    --shadow-soft: 0 2px 10px rgba(0, 0, 0, 0.25);
-    --shadow-lift: 0 6px 20px rgba(0, 0, 0, 0.35);
-    --nav-pill-bg: #4A362C;
-    --nav-pill-border: rgba(255, 245, 227, 0.22);
-  }
-  .nav::after,
-  .collection-hero::after,
-  .footer::before {
-    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='32' height='8' viewBox='0 0 32 8'%3E%3Cpath d='M0 3 Q8 8 16 3 T32 3' stroke='%234A362C' stroke-width='2' fill='none'/%3E%3C/svg%3E");
-  }
-}
-
 * { box-sizing: border-box; }
 html { scroll-behavior: smooth; }
 
@@ -272,14 +245,15 @@ button {
 .nav-row {
   display: grid;
   grid-template-columns: 1fr auto 1fr;
+  grid-template-areas: "brand links cart";
   align-items: center;
   min-height: 84px;
   gap: var(--space-3);
   position: relative;
 }
-.nav-actions { display: flex; align-items: center; gap: 8px; justify-self: end; }
 .nav-toggle {
   display: none;
+  grid-area: toggle;
   align-items: center;
   justify-content: center;
   width: 44px;
@@ -294,6 +268,7 @@ button {
 }
 .nav-toggle:hover { background: var(--color-accent-tint); }
 .brand {
+  grid-area: brand;
   display: flex;
   align-items: center;
   gap: 6px;
@@ -307,6 +282,7 @@ button {
   .brand-logo { height: 68px; }
 }
 .nav-links {
+  grid-area: links;
   display: flex;
   align-items: center;
   gap: 10px;
@@ -346,6 +322,7 @@ button {
 }
 .nav-divider { width: 4px; height: 4px; border-radius: 50%; background: rgba(74, 48, 40, 0.18); flex-shrink: 0; align-self: center; }
 .cart-btn {
+  grid-area: cart;
   display: flex;
   align-items: center;
   gap: 8px;
@@ -403,7 +380,12 @@ button {
    logo is this size, so the nav links collapse into a hamburger-toggled
    dropdown instead of shrinking icons further. */
 @media (max-width: 700px) {
-  .nav-row { gap: var(--space-2); }
+  .nav-row {
+    grid-template-columns: auto 1fr auto;
+    grid-template-areas: "toggle brand cart";
+    gap: var(--space-2);
+  }
+  .brand { justify-self: center; }
   .brand-logo { height: 64px; }
   .nav-toggle { display: flex; }
   .cart-btn { padding: 10px; }
