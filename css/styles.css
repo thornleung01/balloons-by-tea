@@ -1044,6 +1044,9 @@ button {
   transition: transform 320ms var(--ease);
 }
 .cart-drawer.open { transform: translateX(0); }
+@media (max-width: 600px) {
+  .cart-drawer { border-radius: 0; }
+}
 .drawer-head {
   display: flex; align-items: center; justify-content: space-between;
   padding: var(--space-3);
@@ -1388,14 +1391,42 @@ button {
 .review-author { font-weight: 700; margin-bottom: 2px; font-size: 0.92rem; }
 .review-tag { font-size: 0.76rem; color: var(--color-fg-faint); margin: 0; }
 @media (max-width: 760px) {
-  .review-frame { aspect-ratio: auto; min-height: 340px; }
-  .review-track { top: 56%; left: 14%; right: 14%; bottom: 8%; }
+  /* Below this width the frame can't be both the right shape for the art
+     AND tall enough for the longest review text, so instead of stretching
+     the artwork (which "clumps" the stars and distorts the characters),
+     the art renders at its natural proportions and the text becomes its
+     own card that overlaps up into the drawn bubble area. */
+  .review-frame {
+    aspect-ratio: auto;
+    display: flex;
+    flex-direction: column;
+    background-image: none;
+  }
+  .review-frame::before {
+    content: "";
+    display: block;
+    width: 100%;
+    aspect-ratio: 1774 / 887;
+    background-image: url('../images/review-frame.png');
+    background-size: 100% 100%;
+    background-repeat: no-repeat;
+    flex-shrink: 0;
+  }
+  .review-track {
+    position: relative;
+    inset: auto;
+    margin-top: -16%;
+    padding: var(--space-3) var(--space-3) var(--space-4);
+    background: var(--nav-pill-bg);
+    border: 1.5px solid var(--nav-pill-border);
+    border-radius: var(--radius-lg);
+  }
   .review-text { font-size: 0.85rem; }
   .review-author { font-size: 0.82rem; }
   .review-tag { font-size: 0.7rem; }
 }
 @media (max-width: 480px) {
-  .review-frame { min-height: 420px; }
+  .review-track { margin-top: -14%; }
   .review-text { font-size: 0.8rem; }
   .review-author { font-size: 0.78rem; }
   .review-tag { font-size: 0.66rem; }
