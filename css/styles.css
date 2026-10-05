@@ -739,10 +739,11 @@ button {
     content: "";
     grid-row: 1;
     grid-column: 1;
+    background-color: #FDFDF8;
     background-image: url('../images/custom-order-bg.png');
     background-repeat: no-repeat;
     background-position: top center;
-    background-size: 100% 100%;
+    background-size: 100% auto;
     pointer-events: none;
   }
   .custom-order-section > .container {
