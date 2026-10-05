@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1"/>
-<title>Custom Order | Aura Balloon Co.</title>
+<title>Custom Order | Balloons by Tea</title>
 <meta name="description" content="Request a custom balloon order: tell us your colors, theme and event details and we'll put together a quote."/>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Playfair+Display:wght@500;600;700&family=Fredoka:wght@400;500;600&family=Nunito:wght@300;400;500;600;700&display=swap" rel="stylesheet">
@@ -51,14 +51,19 @@
     <div id="customOrderFormWrap">
       <form id="customOrderForm" novalidate>
         <div class="form-grid">
-          <div class="field full">
-            <label for="co-name">Full name</label>
-            <input id="co-name" name="name" type="text" required autocomplete="name"/>
-            <div class="field-error" id="co-error-name"></div>
+          <div class="field">
+            <label for="co-first-name">First name</label>
+            <input id="co-first-name" name="firstName" type="text" required autocomplete="given-name"/>
+            <div class="field-error" id="co-error-firstName"></div>
+          </div>
+          <div class="field">
+            <label for="co-last-name">Last name</label>
+            <input id="co-last-name" name="lastName" type="text" required autocomplete="family-name"/>
+            <div class="field-error" id="co-error-lastName"></div>
           </div>
           <div class="field">
             <label for="co-phone">Phone</label>
-            <input id="co-phone" name="phone" type="tel" required autocomplete="tel"/>
+            <input id="co-phone" name="phone" type="tel" required autocomplete="tel" placeholder="(000) 000-0000"/>
             <div class="field-error" id="co-error-phone"></div>
           </div>
           <div class="field">
@@ -66,30 +71,107 @@
             <input id="co-email" name="email" type="email" required autocomplete="email"/>
             <div class="field-error" id="co-error-email"></div>
           </div>
-          <div class="field full">
-            <label>Pick-up or Delivery</label>
-            <div class="radio-group">
-              <label class="radio-option"><input type="radio" name="fulfillment" value="pickup" checked/> Pick-up</label>
-              <label class="radio-option"><input type="radio" name="fulfillment" value="delivery"/> Delivery</label>
-            </div>
+
+          <h3 class="form-section-heading">Event Information</h3>
+
+          <div class="field">
+            <label for="co-event-date">Event date</label>
+            <input id="co-event-date" name="eventDate" type="date" required/>
+            <div class="field-error" id="co-error-eventDate"></div>
           </div>
           <div class="field">
-            <label for="co-date">Preferred date</label>
-            <input id="co-date" name="date" type="date"/>
-            <p class="field-note">We can coordinate pick-up time or delivery later.</p>
+            <label for="co-event-time">Event time</label>
+            <input id="co-event-time" name="eventTime" type="time" required/>
+            <div class="field-error" id="co-error-eventTime"></div>
+          </div>
+          <div class="field full">
+            <label for="co-recipient">Recipient's name and/or age</label>
+            <input id="co-recipient" name="recipient" type="text"/>
+          </div>
+          <div class="field full">
+            <label for="co-occasion">Event's occasion</label>
+            <input id="co-occasion" name="occasion" type="text" placeholder="birthday, wedding, corporate event, etc..."/>
+          </div>
+          <div class="field full">
+            <label>Preferred service option</label>
+            <div class="radio-group">
+              <label class="radio-option"><input type="radio" name="service" value="pickup" checked/> Pick-up</label>
+              <label class="radio-option"><input type="radio" name="service" value="delivery"/> Delivery</label>
+              <label class="radio-option"><input type="radio" name="service" value="delivery-setup"/> Delivery and set-up</label>
+            </div>
+          </div>
+          <div class="field full">
+            <label for="co-address">Delivery address (if delivery or set-up required)</label>
+            <input id="co-address" name="address" type="text" placeholder="Street address" autocomplete="street-address"/>
+          </div>
+          <div class="field">
+            <input aria-label="City" name="city" type="text" placeholder="City"/>
+          </div>
+          <div class="field">
+            <input aria-label="Province" name="province" type="text" placeholder="Province"/>
+          </div>
+          <div class="field full">
+            <input aria-label="Postal code" name="postal" type="text" placeholder="Postal code" style="max-width:280px;"/>
+          </div>
+          <div class="field full">
+            <label>Setup area</label>
+            <div class="radio-group">
+              <label class="radio-option"><input type="radio" name="setupArea" value="indoor"/> Indoor</label>
+              <label class="radio-option"><input type="radio" name="setupArea" value="outdoor"/> Outdoor</label>
+              <label class="radio-option"><input type="radio" name="setupArea" value="other"/> Other</label>
+            </div>
+          </div>
+          <div class="field full">
+            <label>Event venue</label>
+            <div class="checkbox-group">
+              <label class="checkbox-option"><input type="checkbox" name="venue" value="Home"/> Home</label>
+              <label class="checkbox-option"><input type="checkbox" name="venue" value="Restaurant"/> Restaurant</label>
+              <label class="checkbox-option"><input type="checkbox" name="venue" value="Workspace"/> Workspace</label>
+              <label class="checkbox-option"><input type="checkbox" name="venue" value="Event Hall"/> Event Hall</label>
+              <label class="checkbox-option"><input type="checkbox" name="venue" value="School"/> School</label>
+              <label class="checkbox-option"><input type="checkbox" name="venue" value="Indoor Playground"/> Indoor Playground</label>
+              <label class="checkbox-option"><input type="checkbox" name="venue" value="Other"/> Other</label>
+            </div>
+          </div>
+
+          <h3 class="form-section-heading">Style and Design</h3>
+
+          <div class="field full">
+            <label>What type of balloon are you looking for?</label>
+            <div class="checkbox-group">
+              <label class="checkbox-option"><input type="checkbox" name="balloonType" value="Helium Bouquet"/> Helium Bouquet</label>
+              <label class="checkbox-option"><input type="checkbox" name="balloonType" value="Balloon Flowers"/> Balloon Flowers</label>
+              <label class="checkbox-option"><input type="checkbox" name="balloonType" value="Number Arrangement"/> Number Arrangement</label>
+              <label class="checkbox-option"><input type="checkbox" name="balloonType" value="Balloon Garland"/> Balloon Garland</label>
+              <label class="checkbox-option"><input type="checkbox" name="balloonType" value="Personal Backdrop"/> Personal Backdrop</label>
+              <label class="checkbox-option"><input type="checkbox" name="balloonType" value="Specialty Balloons"/> Specialty Balloons (heart, hot-air balloon, carousel...)</label>
+              <label class="checkbox-option"><input type="checkbox" name="balloonType" value="Other"/> Other</label>
+            </div>
+          </div>
+          <div class="field full">
+            <label for="co-color-scheme">What is the color scheme for this event?</label>
+            <textarea id="co-color-scheme" name="colorScheme"></textarea>
+          </div>
+          <div class="field full">
+            <label for="co-details">Please describe your vision for the event</label>
+            <textarea id="co-details" name="details" required placeholder="Colors, theme, size, venue, inspiration photos you have in mind..."></textarea>
+            <div class="field-error" id="co-error-details"></div>
           </div>
           <div class="field">
             <label for="co-budget">Budget (optional)</label>
             <input id="co-budget" name="budget" type="text" placeholder="e.g. $200"/>
           </div>
           <div class="field full">
-            <label for="co-details">Tell us what you're picturing</label>
-            <textarea id="co-details" name="details" required placeholder="Colors, theme, size, venue, inspiration photos you have in mind..."></textarea>
-            <div class="field-error" id="co-error-details"></div>
+            <label>Photos of the space, as well as any inspirational images</label>
+            <div class="upload-dropzone">
+              <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M12 16V4M12 4l-4 4M12 4l4 4" stroke-linecap="round" stroke-linejoin="round"/><path d="M4 16v3a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-3" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              <strong>Photo upload isn't available here yet</strong>
+              <span>Once you submit, send any inspiration or venue photos to us on WhatsApp or email and we'll attach them to your request.</span>
+            </div>
           </div>
         </div>
         <div class="field-error" id="customOrderFormError"></div>
-        <button type="submit" class="btn btn-primary btn-block" id="customOrderSubmitBtn">Request Custom Order</button>
+        <button type="submit" class="btn btn-primary btn-block" id="customOrderSubmitBtn">Send Request</button>
       </form>
     </div>
     <div id="customOrderSuccess" class="success-state" hidden>
@@ -97,7 +179,7 @@
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="32" height="32" aria-hidden="true"><path d="M5 13l4 4L19 7" stroke-linecap="round" stroke-linejoin="round"/></svg>
       </div>
       <h2>Request received!</h2>
-      <p>Thank you! We'll review the details and reach out shortly with a custom quote.</p>
+      <p>Thank you! We'll review the details and reach out shortly with a custom quote. Have inspiration or venue photos? Send them to us on WhatsApp or email and we'll attach them to your request.</p>
       <span class="order-ref" id="customOrderRef"></span>
       <div class="modal-actions" style="margin-top:24px;justify-content:center;">
         <a href="index.html" class="btn btn-primary">Back to home</a>

@@ -1,5 +1,5 @@
 /*
-  Aura Balloon Co. — site behavior
+  Balloons by Tea - site behavior
   Sections: CONFIG, icons, balloon art, nav, product grid, cart, checkout.
 */
 
@@ -698,7 +698,7 @@ function validateCheckoutForm(form) {
 
 function submitOrder(payload) {
   if (!isFormConfigured()) {
-    console.info("[Aura Balloon Co.] Google Form not yet configured — simulating submission.", payload);
+    console.info("[Balloons by Tea] Google Form not yet configured, simulating submission.", payload);
     return new Promise((resolve) => setTimeout(resolve, 700));
   }
   const params = new URLSearchParams();
@@ -952,16 +952,19 @@ function initCustomOrderForm() {
   if (!form) return;
   const submitBtn = document.getElementById("customOrderSubmitBtn");
 
-  function isDelivery() {
-    return form.fulfillment.value === "delivery";
+  function checkedValues(name) {
+    return Array.from(form.querySelectorAll(`input[name="${name}"]:checked`)).map((el) => el.value);
   }
 
   function validate() {
     const rules = [
-      ["name", (v) => v.length > 1, "Please enter your name."],
+      ["firstName", (v) => v.length > 1, "Please enter your first name."],
+      ["lastName", (v) => v.length > 1, "Please enter your last name."],
       ["phone", (v) => v.length >= 7, "Please enter a valid phone number."],
       ["email", (v) => EMAIL_RE.test(v), "Please enter a valid email."],
-      ["details", (v) => v.length > 5, "Please tell us a bit about what you're picturing."]
+      ["eventDate", (v) => v.length > 0, "Please choose an event date."],
+      ["eventTime", (v) => v.length > 0, "Please choose an event time."],
+      ["details", (v) => v.length > 5, "Please tell us a bit about your vision for the event."]
     ];
     return runFieldValidation(form, rules, "co-error-");
   }
@@ -975,14 +978,36 @@ function initCustomOrderForm() {
     submitBtn.innerHTML = `<span class="spinner" aria-hidden="true"></span><span>Sending request...</span>`;
 
     const budget = form.budget.value.trim();
-    const delivery = isDelivery();
+    const service = form.service.value;
+    const serviceLabel = { pickup: "Pick-up", delivery: "Delivery", "delivery-setup": "Delivery and set-up" }[service] || service;
+    const needsAddress = service !== "pickup";
+    const addressParts = [form.address.value.trim(), form.city.value.trim(), form.province.value.trim(), form.postal.value.trim()].filter(Boolean);
+    const address = needsAddress && addressParts.length ? addressParts.join(", ") : (needsAddress ? "Address to be coordinated" : "Pick-up (no delivery)");
+
+    const setupAreaEl = form.querySelector('input[name="setupArea"]:checked');
+    const setupArea = setupAreaEl ? setupAreaEl.value : "";
+    const venue = checkedValues("venue").join(", ");
+    const balloonType = checkedValues("balloonType").join(", ");
+
+    const notesLines = [
+      `Service option: ${serviceLabel}`,
+      form.recipient.value.trim() ? `Recipient: ${form.recipient.value.trim()}` : null,
+      form.occasion.value.trim() ? `Occasion: ${form.occasion.value.trim()}` : null,
+      setupArea ? `Setup area: ${setupArea}` : null,
+      venue ? `Event venue: ${venue}` : null,
+      balloonType ? `Balloon type: ${balloonType}` : null,
+      form.colorScheme.value.trim() ? `Color scheme: ${form.colorScheme.value.trim()}` : null,
+      "",
+      `Vision: ${form.details.value.trim()}`
+    ].filter((line) => line !== null);
+
     const payload = {
-      name: form.name.value.trim(),
+      name: `${form.firstName.value.trim()} ${form.lastName.value.trim()}`.trim(),
       phone: form.phone.value.trim(),
       email: form.email.value.trim(),
-      address: delivery ? "Delivery (address to be coordinated)" : "Pick-up (no delivery)",
-      date: form.date.value.trim(),
-      notes: `Fulfillment: ${delivery ? "Delivery" : "Pick-up"}\n\n${form.details.value.trim()}`,
+      address,
+      date: `${form.eventDate.value.trim()} ${form.eventTime.value.trim()}`.trim(),
+      notes: notesLines.join("\n"),
       summary: "Custom order request",
       total: budget ? `Budget: ${budget}` : "Budget not specified"
     };

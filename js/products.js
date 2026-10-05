@@ -57,7 +57,7 @@ const COLLECTIONS = {
     tagline: "Baby showers, corporate events and everything else worth celebrating.",
     items: [
       { id: "baby-oh-baby", name: "Oh Baby Bouquet", price: 60, description: "Neutral sage and cream bouquet suited to any gender reveal.", colors: ["#9CAF88", "#F3EEE6", "#D4A94A"] },
-      { id: "baby-gender-reveal", name: "Gender Reveal Burst", price: 90, description: "Confetti-filled reveal balloon in a cream shell — pink or blue inside.", colors: ["#E7C5C1", "#AFC9E0", "#F3EEE6"] },
+      { id: "baby-gender-reveal", name: "Gender Reveal Burst", price: 90, description: "Confetti-filled reveal balloon in a cream shell, pink or blue inside.", colors: ["#E7C5C1", "#AFC9E0", "#F3EEE6"] },
       { id: "baby-little-cloud", name: "Little Cloud Set", price: 58, description: "Pastel blue and cream cluster with a soft cloud motif.", colors: ["#AFC9E0", "#F3EEE6", "#FFFFFF"] },
       { id: "baby-welcome-arch", name: "Welcome Little One Arch", price: 180, description: "Petite arch for the welcome table or photo backdrop.", colors: ["#F3EEE6", "#9CAF88", "#E7C5C1"] },
       { id: "baby-storybook", name: "Storybook Bouquet", price: 64, description: "Sage, blush and cream styled with a storybook ribbon trail.", colors: ["#9CAF88", "#E7C5C1", "#F3EEE6"] },

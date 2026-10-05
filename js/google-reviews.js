@@ -52,7 +52,7 @@ async function fetchGoogleReviews() {
     await place.fetchFields({ fields: ["reviews", "displayName"] });
 
     if (!place.reviews || !place.reviews.length) {
-      console.warn("[Aura Balloon Co.] Google Place has no reviews to show — using placeholder reviews instead.");
+      console.warn("[Balloons by Tea] Google Place has no reviews to show, using placeholder reviews instead.");
       return null;
     }
 
@@ -72,7 +72,7 @@ async function fetchGoogleReviews() {
 
     return mapped.length ? mapped : null;
   } catch (err) {
-    console.warn("[Aura Balloon Co.] Could not load Google reviews — showing placeholder reviews instead.", err);
+    console.warn("[Balloons by Tea] Could not load Google reviews, showing placeholder reviews instead.", err);
     return null;
   }
 }
