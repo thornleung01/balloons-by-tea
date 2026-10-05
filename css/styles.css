@@ -1328,6 +1328,13 @@ button {
   margin-top: -1.5px;
   padding: 0 var(--space-3) var(--space-2);
 }
+.faq-answer::before {
+  content: "";
+  display: block;
+  height: 1px;
+  margin-top: 18px;
+  background: var(--nav-pill-border);
+}
 .faq-answer p {
   margin: 15px 0 0;
   max-width: 650px;
@@ -1335,7 +1342,7 @@ button {
   font-size: 1.0625rem;
   line-height: 1.6;
 }
-.faq-answer p:first-child { margin-top: 24px; }
+.faq-answer p:first-child { margin-top: 18px; }
 .faq-answer strong { font-weight: 700; color: var(--color-fg); }
 
 /* ==========================================================================
