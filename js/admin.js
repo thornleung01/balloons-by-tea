@@ -638,13 +638,18 @@ async function refreshNavList() {
     return;
   }
 
-  listEl.innerHTML = navCache.map((n) => `
-    <div class="admin-item-row ${n.visible === false ? "inactive" : ""}" data-id="${n.id}">
+  listEl.innerHTML = navCache.map((n, i) => `
+    <div class="admin-item-row draggable-row ${n.visible === false ? "inactive" : ""}" data-id="${n.id}" data-index="${i}" draggable="true">
+      <span class="drag-handle" aria-hidden="true" title="Drag to reorder">&#8942;&#8942;</span>
       <div class="admin-item-body">
         <div class="name">${escapeHtml(n.label)} ${n.key ? '<span class="form-status" style="display:inline;">(built-in)</span>' : ""}</div>
         <div class="meta">${escapeHtml(n.href)} ${n.visible === false ? "&middot; hidden" : ""}</div>
       </div>
       <div class="admin-item-actions">
+        <label class="toggle-switch" title="${n.visible === false ? "Hidden, click to show in nav" : "Showing in nav, click to hide"}">
+          <input type="checkbox" class="nav-visible-toggle" data-id="${n.id}" ${n.visible !== false ? "checked" : ""}/>
+          <span class="toggle-slider"></span>
+        </label>
         <button type="button" class="edit-btn" data-id="${n.id}">Edit</button>
         ${n.key ? "" : `<button type="button" class="danger delete-btn" data-id="${n.id}">Delete</button>`}
       </div>
@@ -660,6 +665,29 @@ async function refreshNavList() {
   listEl.querySelectorAll(".delete-btn").forEach((btn) => {
     btn.addEventListener("click", () => handleDeleteNav(btn.dataset.id));
   });
+  listEl.querySelectorAll(".nav-visible-toggle").forEach((toggle) => {
+    toggle.addEventListener("change", () => handleToggleNavVisible(toggle.dataset.id, toggle.checked, toggle));
+  });
+  wireUpRowReorder(listEl, ".draggable-row", navCache, persistNavOrder);
+}
+
+async function handleToggleNavVisible(id, visible, toggleEl) {
+  const client = getSupabaseClient();
+  toggleEl.disabled = true;
+  const { error } = await client.from("nav_items").update({ visible }).eq("id", id);
+  if (error) {
+    alert("Couldn't update: " + error.message);
+    toggleEl.checked = !visible;
+    toggleEl.disabled = false;
+    return;
+  }
+  await refreshNavList();
+}
+
+async function persistNavOrder(cache) {
+  const client = getSupabaseClient();
+  await Promise.all(cache.map((n, i) => client.from("nav_items").update({ sort_order: i }).eq("id", n.id)));
+  await refreshNavList();
 }
 
 function startNavEdit(row) {
