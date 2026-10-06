@@ -1596,6 +1596,7 @@ button {
 .edit-mode-toggle.active { background: var(--color-accent); color: #fff; border-color: var(--color-accent); }
 .edit-history-toggle { left: 82px; width: 44px; height: 44px; bottom: 26px; }
 .edit-admin-link { left: 138px; width: 44px; height: 44px; bottom: 26px; }
+.edit-theme-toggle { left: 194px; width: 44px; height: 44px; bottom: 26px; }
 
 .edit-history-panel {
   position: fixed;
@@ -1619,6 +1620,39 @@ button {
   font-family: var(--font-display);
 }
 .edit-history-list { overflow-y: auto; padding: var(--space-2) var(--space-3); }
+.edit-theme-swatches {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: var(--space-2);
+  padding: var(--space-3);
+}
+.edit-theme-field {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.85rem;
+  color: var(--color-fg);
+  cursor: pointer;
+}
+.edit-theme-field input[type="color"] {
+  width: 30px; height: 30px;
+  padding: 0;
+  border: 1.5px solid var(--color-border);
+  border-radius: 50%;
+  cursor: pointer;
+  background: none;
+  flex-shrink: 0;
+}
+.edit-theme-field input[type="color"]::-webkit-color-swatch-wrapper { padding: 2px; }
+.edit-theme-field input[type="color"]::-webkit-color-swatch { border: none; border-radius: 50%; }
+.edit-theme-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: var(--space-2) var(--space-3);
+  border-top: 1px solid var(--color-border);
+}
+.edit-theme-actions .edit-save-discard-btn, .edit-theme-actions .edit-save-commit-btn { padding: 7px 14px; }
 .edit-history-empty { color: var(--color-fg-faint); font-size: 0.88rem; text-align: center; padding: var(--space-3) 0; }
 .edit-history-row {
   display: flex; align-items: center; justify-content: space-between; gap: var(--space-2);

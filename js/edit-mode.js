@@ -49,6 +49,16 @@ function buildEditModeToggle() {
   document.body.appendChild(historyBtn);
   historyBtn.addEventListener("click", () => toggleHistoryPanel());
 
+  const themeBtn = document.createElement("button");
+  themeBtn.type = "button";
+  themeBtn.id = "editThemeToggle";
+  themeBtn.className = "edit-mode-toggle edit-theme-toggle";
+  themeBtn.title = "Theme colors";
+  themeBtn.hidden = true;
+  themeBtn.innerHTML = `<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M12 3a9 9 0 1 0 0 18c1.1 0 1.8-.9 1.8-1.8 0-.5-.2-.9-.5-1.2-.3-.3-.5-.7-.5-1.2 0-.9.7-1.6 1.6-1.6h1.6a3.5 3.5 0 0 0 3.5-3.5C19.5 6.6 16.1 3 12 3Z" stroke-linejoin="round"/><circle cx="7.5" cy="10.5" r="1.1" fill="currentColor" stroke="none"/><circle cx="10.5" cy="7" r="1.1" fill="currentColor" stroke="none"/><circle cx="15" cy="7.5" r="1.1" fill="currentColor" stroke="none"/></svg>`;
+  document.body.appendChild(themeBtn);
+  themeBtn.addEventListener("click", () => toggleThemePanel());
+
   // Shown as soon as the pencil toggle exists (i.e. as soon as we know
   // this is an admin session) rather than gated behind edit mode being
   // on — there was previously no way back to admin.html from a public
@@ -77,6 +87,7 @@ function setEditMode(on) {
   btn.setAttribute("aria-pressed", String(on));
   document.body.classList.toggle("edit-mode-active", on);
   document.getElementById("editHistoryToggle").hidden = !on;
+  document.getElementById("editThemeToggle").hidden = !on;
 
   if (on) {
     revealHiddenForEditing();
@@ -87,6 +98,7 @@ function setEditMode(on) {
     removeEditHandles();
     applyLayoutOverrides();
     closeHistoryPanel();
+    closeThemePanel();
   }
 }
 
@@ -154,6 +166,7 @@ document.addEventListener("dblclick", (e) => {
 async function toggleHistoryPanel() {
   const existing = document.getElementById("editHistoryPanel");
   if (existing) { closeHistoryPanel(); return; }
+  closeThemePanel(); // same corner, avoid the two overlapping
 
   const panel = document.createElement("div");
   panel.id = "editHistoryPanel";
@@ -373,7 +386,7 @@ function recomputeTransform(el, key, liveOverrides) {
 }
 
 function hasPendingChanges() {
-  return Object.keys(pendingOverrides).length > 0 || pendingProductRemovals.size > 0;
+  return Object.keys(pendingOverrides).length > 0 || pendingProductRemovals.size > 0 || Object.keys(pendingThemeColors).length > 0;
 }
 
 /* Small dot on any element with a staged-but-unsaved change, so you can
@@ -483,6 +496,7 @@ function discardPendingChanges() {
   pendingOverrides = {};
   pendingProductRemovals.clear();
   undoStack = [];
+  discardThemeColors();
   revealHiddenForEditing();
   renderEditHandles();
   renderSaveBar();
@@ -552,6 +566,112 @@ function toggleFontPopover(el, key) {
 document.addEventListener("click", (e) => {
   if (!e.target.closest(".edit-font-popover, .font-btn")) closeFontPopover();
 }, true);
+
+/* ===== Theme colors (site-wide, not per-element) =====
+   Everything else in this file writes to layout_overrides (one page,
+   one element, one property). Theme colors are different — they're
+   site_settings rows, shared across every page, the same table and
+   upsert pattern admin.html's own Settings tab already uses. Kept as
+   its own small self-contained panel (with its own Save/Discard) rather
+   than folded into the per-element pendingOverrides/Save bar, since
+   mixing "one page section" and "the whole site" into one counter would
+   be confusing. hasPendingChanges()/discardPendingChanges() still cover
+   it for the "unsaved changes, discard and exit?" guard. */
+const THEME_COLOR_FIELDS = [
+  { key: "theme_coral", label: "Accent", fallback: "#FF7F7F" },
+  { key: "theme_blush", label: "Blush", fallback: "#F8C4C4" },
+  { key: "theme_baby_blue", label: "Baby blue", fallback: "#B9DCF3" },
+  { key: "theme_soft_yellow", label: "Soft yellow", fallback: "#FFD66B" },
+  { key: "theme_brown", label: "Text", fallback: "#4A3028" }
+];
+let pendingThemeColors = {};
+
+/* applyThemeColors() (js/site-content.js) reads window.SITE_SETTINGS at
+   the moment it's called and writes a snapshot into the #dynamicTheme
+   style tag — it isn't reactively bound to that object. So a live
+   preview can build a merged view, point SITE_SETTINGS at it just long
+   enough to generate the preview, then restore the real object; the
+   style tag keeps the preview without the real settings ever having
+   been mutated. */
+function previewThemeColors() {
+  if (typeof applyThemeColors !== "function") return;
+  const real = window.SITE_SETTINGS;
+  window.SITE_SETTINGS = Object.assign({}, real, pendingThemeColors);
+  applyThemeColors();
+  window.SITE_SETTINGS = real;
+}
+
+function closeThemePanel() {
+  const panel = document.getElementById("editThemePanel");
+  if (panel) panel.remove();
+}
+
+function toggleThemePanel() {
+  const existing = document.getElementById("editThemePanel");
+  if (existing) { closeThemePanel(); return; }
+  closeHistoryPanel(); // same corner, avoid the two overlapping
+
+  const settings = window.SITE_SETTINGS || {};
+  const panel = document.createElement("div");
+  panel.id = "editThemePanel";
+  panel.className = "edit-history-panel edit-theme-panel";
+  panel.innerHTML = `
+    <div class="edit-history-head">
+      <strong>Theme colors</strong>
+      <button type="button" class="edit-icon-btn" id="editThemeClose" aria-label="Close">
+        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 5l14 14M19 5L5 19" stroke-linecap="round"/></svg>
+      </button>
+    </div>
+    <div class="edit-theme-swatches">
+      ${THEME_COLOR_FIELDS.map((f) => `
+        <label class="edit-theme-field">
+          <input type="color" data-theme-key="${f.key}" value="${pendingThemeColors[f.key] || settings[f.key] || f.fallback}"/>
+          <span>${f.label}</span>
+        </label>
+      `).join("")}
+    </div>
+    <div class="edit-theme-actions">
+      <button type="button" class="edit-save-discard-btn" id="editThemeDiscard">Discard</button>
+      <button type="button" class="edit-save-commit-btn" id="editThemeSave">Save</button>
+    </div>
+  `;
+  document.body.appendChild(panel);
+  document.getElementById("editThemeClose").addEventListener("click", closeThemePanel);
+  document.getElementById("editThemeDiscard").addEventListener("click", () => { discardThemeColors(); closeThemePanel(); });
+  document.getElementById("editThemeSave").addEventListener("click", saveThemeColors);
+  panel.querySelectorAll("input[type=color]").forEach((input) => {
+    input.addEventListener("input", () => {
+      pendingThemeColors[input.dataset.themeKey] = input.value;
+      previewThemeColors();
+    });
+  });
+}
+
+async function saveThemeColors() {
+  const entries = Object.entries(pendingThemeColors);
+  if (!entries.length) { closeThemePanel(); return; }
+  const saveBtn = document.getElementById("editThemeSave");
+  if (saveBtn) { saveBtn.disabled = true; saveBtn.textContent = "Saving…"; }
+  try {
+    const client = getSupabaseClient();
+    for (const [key, value] of entries) {
+      const { error } = await client.from("site_settings").upsert({ key, value });
+      if (error) throw error;
+      if (window.SITE_SETTINGS) window.SITE_SETTINGS[key] = value;
+    }
+    pendingThemeColors = {};
+    closeThemePanel();
+  } catch (err) {
+    alert("Couldn't save colors: " + err.message);
+    if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = "Save"; }
+  }
+}
+
+function discardThemeColors() {
+  if (!Object.keys(pendingThemeColors).length) return;
+  pendingThemeColors = {};
+  if (typeof applyThemeColors === "function") applyThemeColors();
+}
 
 /* ===== Inline text editing (text elements only) =====
    Double-click, or the pencil button, turns the element itself into a
@@ -702,7 +822,6 @@ function renderSelectionToolbar() {
       <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 3v5a2 2 0 0 1-2 2H1M16 21v-5a2 2 0 0 1 2-2h5" stroke-linecap="round" stroke-linejoin="round"/></svg>
     </span>` : ""}
     ${single && single.type === "product" ? `<button type="button" class="edit-icon-btn" id="selectionSelectRowBtn" title="Select this whole row" aria-label="Select row"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="9" width="5" height="6" rx="1"/><rect x="9.5" y="9" width="5" height="6" rx="1"/><rect x="16" y="9" width="5" height="6" rx="1"/></svg></button>` : ""}
-    ${single && single.type === "product" ? `<button type="button" class="edit-icon-btn remove-btn" id="selectionRemoveBtn" title="Remove from site" aria-label="Remove product"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 5l14 14M19 5L5 19" stroke-linecap="round"/></svg></button>` : ""}
     <button type="button" class="edit-icon-btn" id="selectionClearBtn" title="Clear selection" aria-label="Clear selection">
       <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 5l14 14M19 5L5 19" stroke-linecap="round"/></svg>
     </button>
@@ -746,8 +865,6 @@ function renderSelectionToolbar() {
       suppressNextBackgroundClick = true;
       selectRow(single.el);
     });
-    const removeBtn = document.getElementById("selectionRemoveBtn");
-    if (removeBtn) removeBtn.addEventListener("click", () => removeProduct(single.el, single.key));
   }
 }
 
@@ -992,16 +1109,6 @@ function toggleHidden(el, key) {
     queueOverride(key, "hidden", "true");
     el.classList.add("edit-is-hidden");
   }
-}
-
-function removeProduct(el, key) {
-  if (!confirm("Remove this product from the site? This stays staged until you click Save (and you can turn it back on from the Products admin tab afterward).")) return;
-  const productId = key.replace("product:", "");
-  undoStack.push({ type: "product-removal", productId });
-  pendingProductRemovals.add(productId);
-  el.classList.add("edit-is-hidden");
-  updatePendingDot(key);
-  renderSaveBar();
 }
 
 /* ===== Keyboard shortcuts (Esc / Delete / arrows / Ctrl+Z) =====
