@@ -210,8 +210,6 @@ function photoEntryPreviewUrl(entry) {
   return entry.type === "url" ? entry.value : URL.createObjectURL(entry.value);
 }
 
-let draggedPhotoIndex = null;
-
 function renderPhotoGallery() {
   const gallery = document.getElementById("photoGallery");
   if (!gallery) return;
@@ -246,30 +244,7 @@ function renderPhotoGallery() {
     img.addEventListener("click", () => openPhotoPreview(Number(img.dataset.preview)));
   });
 
-  gallery.querySelectorAll(".photo-gallery-item").forEach((item) => {
-    item.addEventListener("dragstart", () => {
-      draggedPhotoIndex = Number(item.dataset.index);
-      item.classList.add("dragging");
-    });
-    item.addEventListener("dragend", () => {
-      item.classList.remove("dragging");
-      draggedPhotoIndex = null;
-    });
-    item.addEventListener("dragover", (e) => {
-      e.preventDefault();
-      item.classList.add("drag-over");
-    });
-    item.addEventListener("dragleave", () => item.classList.remove("drag-over"));
-    item.addEventListener("drop", (e) => {
-      e.preventDefault();
-      item.classList.remove("drag-over");
-      const targetIndex = Number(item.dataset.index);
-      if (draggedPhotoIndex === null || draggedPhotoIndex === targetIndex) return;
-      const [moved] = currentPhotoEntries.splice(draggedPhotoIndex, 1);
-      currentPhotoEntries.splice(targetIndex, 0, moved);
-      renderPhotoGallery();
-    });
-  });
+  wireUpRowReorder(gallery, ".photo-gallery-item", currentPhotoEntries, () => renderPhotoGallery());
 }
 
 /* ===== Photo preview modal — reuses the public site's lightbox CSS
@@ -472,8 +447,9 @@ async function refreshCollectionList() {
   const { data: productRows } = await client.from("products").select("collection");
   const usedSlugs = new Set((productRows || []).map((p) => p.collection));
 
-  listEl.innerHTML = collectionsCache.map((c) => `
-    <div class="admin-item-row" data-id="${c.id}">
+  listEl.innerHTML = collectionsCache.map((c, i) => `
+    <div class="admin-item-row draggable-row" data-id="${c.id}" data-index="${i}" draggable="true">
+      <span class="drag-handle" aria-hidden="true" title="Drag to reorder">&#8942;&#8942;</span>
       <div class="admin-item-thumb">${c.card_image_url ? `<img src="${escapeHtml(c.card_image_url)}" alt=""/>` : ""}</div>
       <div class="admin-item-body">
         <div class="name">${escapeHtml(c.title)} ${c.is_legacy ? '<span class="form-status" style="display:inline;">(built-in)</span>' : ""}</div>
@@ -495,6 +471,46 @@ async function refreshCollectionList() {
   listEl.querySelectorAll(".delete-btn").forEach((btn) => {
     btn.addEventListener("click", () => handleDeleteCollection(btn.dataset.id, usedSlugs));
   });
+  wireUpRowReorder(listEl, ".draggable-row", collectionsCache, persistCollectionOrder);
+}
+
+/* Shared native-HTML5-drag reordering for a list of .draggable-row
+   elements. `cache` is the array backing the rendered rows (mutated in
+   place to match the new order); `onDrop` persists the new order and
+   should itself trigger a re-render when it resolves. */
+let draggedRowIndex = null;
+
+function wireUpRowReorder(listEl, selector, cache, onDrop) {
+  listEl.querySelectorAll(selector).forEach((row) => {
+    row.addEventListener("dragstart", () => {
+      draggedRowIndex = Number(row.dataset.index);
+      row.classList.add("dragging");
+    });
+    row.addEventListener("dragend", () => {
+      row.classList.remove("dragging");
+      draggedRowIndex = null;
+    });
+    row.addEventListener("dragover", (e) => {
+      e.preventDefault();
+      row.classList.add("drag-over");
+    });
+    row.addEventListener("dragleave", () => row.classList.remove("drag-over"));
+    row.addEventListener("drop", (e) => {
+      e.preventDefault();
+      row.classList.remove("drag-over");
+      const targetIndex = Number(row.dataset.index);
+      if (draggedRowIndex === null || draggedRowIndex === targetIndex) return;
+      const [moved] = cache.splice(draggedRowIndex, 1);
+      cache.splice(targetIndex, 0, moved);
+      onDrop(cache);
+    });
+  });
+}
+
+async function persistCollectionOrder(cache) {
+  const client = getSupabaseClient();
+  await Promise.all(cache.map((c, i) => client.from("collections").update({ sort_order: i }).eq("id", c.id)));
+  await refreshCollectionList();
 }
 
 function startCollectionEdit(row) {

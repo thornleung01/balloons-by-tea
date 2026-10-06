@@ -158,6 +158,18 @@ body.admin-body {
   border-bottom: 1px solid var(--color-border);
 }
 .admin-item-row:last-child { border-bottom: none; }
+.draggable-row.dragging { opacity: 0.4; }
+.draggable-row.drag-over { box-shadow: 0 0 0 2px var(--color-accent); border-radius: var(--radius-sm); }
+.drag-handle {
+  flex-shrink: 0;
+  width: 16px;
+  text-align: center;
+  letter-spacing: -2px;
+  color: var(--color-fg-faint);
+  cursor: grab;
+  user-select: none;
+}
+.drag-handle:active { cursor: grabbing; }
 .admin-item-thumb {
   position: relative;
   width: 48px; height: 48px; border-radius: var(--radius-sm); background: var(--color-bg-alt);
