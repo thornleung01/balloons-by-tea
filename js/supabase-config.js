@@ -12,8 +12,8 @@
   keeping this key secret.
 */
 const SUPABASE_CONFIG = {
-  url: "PASTE_YOUR_SUPABASE_PROJECT_URL_HERE",
-  anonKey: "PASTE_YOUR_SUPABASE_ANON_PUBLIC_KEY_HERE"
+  url: "https://zqtwpkgyvyylhdrreexd.supabase.co",
+  anonKey: "sb_publishable_bYlGCbPT9Ka6O6xTUWR3jQ_mZTB0VTB"
 };
 
 function isSupabaseConfigured() {
