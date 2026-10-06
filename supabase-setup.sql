@@ -221,6 +221,37 @@ create policy "Authenticated can manage faq items"
   using (true)
   with check (true);
 
+-- Layout overrides — live visual edit-mode on the public pages. One row
+-- per (page, element, property) tweak: section spacing, text size,
+-- product-card scale, hidden/locked flags. Public can read (the override
+-- has to apply for every visitor, not just the logged-in admin); only a
+-- logged-in user can write.
+
+create table if not exists layout_overrides (
+  id bigint generated always as identity primary key,
+  page text not null,
+  element_key text not null,
+  property text not null,
+  value text,
+  updated_at timestamptz not null default now(),
+  unique (page, element_key, property)
+);
+
+alter table layout_overrides enable row level security;
+
+drop policy if exists "Public can read layout overrides" on layout_overrides;
+create policy "Public can read layout overrides"
+  on layout_overrides for select
+  to anon, authenticated
+  using (true);
+
+drop policy if exists "Authenticated can manage layout overrides" on layout_overrides;
+create policy "Authenticated can manage layout overrides"
+  on layout_overrides for all
+  to authenticated
+  using (true)
+  with check (true);
+
 -- Storage bucket for site images (logo, hero image, collection card photos)
 insert into storage.buckets (id, name, public)
   values ('site-images', 'site-images', true)

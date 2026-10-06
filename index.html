@@ -38,7 +38,7 @@
   </div>
 </nav>
 
-<header class="hero-photo">
+<header class="hero-photo" data-edit-key="hero">
   <img class="hero-photo-img" src="images/hero-mascot.png" alt=""/>
   <div class="hero-photo-scrim" aria-hidden="true"></div>
   <div class="hero-decor" aria-hidden="true">
@@ -51,8 +51,8 @@
   </div>
   <div class="container">
     <div class="hero-photo-inner">
-      <h1>Artful balloon bouquets for every celebration</h1>
-      <p class="hero-sub">Hand-styled bouquets and installations, designed category by category. Pick yours below and add pieces straight to your cart.</p>
+      <h1 data-edit-key="hero-heading">Artful balloon bouquets for every celebration</h1>
+      <p class="hero-sub" data-edit-key="hero-subtext">Hand-styled bouquets and installations, designed category by category. Pick yours below and add pieces straight to your cart.</p>
       <div class="hero-actions">
         <a href="#collections" class="btn btn-primary">Shop Now</a>
       </div>
@@ -60,7 +60,7 @@
   </div>
 </header>
 
-<section class="section" id="collections">
+<section class="section" id="collections" data-edit-key="collections">
   <div class="container">
     <div class="section-head align-left">
       <div class="word-badge collections-badge">
@@ -106,7 +106,7 @@
   </div>
 </section>
 
-<section class="section section-flush-top pattern-bg">
+<section class="section section-flush-top pattern-bg" data-edit-key="best-sellers">
   <div class="container">
     <div class="product-grid" id="bestSellersGrid"></div>
     <div style="text-align:center;margin-top:var(--space-4);">
@@ -115,7 +115,7 @@
   </div>
 </section>
 
-<section class="section" id="reviews">
+<section class="section" id="reviews" data-edit-key="reviews">
   <div class="container">
     <div class="section-head">
       <div class="word-badge reviews-badge">
@@ -285,6 +285,8 @@
 <script src="js/google-reviews-config.js"></script>
 <script src="js/google-reviews.js"></script>
 <script src="js/site-content.js"></script>
+<script src="js/layout-editor.js"></script>
+<script src="js/edit-mode.js"></script>
 <script src="js/app.js"></script>
 </body>
 </html>

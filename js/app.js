@@ -223,7 +223,7 @@ function renderItemCards(items, gridId) {
   }
 
   grid.innerHTML = items.map((item) => `
-    <article class="product-card">
+    <article class="product-card" data-edit-key="${String(item.id).startsWith("sb-") ? "product:" + item.id.slice(3) : ""}">
       ${productArtMarkup(item)}
       <div class="product-body">
         <h3>${escapeHtml(item.name)}</h3>
@@ -1154,10 +1154,12 @@ document.addEventListener("DOMContentLoaded", async () => {
     }
   })();
   const siteContentPromise = typeof loadSiteContent === "function" ? loadSiteContent() : Promise.resolve(false);
+  const layoutOverridesPromise = typeof loadLayoutOverrides === "function" ? loadLayoutOverrides() : Promise.resolve(false);
   const reviewCarouselPromise = initReviewCarousel();
 
   await catalogLoadPromise;
   await siteContentPromise;
+  await layoutOverridesPromise;
   applyThemeColors();
   renderNav();
   initNav();
@@ -1174,6 +1176,8 @@ document.addEventListener("DOMContentLoaded", async () => {
   initCheckoutForm();
   initAddressLocation();
   initCustomOrderForm();
+  if (typeof applyLayoutOverrides === "function") applyLayoutOverrides();
+  if (typeof initEditMode === "function") initEditMode();
   await reviewCarouselPromise;
   updateCartBadge();
 });

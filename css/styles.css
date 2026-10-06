@@ -1564,6 +1564,101 @@ button {
   transition: transform 150ms var(--ease);
 }
 .whatsapp-float:hover { transform: scale(1.08); }
+
+/* ==========================================================================
+   Live visual edit mode (admin-only)
+   ========================================================================== */
+.edit-mode-toggle {
+  position: fixed;
+  bottom: 22px;
+  left: 22px;
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  background: var(--color-surface-solid);
+  color: var(--color-fg);
+  border: 1.5px solid var(--nav-pill-border);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: var(--shadow-lift);
+  z-index: 46;
+  cursor: pointer;
+  transition: transform 150ms var(--ease), background 150ms var(--ease), color 150ms var(--ease);
+}
+.edit-mode-toggle:hover { transform: scale(1.08); }
+.edit-mode-toggle.active { background: var(--color-accent); color: #fff; border-color: var(--color-accent); }
+
+body.edit-mode-active [data-edit-key] {
+  position: relative;
+  outline: 1.5px dashed transparent;
+  transition: outline-color 120ms var(--ease);
+}
+body.edit-mode-active [data-edit-key]:hover { outline-color: var(--color-accent); }
+body.edit-mode-active [data-edit-key].edit-is-locked:hover { outline-color: var(--color-fg-faint); }
+body.edit-mode-active [data-edit-key].edit-is-hidden { opacity: 0.35; }
+
+.edit-controls {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  z-index: 40;
+  display: flex;
+  gap: 4px;
+  background: rgba(255, 255, 255, 0.92);
+  border-radius: var(--radius-pill);
+  padding: 4px;
+  box-shadow: var(--shadow-soft);
+}
+.edit-icon-btn {
+  width: 26px; height: 26px;
+  border-radius: 50%;
+  border: none;
+  background: var(--color-bg-alt);
+  color: var(--color-fg-soft);
+  display: flex; align-items: center; justify-content: center;
+  cursor: pointer;
+}
+.edit-icon-btn:hover { background: var(--color-accent-tint); color: var(--color-accent); }
+.edit-icon-btn.is-locked { background: var(--color-accent); color: #fff; }
+.edit-icon-btn.remove-btn:hover { background: var(--color-destructive); color: #fff; }
+
+.edit-resize-handle {
+  position: absolute;
+  bottom: 6px;
+  right: 6px;
+  width: 16px;
+  height: 16px;
+  border-radius: 4px;
+  background: var(--color-accent);
+  border: 2px solid #fff;
+  box-shadow: var(--shadow-soft);
+  cursor: nwse-resize;
+  z-index: 40;
+}
+
+.edit-divider-handle {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 10px;
+  cursor: ns-resize;
+  z-index: 39;
+}
+.edit-divider-handle::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  bottom: 2px;
+  transform: translateX(-50%);
+  width: 48px;
+  height: 5px;
+  border-radius: var(--radius-pill);
+  background: var(--color-accent);
+  opacity: 0.55;
+}
+.edit-divider-handle:hover::after { opacity: 1; }
 .whatsapp-float svg { width: 30px; height: 30px; }
 
 .toast {
