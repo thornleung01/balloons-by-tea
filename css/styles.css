@@ -1737,6 +1737,19 @@ body.edit-mode-active [data-edit-key] { cursor: pointer; }
 .edit-icon-btn.is-locked { background: var(--color-accent); color: #fff; }
 .edit-icon-btn.remove-btn:hover { background: var(--color-destructive); color: #fff; }
 
+.edit-pending-dot {
+  position: absolute;
+  top: 6px;
+  left: 6px;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--color-accent);
+  box-shadow: 0 0 0 2px #fff;
+  z-index: 41;
+  pointer-events: none;
+}
+
 .edit-resize-handle {
   position: absolute;
   bottom: 6px;

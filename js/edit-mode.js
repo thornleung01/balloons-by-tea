@@ -220,7 +220,12 @@ function elementEditType(el) {
 }
 
 function removeEditHandles() {
-  document.querySelectorAll(".edit-controls, .edit-divider-handle").forEach((el) => el.remove());
+  // .edit-resize-handle was missing here before: every call appended a new
+  // one without removing the last, so after a few unrelated re-renders
+  // (e.g. a lock toggle elsewhere) an element would end up with several
+  // stacked resize handles. Harmless visually (they overlap exactly) but
+  // real DOM/listener bloat, now fixed alongside adding the pending dot.
+  document.querySelectorAll(".edit-controls, .edit-divider-handle, .edit-resize-handle, .edit-pending-dot").forEach((el) => el.remove());
   document.querySelectorAll("[data-edit-key]").forEach((el) => el.classList.remove("edit-is-hidden", "edit-is-locked", "edit-selected"));
 }
 
@@ -267,6 +272,11 @@ function toggleSelect(key, additive) {
    directly, so a staged-but-unsaved change still looks "live" everywhere. */
 let pendingOverrides = {};
 let pendingProductRemovals = new Set();
+// One entry per staged action, most recent last, consumed by Ctrl+Z. A
+// group action (group lock, group resize) pushes one entry per affected
+// element rather than a single batch entry, so undoing it back out takes
+// one Ctrl+Z per element — more presses, but each one is correct on its own.
+let undoStack = [];
 
 function effectiveValue(key, property) {
   if (pendingOverrides[key] && property in pendingOverrides[key]) return pendingOverrides[key][property];
@@ -277,9 +287,32 @@ function hasPendingChanges() {
   return Object.keys(pendingOverrides).length > 0 || pendingProductRemovals.size > 0;
 }
 
+/* Small dot on any element with a staged-but-unsaved change, so you can
+   see at a glance what Save would actually commit before clicking it. */
+function updatePendingDot(key) {
+  const el = document.querySelector(`[data-edit-key="${CSS.escape(key)}"]`);
+  if (!el) return;
+  const isPending = !!(pendingOverrides[key] && Object.keys(pendingOverrides[key]).length) ||
+    (key.startsWith("product:") && pendingProductRemovals.has(key.slice("product:".length)));
+  let dot = el.querySelector(":scope > .edit-pending-dot");
+  if (isPending && !dot) {
+    dot = document.createElement("span");
+    dot.className = "edit-pending-dot";
+    dot.title = "Unsaved change";
+    el.appendChild(dot);
+  } else if (!isPending && dot) {
+    dot.remove();
+  }
+}
+
 function queueOverride(key, property, value) {
+  const hadPendingEntry = !!(pendingOverrides[key] && property in pendingOverrides[key]);
+  const previous = hadPendingEntry ? pendingOverrides[key][property] : undefined;
+  undoStack.push({ type: "override", key, property, hadPendingEntry, previous });
+
   if (!pendingOverrides[key]) pendingOverrides[key] = {};
   pendingOverrides[key][property] = value; // null means "clear this override on save"
+  updatePendingDot(key);
   renderSaveBar();
 }
 
@@ -325,6 +358,7 @@ async function commitPendingChanges() {
     }
     pendingOverrides = {};
     pendingProductRemovals.clear();
+    undoStack = [];
     renderEditHandles();
     renderSaveBar();
     if (document.getElementById("editHistoryPanel")) await loadHistoryList();
@@ -354,6 +388,7 @@ function discardPendingChanges() {
   });
   pendingOverrides = {};
   pendingProductRemovals.clear();
+  undoStack = [];
   revealHiddenForEditing();
   renderEditHandles();
   renderSaveBar();
@@ -381,6 +416,7 @@ function renderEditHandles() {
     const locked = effectiveValue(key, "locked") === "true";
     el.classList.toggle("edit-is-locked", locked);
     el.classList.toggle("edit-selected", selectedKeys.has(key));
+    updatePendingDot(key);
 
     const controls = document.createElement("div");
     controls.className = "edit-controls";
@@ -552,10 +588,119 @@ function toggleHidden(el, key) {
 function removeProduct(el, key) {
   if (!confirm("Remove this product from the site? This stays staged until you click Save (and you can turn it back on from the Products admin tab afterward).")) return;
   const productId = key.replace("product:", "");
+  undoStack.push({ type: "product-removal", productId });
   pendingProductRemovals.add(productId);
   el.classList.add("edit-is-hidden");
+  updatePendingDot(key);
   renderSaveBar();
 }
+
+/* ===== Keyboard shortcuts (Esc / Delete / arrows / Ctrl+Z) =====
+   Only live while edit mode is on, and only when focus isn't in a text
+   field — otherwise typing in the search box or a form on the page
+   underneath would get hijacked every time something happens to be
+   selected. */
+function removeSelectedProducts() {
+  const productKeys = [...selectedKeys].filter((k) => k.startsWith("product:"));
+  if (!productKeys.length) return;
+  const label = productKeys.length === 1 ? "this product" : `these ${productKeys.length} products`;
+  if (!confirm(`Remove ${label} from the site? This stays staged until you click Save.`)) return;
+  productKeys.forEach((key) => {
+    const productId = key.slice("product:".length);
+    undoStack.push({ type: "product-removal", productId });
+    pendingProductRemovals.add(productId);
+    const el = document.querySelector(`[data-edit-key="${CSS.escape(key)}"]`);
+    if (el) el.classList.add("edit-is-hidden");
+    updatePendingDot(key);
+  });
+  renderSaveBar();
+}
+
+/* Keyboard equivalent of dragging a resize/divider handle — arrow keys
+   nudge every selected (and unlocked) element by a small step. Up/Right
+   is "bigger", Down/Left is "smaller", same clamped ranges as dragging. */
+function nudgeSelected(arrowKey) {
+  const increasing = arrowKey === "ArrowUp" || arrowKey === "ArrowRight";
+  const sign = increasing ? 1 : -1;
+  selectedKeys.forEach((key) => {
+    const el = document.querySelector(`[data-edit-key="${CSS.escape(key)}"]`);
+    if (!el || effectiveValue(key, "locked") === "true") return;
+    const type = elementEditType(el);
+    if (type === "product") {
+      const current = parseFloat(el.style.transform.replace(/[^\d.]/g, "")) || 1;
+      const next = Math.max(0.7, Math.min(1.5, current + sign * 0.02));
+      el.style.transform = `scale(${next})`;
+      queueOverride(key, "scale", String(next));
+    } else if (type === "text") {
+      const currentPx = parseFloat(el.style.fontSize) || parseFloat(getComputedStyle(el).fontSize) || 16;
+      const next = Math.max(8, currentPx + sign * 1);
+      el.style.fontSize = next + "px";
+      queueOverride(key, "font-size", next + "px");
+    } else {
+      const currentPad = parseFloat(el.style.paddingBottom) || parseFloat(getComputedStyle(el).paddingBottom) || 0;
+      const next = Math.max(0, Math.min(280, currentPad + sign * 4));
+      el.style.paddingBottom = next + "px";
+      queueOverride(key, "padding-bottom", next + "px");
+    }
+  });
+}
+
+function undoLastChange() {
+  const last = undoStack.pop();
+  if (!last) return;
+
+  if (last.type === "override") {
+    if (last.hadPendingEntry) {
+      pendingOverrides[last.key][last.property] = last.previous;
+    } else if (pendingOverrides[last.key]) {
+      delete pendingOverrides[last.key][last.property];
+      if (!Object.keys(pendingOverrides[last.key]).length) delete pendingOverrides[last.key];
+    }
+    const el = document.querySelector(`[data-edit-key="${CSS.escape(last.key)}"]`);
+    if (el && last.property !== "locked" && last.property !== "hidden") {
+      resetElementStyle(el, last.property, effectiveValue(last.key, last.property));
+    }
+    updatePendingDot(last.key);
+  } else if (last.type === "product-removal") {
+    pendingProductRemovals.delete(last.productId);
+    const el = document.querySelector(`[data-edit-key="product:${last.productId}"]`);
+    if (el) el.classList.remove("edit-is-hidden");
+    updatePendingDot("product:" + last.productId);
+  }
+
+  revealHiddenForEditing();
+  renderEditHandles();
+  renderSaveBar();
+}
+
+document.addEventListener("keydown", (e) => {
+  if (!editModeActive) return;
+  const tag = document.activeElement && document.activeElement.tagName;
+  if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
+
+  if ((e.key === "z" || e.key === "Z") && (e.ctrlKey || e.metaKey) && !e.shiftKey) {
+    e.preventDefault();
+    undoLastChange();
+  } else if (e.key === "Escape" && selectedKeys.size) {
+    e.preventDefault();
+    clearSelection();
+  } else if ((e.key === "Delete" || e.key === "Backspace") && selectedKeys.size) {
+    e.preventDefault();
+    removeSelectedProducts();
+  } else if (["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(e.key) && selectedKeys.size) {
+    e.preventDefault();
+    nudgeSelected(e.key);
+  }
+});
+
+// A tab close/refresh/navigation loses anything not yet Saved, same as the
+// in-page confirm() when toggling edit mode off — this covers the paths
+// that toggle can't (closing the tab, typing a new URL, hitting back).
+window.addEventListener("beforeunload", (e) => {
+  if (!editModeActive || !hasPendingChanges()) return;
+  e.preventDefault();
+  e.returnValue = "";
+});
 
 function wireSectionDivider(el, key, handle) {
   let startY = 0;
