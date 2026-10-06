@@ -307,7 +307,7 @@ let selectedKeys = new Set();
 
 function clearSelection() {
   selectedKeys.clear();
-  document.querySelectorAll(".edit-selected").forEach((el) => el.classList.remove("edit-selected"));
+  renderEditHandles();
   renderSelectionToolbar();
 }
 
@@ -324,9 +324,7 @@ function toggleSelect(key, additive) {
   } else {
     selectedKeys.add(key);
   }
-  document.querySelectorAll("[data-edit-key]").forEach((el) => {
-    el.classList.toggle("edit-selected", selectedKeys.has(el.dataset.editKey));
-  });
+  renderEditHandles();
   renderSelectionToolbar();
 }
 
@@ -491,9 +489,7 @@ function selectRow(el) {
     (sib) => sib.dataset && sib.dataset.editKey && Math.round(sib.getBoundingClientRect().top) === top
   );
   selectedKeys = new Set(rowSiblings.map((sib) => sib.dataset.editKey));
-  document.querySelectorAll("[data-edit-key]").forEach((e) => {
-    e.classList.toggle("edit-selected", selectedKeys.has(e.dataset.editKey));
-  });
+  renderEditHandles();
   renderSelectionToolbar();
 }
 
@@ -616,9 +612,18 @@ function renderEditHandles() {
     if (!key) return;
     const type = elementEditType(el);
     const locked = effectiveValue(key, "locked") === "true";
+    const selected = selectedKeys.has(key);
     el.classList.toggle("edit-is-locked", locked);
-    el.classList.toggle("edit-selected", selectedKeys.has(key));
+    el.classList.toggle("edit-selected", selected);
     updatePendingDot(key);
+
+    // Full handle set (lock/font/move/resize/etc.) only renders for a
+    // selected element — showing it on every editable element all the
+    // time doesn't scale to a dense row like the nav (six elements'
+    // worth of lock/move/resize handles on screen simultaneously). A
+    // hover still shows a plain outline (pure CSS, no handles) so it's
+    // clear what's clickable; selecting reveals the actual controls.
+    if (!selected) return;
 
     const controls = document.createElement("div");
     controls.className = "edit-controls" + (type === "block" ? " edit-controls-below" : "");
