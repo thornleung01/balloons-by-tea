@@ -1742,6 +1742,17 @@ body.edit-mode-active [data-edit-key] { cursor: pointer; }
   display: flex; align-items: center; justify-content: center;
   cursor: move;
 }
+.edit-selection-color {
+  width: 26px; height: 26px;
+  padding: 0;
+  border: 1.5px solid var(--color-border);
+  border-radius: 50%;
+  cursor: pointer;
+  background: none;
+  flex-shrink: 0;
+}
+.edit-selection-color::-webkit-color-swatch-wrapper { padding: 2px; }
+.edit-selection-color::-webkit-color-swatch { border: none; border-radius: 50%; }
 
 .edit-save-bar {
   position: fixed;

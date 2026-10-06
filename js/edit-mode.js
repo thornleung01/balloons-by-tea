@@ -191,7 +191,7 @@ function closeHistoryPanel() {
 }
 
 function describeHistoryRow(row) {
-  const labels = { "padding-bottom": "spacing", "font-size": "text size", "font-family": "font", text: "wording", scale: "size", hidden: "visibility", locked: "lock", "translate-x": "horizontal position", "translate-y": "vertical position" };
+  const labels = { "padding-bottom": "spacing", "font-size": "text size", "font-family": "font", "text-color": "text color", "bg-color": "background color", text: "wording", scale: "size", hidden: "visibility", locked: "lock", "translate-x": "horizontal position", "translate-y": "vertical position" };
   const propLabel = labels[row.property] || row.property;
   const niceKey = row.element_key.startsWith("product:") ? "product card" : row.element_key.replace(/-/g, " ");
   return `${niceKey} — ${propLabel}`;
@@ -246,6 +246,8 @@ function resetElementStyle(el, property, value) {
   if (property === "padding-bottom") el.style.paddingBottom = value || "";
   else if (property === "font-size") el.style.fontSize = value || "";
   else if (property === "font-family") el.style.fontFamily = value || "";
+  else if (property === "text-color") el.style.color = value || "";
+  else if (property === "bg-color") el.style.backgroundColor = value || "";
   // scale/translate share one transform — recomputeTransform re-derives
   // the whole thing from whatever's currently staged/saved (the caller is
   // expected to have already updated pendingOverrides/LAYOUT_OVERRIDES
@@ -526,6 +528,24 @@ const EDIT_FONT_CHOICES = [
   { label: "Inter", value: "'Inter', sans-serif" },
   { label: "Fredoka", value: "'Fredoka', sans-serif" }
 ];
+
+// text elements get a text-color swatch, everything else (section/
+// product/block) gets a background-color one — a single "color" button
+// with type-dependent meaning, same pattern as the font/resize buttons
+// already having different effects depending on what's selected.
+function colorPropertyFor(type) {
+  return type === "text" ? "text-color" : "bg-color";
+}
+
+// <input type="color"> only accepts #rrggbb — getComputedStyle returns
+// rgb(...)/rgba(...), so this is needed just to seed the swatch with
+// whatever color is actually currently showing when nothing's staged yet.
+function rgbToHex(rgbStr) {
+  const m = /rgba?\((\d+),\s*(\d+),\s*(\d+)/.exec(rgbStr || "");
+  if (!m) return "#000000";
+  const toHex = (v) => Number(v).toString(16).padStart(2, "0");
+  return `#${toHex(m[1])}${toHex(m[2])}${toHex(m[3])}`;
+}
 
 function closeFontPopover() {
   document.querySelectorAll(".edit-font-popover").forEach((p) => p.remove());
@@ -814,6 +834,7 @@ function renderSelectionToolbar() {
     }</button>
     ${single && single.type === "text" && !single.locked ? `<button type="button" class="edit-icon-btn" id="selectionEditTextBtn" title="Edit the words" aria-label="Edit text"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z" stroke-linecap="round" stroke-linejoin="round"/></svg></button>` : ""}
     ${single && single.type === "text" ? `<button type="button" class="edit-icon-btn font-btn" id="selectionFontBtn" title="Change font" aria-label="Change font">Aa</button>` : ""}
+    ${single && !single.locked ? `<input type="color" class="edit-selection-color" id="selectionColorInput" title="${single.type === "text" ? "Change text color" : "Change background color"}" value="${effectiveValue(single.key, colorPropertyFor(single.type)) || rgbToHex(getComputedStyle(single.el)[single.type === "text" ? "color" : "backgroundColor"])}"/>` : ""}
     ${single && single.type === "section" && !single.locked ? `<button type="button" class="edit-icon-btn" id="selectionHideBtn" title="Hide this section" aria-label="Hide section"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12s3.5-7 9-7 9 7 9 7-3.5 7-9 7-9-7-9-7Z"/><circle cx="12" cy="12" r="2.5"/></svg></button>` : ""}
     ${!hasSection ? `<span class="edit-selection-move" id="selectionMoveHandle" title="Drag to reposition all selected">
       <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v18M3 12h18M7 7l-4 5 4 5M17 7l4 5-4 5M7 7l5-4 5 4M7 17l5 4 5-4" stroke-linecap="round" stroke-linejoin="round"/></svg>
@@ -858,6 +879,15 @@ function renderSelectionToolbar() {
       single.el.scrollIntoView({ behavior: "smooth", block: "center" });
       toggleFontPopover(single.el, single.key);
     });
+    const colorInput = document.getElementById("selectionColorInput");
+    if (colorInput) {
+      const property = colorPropertyFor(single.type);
+      colorInput.addEventListener("input", () => {
+        if (single.type === "text") single.el.style.color = colorInput.value;
+        else single.el.style.backgroundColor = colorInput.value;
+        queueOverride(single.key, property, colorInput.value);
+      });
+    }
     const hideBtn = document.getElementById("selectionHideBtn");
     if (hideBtn) hideBtn.addEventListener("click", () => toggleHidden(single.el, single.key));
     const selectRowBtn = document.getElementById("selectionSelectRowBtn");

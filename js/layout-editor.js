@@ -80,6 +80,8 @@ function applyLayoutOverrides() {
     if (overrides["padding-bottom"]) el.style.paddingBottom = overrides["padding-bottom"];
     if (overrides["font-size"]) el.style.fontSize = overrides["font-size"];
     if (overrides["font-family"]) el.style.fontFamily = overrides["font-family"];
+    if (overrides["text-color"]) el.style.color = overrides["text-color"];
+    if (overrides["bg-color"]) el.style.backgroundColor = overrides["bg-color"];
     if (overrides.order) el.style.order = overrides.order;
 
     // translate (position) and scale (size) share one transform — must be
