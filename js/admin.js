@@ -758,8 +758,9 @@ async function refreshFaqList() {
     return;
   }
 
-  listEl.innerHTML = faqCache.map((f) => `
-    <div class="admin-item-row" data-id="${f.id}">
+  listEl.innerHTML = faqCache.map((f, i) => `
+    <div class="admin-item-row draggable-row" data-id="${f.id}" data-index="${i}" draggable="true">
+      <span class="drag-handle" aria-hidden="true" title="Drag to reorder">&#8942;&#8942;</span>
       <div class="admin-item-body">
         <div class="name">${escapeHtml(f.question)} ${f.is_open_default ? '<span class="form-status" style="display:inline;">(open by default)</span>' : ""}</div>
       </div>
@@ -779,6 +780,13 @@ async function refreshFaqList() {
   listEl.querySelectorAll(".delete-btn").forEach((btn) => {
     btn.addEventListener("click", () => handleDeleteFaq(btn.dataset.id));
   });
+  wireUpRowReorder(listEl, ".draggable-row", faqCache, persistFaqOrder);
+}
+
+async function persistFaqOrder(cache) {
+  const client = getSupabaseClient();
+  await Promise.all(cache.map((f, i) => client.from("faq_items").update({ sort_order: i }).eq("id", f.id)));
+  await refreshFaqList();
 }
 
 function startFaqEdit(row) {
