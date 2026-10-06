@@ -827,6 +827,7 @@ async function refreshOrderList() {
     <div class="order-row status-${escapeHtml(status)}" data-id="${order.id}">
       <div class="order-row-head">
         <div>
+          <span class="order-status-dot" aria-hidden="true"></span>
           <span class="order-kind-tag">${escapeHtml(orderKindLabel(order.kind))}</span>
           <strong>${escapeHtml(order.name || "(no name)")}</strong>
         </div>
