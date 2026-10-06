@@ -191,6 +191,18 @@ body.admin-body {
   user-select: none;
 }
 .drag-handle:active { cursor: grabbing; }
+.lock-toggle {
+  flex-shrink: 0;
+  width: 22px; height: 22px;
+  display: flex; align-items: center; justify-content: center;
+  border: none; background: none; padding: 0;
+  color: var(--color-border-input);
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+}
+.lock-toggle:hover { color: var(--color-fg-faint); background: var(--color-bg-alt); }
+.lock-toggle.is-locked { color: var(--color-accent); }
+.draggable-row:has(.lock-toggle.is-locked) .drag-handle { opacity: 0.3; cursor: not-allowed; }
 .admin-item-thumb {
   position: relative;
   width: 48px; height: 48px; border-radius: var(--radius-sm); background: var(--color-bg-alt);

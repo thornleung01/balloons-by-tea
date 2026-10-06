@@ -21,6 +21,39 @@ function escapeHtml(str) {
   return String(str == null ? "" : str).replace(/[&<>"']/g, (c) => HTML_ESCAPE_MAP[c]);
 }
 
+/* Row-locking (prevents an accidental drag) is a per-browser UI safety
+   net, not business data, so it lives in localStorage rather than a new
+   Supabase column — nothing to sync, nothing that breaks if it's empty. */
+function lockStorageKey(listName, id) {
+  return `admin-row-locked:${listName}:${id}`;
+}
+function isRowLocked(listName, id) {
+  try { return localStorage.getItem(lockStorageKey(listName, id)) === "1"; } catch (e) { return false; }
+}
+function setRowLocked(listName, id, locked) {
+  try {
+    if (locked) localStorage.setItem(lockStorageKey(listName, id), "1");
+    else localStorage.removeItem(lockStorageKey(listName, id));
+  } catch (e) { /* localStorage unavailable (private browsing, etc.) — lock just won't persist */ }
+}
+function lockHandleMarkup(listName, id) {
+  const locked = isRowLocked(listName, id);
+  return `<button type="button" class="lock-toggle ${locked ? "is-locked" : ""}" data-lock-list="${listName}" data-lock-id="${id}" title="${locked ? "Locked, click to allow dragging" : "Click to lock in place"}" aria-label="${locked ? "Unlock row" : "Lock row"}">${locked
+    ? '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="5" y="11" width="14" height="9" rx="1.5"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>'
+    : '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="5" y="11" width="14" height="9" rx="1.5"/><path d="M8 11V7a4 4 0 0 1 7.5-2"/></svg>'
+  }</button>`;
+}
+function wireUpLockToggles(listEl, onToggle) {
+  listEl.querySelectorAll(".lock-toggle").forEach((btn) => {
+    btn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      const { lockList, lockId } = btn.dataset;
+      setRowLocked(lockList, lockId, !isRowLocked(lockList, lockId));
+      onToggle();
+    });
+  });
+}
+
 function collectionTitle(slug) {
   const live = collectionsCache.find((c) => c.slug === slug);
   if (live) return live.title;
@@ -87,6 +120,11 @@ function showLoginView() {
 
 /* ===== Item list ===== */
 
+let productsCache = [];
+let itemSearchQuery = "";
+let itemFilterSlug = "all";
+let itemSortMode = "collection";
+
 async function refreshItemList() {
   const client = getSupabaseClient();
   const listEl = document.getElementById("itemList");
@@ -101,49 +139,87 @@ async function refreshItemList() {
     return;
   }
 
-  if (!data || !data.length) {
+  productsCache = data || [];
+  populateItemFilterOptions();
+  renderProductList();
+}
+
+function populateItemFilterOptions() {
+  const select = document.getElementById("itemFilter");
+  if (!select) return;
+  const prev = select.value;
+  select.innerHTML = `<option value="all">All Products</option>` +
+    collectionsCache.map((c) => `<option value="${escapeHtml(c.slug)}">${escapeHtml(c.title)}</option>`).join("");
+  if ([...select.options].some((o) => o.value === prev)) select.value = prev;
+}
+
+function renderProductList() {
+  const listEl = document.getElementById("itemList");
+
+  if (!productsCache.length) {
     listEl.innerHTML = `<p class="empty-note">No items yet — add your first one on the left.</p>`;
     return;
   }
 
-  const bySlug = {};
-  data.forEach((item) => {
-    const slug = item.collection;
-    if (!bySlug[slug]) bySlug[slug] = [];
-    bySlug[slug].push(item);
+  const query = itemSearchQuery.trim().toLowerCase();
+  let items = productsCache.filter((item) => {
+    if (itemFilterSlug !== "all" && item.collection !== itemFilterSlug) return false;
+    if (query && !item.name.toLowerCase().includes(query)) return false;
+    return true;
   });
 
-  listEl.innerHTML = Object.keys(bySlug).map((slug) => `
-    <div class="collection-group">
-      <h3>${escapeHtml(collectionTitle(slug))}</h3>
-      ${bySlug[slug].map((item) => `
-        <div class="admin-item-row ${item.active === false ? "inactive" : ""}" data-id="${item.id}">
-          <div class="admin-item-thumb">${item.image_url ? `<img src="${escapeHtml(item.image_url)}" alt=""/>` : ""}${Array.isArray(item.images) && item.images.length > 1 ? `<span class="admin-item-thumb-count">${item.images.length}</span>` : ""}</div>
-          <div class="admin-item-body">
-            <div class="name">${escapeHtml(item.name)}</div>
-            <div class="meta">$${Number(item.price).toFixed(0)} ${item.active === false ? "&middot; hidden" : ""}</div>
-          </div>
-          <div class="admin-item-actions">
-            <label class="toggle-switch" title="${item.active === false ? "Hidden, click to show on site" : "Live on site, click to hide"}">
-              <input type="checkbox" class="active-toggle" data-id="${item.id}" ${item.active !== false ? "checked" : ""}/>
-              <span class="toggle-slider"></span>
-            </label>
-            <button type="button" class="edit-btn" data-id="${item.id}">Edit</button>
-            <button type="button" class="danger delete-btn" data-id="${item.id}">Delete</button>
-          </div>
-        </div>
-      `).join("")}
+  if (itemSortMode === "alpha") items = items.slice().sort((a, b) => a.name.localeCompare(b.name));
+  else if (itemSortMode === "price-asc") items = items.slice().sort((a, b) => a.price - b.price);
+  else if (itemSortMode === "price-desc") items = items.slice().sort((a, b) => b.price - a.price);
+  else if (itemSortMode === "newest") items = items.slice().sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+
+  if (!items.length) {
+    listEl.innerHTML = `<p class="empty-note">No items match. Try a different search or category.</p>`;
+    return;
+  }
+
+  const renderRow = (item) => `
+    <div class="admin-item-row ${item.active === false ? "inactive" : ""}" data-id="${item.id}">
+      <div class="admin-item-thumb">${item.image_url ? `<img src="${escapeHtml(item.image_url)}" alt=""/>` : ""}${Array.isArray(item.images) && item.images.length > 1 ? `<span class="admin-item-thumb-count">${item.images.length}</span>` : ""}</div>
+      <div class="admin-item-body">
+        <div class="name">${escapeHtml(item.name)}</div>
+        <div class="meta">$${Number(item.price).toFixed(0)} ${item.active === false ? "&middot; hidden" : ""}</div>
+      </div>
+      <div class="admin-item-actions">
+        <label class="toggle-switch" title="${item.active === false ? "Hidden, click to show on site" : "Live on site, click to hide"}">
+          <input type="checkbox" class="active-toggle" data-id="${item.id}" ${item.active !== false ? "checked" : ""}/>
+          <span class="toggle-slider"></span>
+        </label>
+        <button type="button" class="edit-btn" data-id="${item.id}">Edit</button>
+        <button type="button" class="danger delete-btn" data-id="${item.id}">Delete</button>
+      </div>
     </div>
-  `).join("");
+  `;
+
+  if (itemSortMode === "collection") {
+    const bySlug = {};
+    items.forEach((item) => {
+      if (!bySlug[item.collection]) bySlug[item.collection] = [];
+      bySlug[item.collection].push(item);
+    });
+    listEl.innerHTML = Object.keys(bySlug).map((slug) => `
+      <div class="collection-group">
+        <h3>${escapeHtml(collectionTitle(slug))}</h3>
+        ${bySlug[slug].map(renderRow).join("")}
+      </div>
+    `).join("");
+  } else {
+    listEl.innerHTML = items.map(renderRow).join("");
+  }
 
   listEl.querySelectorAll(".edit-btn").forEach((btn) => {
     btn.addEventListener("click", () => {
-      const item = data.find((d) => String(d.id) === btn.dataset.id);
+      const item = productsCache.find((d) => String(d.id) === btn.dataset.id);
       if (item) startEdit(item);
     });
   });
   listEl.querySelectorAll(".delete-btn").forEach((btn) => {
-    btn.addEventListener("click", () => handleDelete(btn.dataset.id, data));
+    btn.addEventListener("click", () => handleDelete(btn.dataset.id, productsCache));
   });
   listEl.querySelectorAll(".active-toggle").forEach((toggle) => {
     toggle.addEventListener("change", () => handleToggleActive(toggle.dataset.id, toggle.checked, toggle));
@@ -448,7 +524,8 @@ async function refreshCollectionList() {
   const usedSlugs = new Set((productRows || []).map((p) => p.collection));
 
   listEl.innerHTML = collectionsCache.map((c, i) => `
-    <div class="admin-item-row draggable-row" data-id="${c.id}" data-index="${i}" draggable="true">
+    <div class="admin-item-row draggable-row" data-id="${c.id}" data-index="${i}" draggable="${!isRowLocked("collections", c.id)}">
+      ${lockHandleMarkup("collections", c.id)}
       <span class="drag-handle" aria-hidden="true" title="Drag to reorder">&#8942;&#8942;</span>
       <div class="admin-item-thumb">${c.card_image_url ? `<img src="${escapeHtml(c.card_image_url)}" alt=""/>` : ""}</div>
       <div class="admin-item-body">
@@ -472,6 +549,7 @@ async function refreshCollectionList() {
     btn.addEventListener("click", () => handleDeleteCollection(btn.dataset.id, usedSlugs));
   });
   wireUpRowReorder(listEl, ".draggable-row", collectionsCache, persistCollectionOrder);
+  wireUpLockToggles(listEl, refreshCollectionList);
 }
 
 /* Shared native-HTML5-drag reordering for a list of .draggable-row
@@ -639,7 +717,8 @@ async function refreshNavList() {
   }
 
   listEl.innerHTML = navCache.map((n, i) => `
-    <div class="admin-item-row draggable-row ${n.visible === false ? "inactive" : ""}" data-id="${n.id}" data-index="${i}" draggable="true">
+    <div class="admin-item-row draggable-row ${n.visible === false ? "inactive" : ""}" data-id="${n.id}" data-index="${i}" draggable="${!isRowLocked("nav", n.id)}">
+      ${lockHandleMarkup("nav", n.id)}
       <span class="drag-handle" aria-hidden="true" title="Drag to reorder">&#8942;&#8942;</span>
       <div class="admin-item-body">
         <div class="name">${escapeHtml(n.label)} ${n.key ? '<span class="form-status" style="display:inline;">(built-in)</span>' : ""}</div>
@@ -669,6 +748,7 @@ async function refreshNavList() {
     toggle.addEventListener("change", () => handleToggleNavVisible(toggle.dataset.id, toggle.checked, toggle));
   });
   wireUpRowReorder(listEl, ".draggable-row", navCache, persistNavOrder);
+  wireUpLockToggles(listEl, refreshNavList);
 }
 
 async function handleToggleNavVisible(id, visible, toggleEl) {
@@ -787,7 +867,8 @@ async function refreshFaqList() {
   }
 
   listEl.innerHTML = faqCache.map((f, i) => `
-    <div class="admin-item-row draggable-row" data-id="${f.id}" data-index="${i}" draggable="true">
+    <div class="admin-item-row draggable-row" data-id="${f.id}" data-index="${i}" draggable="${!isRowLocked("faq", f.id)}">
+      ${lockHandleMarkup("faq", f.id)}
       <span class="drag-handle" aria-hidden="true" title="Drag to reorder">&#8942;&#8942;</span>
       <div class="admin-item-body">
         <div class="name">${escapeHtml(f.question)} ${f.is_open_default ? '<span class="form-status" style="display:inline;">(open by default)</span>' : ""}</div>
@@ -809,6 +890,7 @@ async function refreshFaqList() {
     btn.addEventListener("click", () => handleDeleteFaq(btn.dataset.id));
   });
   wireUpRowReorder(listEl, ".draggable-row", faqCache, persistFaqOrder);
+  wireUpLockToggles(listEl, refreshFaqList);
 }
 
 async function persistFaqOrder(cache) {
@@ -1118,6 +1200,23 @@ document.addEventListener("DOMContentLoaded", async () => {
     ordersStatusFilter = btn.dataset.status;
     document.querySelectorAll(".orders-filter-btn").forEach((b) => b.classList.toggle("active", b === btn));
     refreshOrderList();
+  });
+
+  let itemSearchDebounce = null;
+  document.getElementById("itemSearch").addEventListener("input", (e) => {
+    clearTimeout(itemSearchDebounce);
+    itemSearchDebounce = setTimeout(() => {
+      itemSearchQuery = e.target.value;
+      renderProductList();
+    }, 180);
+  });
+  document.getElementById("itemFilter").addEventListener("change", (e) => {
+    itemFilterSlug = e.target.value;
+    renderProductList();
+  });
+  document.getElementById("itemSort").addEventListener("change", (e) => {
+    itemSortMode = e.target.value;
+    renderProductList();
   });
 
   document.getElementById("collectionForm").addEventListener("submit", handleSaveCollection);
