@@ -1749,6 +1749,14 @@ body.edit-mode-active [data-edit-key] { cursor: pointer; }
   padding: 4px;
   box-shadow: var(--shadow-soft);
 }
+/* "block" elements (nav links, the cart button, etc.) are often too
+   small/short to fit this cluster in a corner without it overlapping the
+   element's own text or icon — float it just below the element instead. */
+.edit-controls.edit-controls-below {
+  top: auto;
+  bottom: -38px;
+  right: 0;
+}
 .edit-icon-btn {
   width: 26px; height: 26px;
   border-radius: 50%;

@@ -532,6 +532,7 @@ function toggleFontPopover(el, key) {
 
   popover.querySelectorAll(".edit-font-option").forEach((optBtn, i) => {
     optBtn.addEventListener("click", (e) => {
+      e.preventDefault();
       e.stopPropagation();
       const choice = EDIT_FONT_CHOICES[i];
       el.style.fontFamily = choice.value || "";
@@ -620,7 +621,7 @@ function renderEditHandles() {
     updatePendingDot(key);
 
     const controls = document.createElement("div");
-    controls.className = "edit-controls";
+    controls.className = "edit-controls" + (type === "block" ? " edit-controls-below" : "");
     controls.innerHTML = `
       <button type="button" class="edit-icon-btn lock-btn ${locked ? "is-locked" : ""}" title="${locked ? "Locked, click to unlock" : "Lock in place"}" aria-label="${locked ? "Unlock" : "Lock"}">${locked
         ? '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><rect x="5" y="11" width="14" height="9" rx="1.5"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>'
@@ -656,20 +657,27 @@ function renderEditHandles() {
       wireSectionDivider(el, key, divider);
     }
 
+    // preventDefault matters here, not just stopPropagation: these buttons
+    // live inside el, and now that "block" type covers <a href> elements
+    // (nav links, CTA buttons) too, a click that isn't cancelled still
+    // triggers the browser's native "follow this link" once it finishes
+    // bubbling — stopPropagation alone only stops it reaching other JS
+    // listeners, it doesn't cancel that default action.
     controls.querySelector(".lock-btn").addEventListener("click", (e) => {
+      e.preventDefault();
       e.stopPropagation();
       toggleLock(key, !locked);
     });
     const editTextBtn = controls.querySelector(".edit-text-btn");
-    if (editTextBtn) editTextBtn.addEventListener("click", (e) => { e.stopPropagation(); startTextEdit(el, key); });
+    if (editTextBtn) editTextBtn.addEventListener("click", (e) => { e.preventDefault(); e.stopPropagation(); startTextEdit(el, key); });
     const fontBtn = controls.querySelector(".font-btn");
-    if (fontBtn) fontBtn.addEventListener("click", (e) => { e.stopPropagation(); toggleFontPopover(el, key); });
+    if (fontBtn) fontBtn.addEventListener("click", (e) => { e.preventDefault(); e.stopPropagation(); toggleFontPopover(el, key); });
     const hideBtn = controls.querySelector(".hide-btn");
-    if (hideBtn) hideBtn.addEventListener("click", (e) => { e.stopPropagation(); toggleHidden(el, key); });
+    if (hideBtn) hideBtn.addEventListener("click", (e) => { e.preventDefault(); e.stopPropagation(); toggleHidden(el, key); });
     const removeBtn = controls.querySelector(".remove-btn");
-    if (removeBtn) removeBtn.addEventListener("click", (e) => { e.stopPropagation(); removeProduct(el, key); });
+    if (removeBtn) removeBtn.addEventListener("click", (e) => { e.preventDefault(); e.stopPropagation(); removeProduct(el, key); });
     const selectRowBtn = controls.querySelector(".select-row-btn");
-    if (selectRowBtn) selectRowBtn.addEventListener("click", (e) => { e.stopPropagation(); selectRow(el); });
+    if (selectRowBtn) selectRowBtn.addEventListener("click", (e) => { e.preventDefault(); e.stopPropagation(); selectRow(el); });
 
   });
 
