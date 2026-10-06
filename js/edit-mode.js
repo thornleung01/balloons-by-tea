@@ -81,6 +81,48 @@ document.addEventListener("click", (e) => {
   clearSelection();
 });
 
+/* Selection click + text-edit dblclick, both delegated to document rather
+   than attached per-element inside renderEditHandles(). A per-element
+   listener attached directly to el (not to a child node like .edit-
+   controls) never gets cleaned up across re-renders — only child nodes
+   get removed/recreated — so it silently accumulates duplicates, and
+   worse, a stale listener from before a lock toggle keeps firing with
+   its now-outdated "locked" closure. Delegating to a single listener
+   that reads current state (effectiveValue, elementEditType) at dispatch
+   time instead of baking it into a closure avoids both problems.
+   Capture phase for the same reason as before: .product-art/.add-btn
+   have their own bubble-phase listeners in app.js that need to be
+   pre-empted, and capturing on document (outermost) also means this
+   always runs before any [data-edit-key] element could stopPropagation()
+   first. e.target.closest("[data-edit-key]") naturally resolves to the
+   innermost matching ancestor-or-self, so a card nested in a section
+   correctly wins over the section without needing a separate check. */
+document.addEventListener("click", (e) => {
+  if (!editModeActive) return;
+  const el = e.target.closest("[data-edit-key]");
+  if (!el) return;
+  const key = el.dataset.editKey;
+  if (!key) return;
+  if (el.isContentEditable) return; // mid text-edit — let the click place the cursor normally
+  if (e.target.closest(".edit-controls, .edit-resize-handle, .edit-divider-handle, .edit-font-popover")) return;
+  e.preventDefault();
+  e.stopPropagation();
+  toggleSelect(key, e.shiftKey);
+}, true);
+
+document.addEventListener("dblclick", (e) => {
+  if (!editModeActive) return;
+  const el = e.target.closest("[data-edit-key]");
+  if (!el) return;
+  const key = el.dataset.editKey;
+  if (!key || elementEditType(el) !== "text") return;
+  if (effectiveValue(key, "locked") === "true") return;
+  if (e.target.closest(".edit-controls, .edit-resize-handle, .edit-divider-handle, .edit-font-popover")) return;
+  e.preventDefault();
+  e.stopPropagation();
+  startTextEdit(el, key);
+}, true);
+
 /* ===== Change history / revert ===== */
 
 async function toggleHistoryPanel() {
@@ -110,7 +152,7 @@ function closeHistoryPanel() {
 }
 
 function describeHistoryRow(row) {
-  const labels = { "padding-bottom": "spacing", "font-size": "text size", "font-family": "font", scale: "size", hidden: "visibility", locked: "lock" };
+  const labels = { "padding-bottom": "spacing", "font-size": "text size", "font-family": "font", text: "wording", scale: "size", hidden: "visibility", locked: "lock" };
   const propLabel = labels[row.property] || row.property;
   const niceKey = row.element_key.startsWith("product:") ? "product card" : row.element_key.replace(/-/g, " ");
   return `${niceKey} — ${propLabel}`;
@@ -167,6 +209,7 @@ function resetElementStyle(el, property, value) {
   else if (property === "font-family") el.style.fontFamily = value || "";
   else if (property === "scale") el.style.transform = value ? `scale(${value})` : "";
   else if (property === "order") el.style.order = value || "";
+  else if (property === "text") el.textContent = value != null ? value : (el.dataset.originalText != null ? el.dataset.originalText : el.textContent);
 }
 
 async function revertHistoryRow(row) {
@@ -461,6 +504,64 @@ document.addEventListener("click", (e) => {
   if (!e.target.closest(".edit-font-popover, .font-btn")) closeFontPopover();
 }, true);
 
+/* ===== Inline text editing (text elements only) =====
+   Double-click, or the pencil button, turns the element itself into a
+   normal editable text field via contentEditable — no separate form, no
+   modal, just click in and type. Enter or clicking away commits (staged,
+   same as every other change here); Escape cancels and restores whatever
+   was there when editing started. */
+function startTextEdit(el, key) {
+  if (el.isContentEditable) return;
+  closeFontPopover();
+  clearSelection();
+
+  // .edit-controls, .edit-resize-handle and .edit-pending-dot are DOM
+  // children of el, not siblings — contentEditable treats the whole
+  // element as one text region, so leaving them in place means a
+  // select-all+type wipes them out along with the real text. Pull them
+  // out for the duration of the edit; renderEditHandles() rebuilds all of
+  // it fresh once editing finishes.
+  el.querySelectorAll(":scope > .edit-controls, :scope > .edit-resize-handle, :scope > .edit-pending-dot").forEach((n) => n.remove());
+
+  const originalSessionText = el.textContent;
+  el.contentEditable = "true";
+  el.classList.add("edit-text-active");
+  el.focus();
+  const range = document.createRange();
+  range.selectNodeContents(el);
+  const sel = window.getSelection();
+  sel.removeAllRanges();
+  sel.addRange(range);
+
+  const finish = (save) => {
+    el.removeEventListener("blur", onBlur);
+    el.removeEventListener("keydown", onKeydown);
+    el.contentEditable = "false";
+    el.classList.remove("edit-text-active");
+
+    if (save) {
+      const newText = el.textContent.trim();
+      if (!newText) {
+        el.textContent = originalSessionText; // don't allow saving blank text
+      } else if (newText !== originalSessionText) {
+        el.textContent = newText;
+        queueOverride(key, "text", newText);
+      }
+    } else {
+      el.textContent = originalSessionText;
+    }
+    renderEditHandles();
+  };
+
+  function onBlur() { finish(true); }
+  function onKeydown(e) {
+    if (e.key === "Enter") { e.preventDefault(); finish(true); el.blur(); }
+    else if (e.key === "Escape") { e.preventDefault(); finish(false); el.blur(); }
+  }
+  el.addEventListener("blur", onBlur);
+  el.addEventListener("keydown", onKeydown);
+}
+
 function renderEditHandles() {
   removeEditHandles();
   document.querySelectorAll("[data-edit-key]").forEach((el) => {
@@ -479,6 +580,7 @@ function renderEditHandles() {
         ? '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><rect x="5" y="11" width="14" height="9" rx="1.5"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>'
         : '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><rect x="5" y="11" width="14" height="9" rx="1.5"/><path d="M8 11V7a4 4 0 0 1 7.5-2"/></svg>'
       }</button>
+      ${type === "text" && !locked ? `<button type="button" class="edit-icon-btn edit-text-btn" title="Edit the words" aria-label="Edit text"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z" stroke-linecap="round" stroke-linejoin="round"/></svg></button>` : ""}
       ${type === "text" ? `<button type="button" class="edit-icon-btn font-btn" title="Change font" aria-label="Change font">Aa</button>` : ""}
       ${type === "section" ? `<button type="button" class="edit-icon-btn hide-btn" title="Hide this section" aria-label="Hide section"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12s3.5-7 9-7 9 7 9 7-3.5 7-9 7-9-7-9-7Z"/><circle cx="12" cy="12" r="2.5"/></svg></button>` : ""}
       ${type === "product" ? `<button type="button" class="edit-icon-btn remove-btn" title="Remove from site" aria-label="Remove product"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 5l14 14M19 5L5 19" stroke-linecap="round"/></svg></button>` : ""}
@@ -506,6 +608,8 @@ function renderEditHandles() {
       e.stopPropagation();
       toggleLock(key, !locked);
     });
+    const editTextBtn = controls.querySelector(".edit-text-btn");
+    if (editTextBtn) editTextBtn.addEventListener("click", (e) => { e.stopPropagation(); startTextEdit(el, key); });
     const fontBtn = controls.querySelector(".font-btn");
     if (fontBtn) fontBtn.addEventListener("click", (e) => { e.stopPropagation(); toggleFontPopover(el, key); });
     const hideBtn = controls.querySelector(".hide-btn");
@@ -515,25 +619,6 @@ function renderEditHandles() {
     const selectRowBtn = controls.querySelector(".select-row-btn");
     if (selectRowBtn) selectRowBtn.addEventListener("click", (e) => { e.stopPropagation(); selectRow(el); });
 
-    /* Capture phase, not bubble: .product-art and .add-btn have their own
-       click listeners (open lightbox / add to cart) registered directly on
-       themselves in app.js. A bubble-phase listener here would fire too
-       late — those descendant listeners already ran. Capturing on the way
-       down lets us intercept and stopPropagation() before the event ever
-       reaches them.
-       Every [data-edit-key] element gets one of these (sections AND the
-       product cards nested inside them), and capture fires outside-in, so
-       without the closest() check below a section would always win the
-       click before it ever reached the card nested inside it. Only the
-       innermost matching element should handle the click — everything
-       else just lets it keep capturing downward. */
-    el.addEventListener("click", (e) => {
-      if (e.target.closest(".edit-controls, .edit-resize-handle, .edit-divider-handle, .edit-font-popover")) return;
-      if (e.target.closest("[data-edit-key]") !== el) return;
-      e.preventDefault();
-      e.stopPropagation();
-      toggleSelect(key, e.shiftKey);
-    }, true);
   });
 
   // removeEditHandles() above strips edit-is-hidden from every element,
@@ -732,8 +817,13 @@ function undoLastChange() {
 
 document.addEventListener("keydown", (e) => {
   if (!editModeActive) return;
-  const tag = document.activeElement && document.activeElement.tagName;
-  if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
+  const active = document.activeElement;
+  const tag = active && active.tagName;
+  // isContentEditable catches an in-progress inline text edit (see
+  // startTextEdit below) — without this, Backspace while typing a
+  // heading would also fire "Delete selected products", and Ctrl+Z would
+  // fight the browser's own native undo for the text being typed.
+  if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || (active && active.isContentEditable)) return;
 
   if ((e.key === "z" || e.key === "Z") && (e.ctrlKey || e.metaKey) && !e.shiftKey) {
     e.preventDefault();

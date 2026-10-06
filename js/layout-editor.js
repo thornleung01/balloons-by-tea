@@ -56,6 +56,19 @@ function applyLayoutOverrides() {
   document.querySelectorAll("[data-edit-key]").forEach((el) => {
     const key = el.dataset.editKey;
     if (!key) return;
+
+    /* Snapshot the text every heading/subtext element starts with, once,
+       before any text override is ever applied — this is what "no
+       override" (or a cleared one) reverts to. It has to be captured
+       here rather than hardcoded in the HTML, because by the time this
+       runs, site-content rendering (renderHero(), category titles from
+       `collections`, etc.) may have already replaced the original markup
+       text with admin-settings-driven text — that's the real "original"
+       a revert should restore, not the raw HTML string. */
+    if ((el.tagName === "H1" || el.classList.contains("hero-sub")) && el.dataset.originalText === undefined) {
+      el.dataset.originalText = el.textContent;
+    }
+
     const overrides = LAYOUT_OVERRIDES[key];
     if (!overrides) return;
 
@@ -63,6 +76,7 @@ function applyLayoutOverrides() {
       el.style.display = "none";
       return;
     }
+    if (overrides.text != null) el.textContent = overrides.text;
     if (overrides["padding-bottom"]) el.style.paddingBottom = overrides["padding-bottom"];
     if (overrides["font-size"]) el.style.fontSize = overrides["font-size"];
     if (overrides["font-family"]) el.style.fontFamily = overrides["font-family"];
