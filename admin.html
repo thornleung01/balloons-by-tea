@@ -164,10 +164,13 @@
           </div>
           <div class="field">
             <label for="c-photo">Card image (optional)</label>
-            <div class="photo-field">
-              <div class="photo-preview" id="collectionPhotoPreview">No photo</div>
-              <input id="c-photo" name="photo" type="file" accept="image/*"/>
-            </div>
+            <div class="photo-preview" id="collectionPhotoPreview">No photo</div>
+            <label for="c-photo" class="upload-dropzone photo-upload-dropzone">
+              <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M12 16V4M12 4l-4 4M12 4l4 4" stroke-linecap="round"/><path d="M4 16v3a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-3" stroke-linecap="round"/></svg>
+              <strong>Click to add a photo</strong>
+              <span>PNG or JPG</span>
+            </label>
+            <input id="c-photo" name="photo" type="file" accept="image/*"/>
           </div>
           <div class="form-status" id="collectionFormStatus"></div>
           <div class="modal-actions">
@@ -273,17 +276,23 @@
           <div class="field"><label for="s-hero_cta_text">Button text</label><input id="s-hero_cta_text" name="hero_cta_text" type="text"/></div>
           <div class="field">
             <label for="s-hero_image">Hero image</label>
-            <div class="photo-field">
-              <div class="photo-preview" id="heroPhotoPreview">No photo</div>
-              <input id="s-hero_image" type="file" accept="image/*"/>
-            </div>
+            <div class="photo-preview" id="heroPhotoPreview">No photo</div>
+            <label for="s-hero_image" class="upload-dropzone photo-upload-dropzone">
+              <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M12 16V4M12 4l-4 4M12 4l4 4" stroke-linecap="round"/><path d="M4 16v3a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-3" stroke-linecap="round"/></svg>
+              <strong>Click to add a photo</strong>
+              <span>PNG or JPG</span>
+            </label>
+            <input id="s-hero_image" type="file" accept="image/*"/>
           </div>
           <div class="field">
             <label for="s-logo_image">Logo</label>
-            <div class="photo-field">
-              <div class="photo-preview" id="logoPhotoPreview">No photo</div>
-              <input id="s-logo_image" type="file" accept="image/*"/>
-            </div>
+            <div class="photo-preview" id="logoPhotoPreview">No photo</div>
+            <label for="s-logo_image" class="upload-dropzone photo-upload-dropzone">
+              <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M12 16V4M12 4l-4 4M12 4l4 4" stroke-linecap="round"/><path d="M4 16v3a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-3" stroke-linecap="round"/></svg>
+              <strong>Click to add a photo</strong>
+              <span>PNG or JPG</span>
+            </label>
+            <input id="s-logo_image" type="file" accept="image/*"/>
           </div>
         </fieldset>
         <fieldset class="settings-fieldset">
