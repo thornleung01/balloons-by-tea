@@ -90,8 +90,19 @@ function setEditMode(on) {
   }
 }
 
+// A drag that starts on a toolbar handle (move/resize) and ends outside
+// the toolbar's small bounds — easy to do, the bar is a short pill — gets
+// a native "click" synthesized on release at wherever the cursor ended
+// up, outside .edit-selection-bar. Without this flag that reads as a
+// background click and wipes the selection (destroying the toolbar)
+// right after every drag. Set synchronously in each drag handler's
+// pointerup, which always fires before the browser's own synthesized
+// click for that same interaction.
+let suppressNextBackgroundClick = false;
+
 document.addEventListener("click", (e) => {
   if (!editModeActive || !selectedKeys.size) return;
+  if (suppressNextBackgroundClick) { suppressNextBackgroundClick = false; return; }
   if (e.target.closest("[data-edit-key], .edit-selection-bar, .edit-history-panel, .edit-mode-toggle")) return;
   clearSelection();
 });
@@ -119,7 +130,7 @@ document.addEventListener("click", (e) => {
   const key = el.dataset.editKey;
   if (!key) return;
   if (el.isContentEditable) return; // mid text-edit — let the click place the cursor normally
-  if (e.target.closest(".edit-controls, .edit-resize-handle, .edit-divider-handle, .edit-font-popover")) return;
+  if (e.target.closest(".edit-divider-handle, .edit-font-popover")) return;
   e.preventDefault();
   e.stopPropagation();
   toggleSelect(key, e.shiftKey);
@@ -132,7 +143,7 @@ document.addEventListener("dblclick", (e) => {
   const key = el.dataset.editKey;
   if (!key || elementEditType(el) !== "text") return;
   if (effectiveValue(key, "locked") === "true") return;
-  if (e.target.closest(".edit-controls, .edit-resize-handle, .edit-divider-handle, .edit-font-popover")) return;
+  if (e.target.closest(".edit-divider-handle, .edit-font-popover")) return;
   e.preventDefault();
   e.stopPropagation();
   startTextEdit(el, key);
@@ -288,12 +299,7 @@ function elementEditType(el) {
 }
 
 function removeEditHandles() {
-  // .edit-resize-handle was missing here before: every call appended a new
-  // one without removing the last, so after a few unrelated re-renders
-  // (e.g. a lock toggle elsewhere) an element would end up with several
-  // stacked resize handles. Harmless visually (they overlap exactly) but
-  // real DOM/listener bloat, now fixed alongside adding the pending dot.
-  document.querySelectorAll(".edit-controls, .edit-divider-handle, .edit-resize-handle, .edit-move-handle, .edit-pending-dot, .edit-font-popover").forEach((el) => el.remove());
+  document.querySelectorAll(".edit-divider-handle, .edit-pending-dot, .edit-font-popover").forEach((el) => el.remove());
   document.querySelectorAll("[data-edit-key]").forEach((el) => el.classList.remove("edit-is-hidden", "edit-is-locked", "edit-selected"));
 }
 
@@ -558,13 +564,12 @@ function startTextEdit(el, key) {
   closeFontPopover();
   clearSelection();
 
-  // .edit-controls, .edit-resize-handle and .edit-pending-dot are DOM
-  // children of el, not siblings — contentEditable treats the whole
-  // element as one text region, so leaving them in place means a
-  // select-all+type wipes them out along with the real text. Pull them
-  // out for the duration of the edit; renderEditHandles() rebuilds all of
-  // it fresh once editing finishes.
-  el.querySelectorAll(":scope > .edit-controls, :scope > .edit-resize-handle, :scope > .edit-pending-dot").forEach((n) => n.remove());
+  // .edit-pending-dot is a DOM child of el, not a sibling — contentEditable
+  // treats the whole element as one text region, so leaving it in place
+  // means a select-all+type would wipe it out along with the real text.
+  // Pull it out for the duration of the edit; renderEditHandles() rebuilds
+  // it fresh once editing finishes (via updatePendingDot).
+  el.querySelectorAll(":scope > .edit-pending-dot").forEach((n) => n.remove());
 
   const originalSessionText = el.textContent;
   el.contentEditable = "true";
@@ -617,73 +622,20 @@ function renderEditHandles() {
     el.classList.toggle("edit-selected", selected);
     updatePendingDot(key);
 
-    // Full handle set (lock/font/move/resize/etc.) only renders for a
-    // selected element — showing it on every editable element all the
-    // time doesn't scale to a dense row like the nav (six elements'
-    // worth of lock/move/resize handles on screen simultaneously). A
-    // hover still shows a plain outline (pure CSS, no handles) so it's
-    // clear what's clickable; selecting reveals the actual controls.
-    if (!selected) return;
-
-    const controls = document.createElement("div");
-    controls.className = "edit-controls" + (type === "block" ? " edit-controls-below" : "");
-    controls.innerHTML = `
-      <button type="button" class="edit-icon-btn lock-btn ${locked ? "is-locked" : ""}" title="${locked ? "Locked, click to unlock" : "Lock in place"}" aria-label="${locked ? "Unlock" : "Lock"}">${locked
-        ? '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><rect x="5" y="11" width="14" height="9" rx="1.5"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>'
-        : '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><rect x="5" y="11" width="14" height="9" rx="1.5"/><path d="M8 11V7a4 4 0 0 1 7.5-2"/></svg>'
-      }</button>
-      ${type === "text" && !locked ? `<button type="button" class="edit-icon-btn edit-text-btn" title="Edit the words" aria-label="Edit text"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z" stroke-linecap="round" stroke-linejoin="round"/></svg></button>` : ""}
-      ${type === "text" ? `<button type="button" class="edit-icon-btn font-btn" title="Change font" aria-label="Change font">Aa</button>` : ""}
-      ${type === "section" ? `<button type="button" class="edit-icon-btn hide-btn" title="Hide this section" aria-label="Hide section"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12s3.5-7 9-7 9 7 9 7-3.5 7-9 7-9-7-9-7Z"/><circle cx="12" cy="12" r="2.5"/></svg></button>` : ""}
-      ${type === "product" ? `<button type="button" class="edit-icon-btn remove-btn" title="Remove from site" aria-label="Remove product"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 5l14 14M19 5L5 19" stroke-linecap="round"/></svg></button>` : ""}
-      ${type === "product" ? `<button type="button" class="edit-icon-btn select-row-btn" title="Select this whole row" aria-label="Select row"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="9" width="5" height="6" rx="1"/><rect x="9.5" y="9" width="5" height="6" rx="1"/><rect x="16" y="9" width="5" height="6" rx="1"/></svg></button>` : ""}
-    `;
-    el.appendChild(controls);
-
-    if (type !== "section" && !locked) {
-      const resizeHandle = document.createElement("span");
-      resizeHandle.className = "edit-resize-handle";
-      resizeHandle.title = "Drag to resize";
-      el.appendChild(resizeHandle);
-      wireResizeHandle(el, key, type, resizeHandle);
-
-      const moveHandle = document.createElement("span");
-      moveHandle.className = "edit-move-handle";
-      moveHandle.title = "Drag to reposition";
-      el.appendChild(moveHandle);
-      wireMoveHandle(el, key, moveHandle);
-    }
-
-    if (type === "section" && !locked) {
+    // Every other control (lock/font/edit-text/hide/remove/select-row/
+    // move/resize) now lives in the floating selection toolbar instead of
+    // cluttering the element itself — see renderSelectionToolbar(). The
+    // section-spacing divider is the one exception that stays inline: it's
+    // inherently tied to this specific section's own bottom edge, unlike
+    // everything else, which doesn't need to be anchored at the element
+    // to make sense.
+    if (type === "section" && selected && !locked) {
       const divider = document.createElement("div");
       divider.className = "edit-divider-handle";
       divider.title = "Drag to adjust space below this section";
       el.appendChild(divider);
       wireSectionDivider(el, key, divider);
     }
-
-    // preventDefault matters here, not just stopPropagation: these buttons
-    // live inside el, and now that "block" type covers <a href> elements
-    // (nav links, CTA buttons) too, a click that isn't cancelled still
-    // triggers the browser's native "follow this link" once it finishes
-    // bubbling — stopPropagation alone only stops it reaching other JS
-    // listeners, it doesn't cancel that default action.
-    controls.querySelector(".lock-btn").addEventListener("click", (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      toggleLock(key, !locked);
-    });
-    const editTextBtn = controls.querySelector(".edit-text-btn");
-    if (editTextBtn) editTextBtn.addEventListener("click", (e) => { e.preventDefault(); e.stopPropagation(); startTextEdit(el, key); });
-    const fontBtn = controls.querySelector(".font-btn");
-    if (fontBtn) fontBtn.addEventListener("click", (e) => { e.preventDefault(); e.stopPropagation(); toggleFontPopover(el, key); });
-    const hideBtn = controls.querySelector(".hide-btn");
-    if (hideBtn) hideBtn.addEventListener("click", (e) => { e.preventDefault(); e.stopPropagation(); toggleHidden(el, key); });
-    const removeBtn = controls.querySelector(".remove-btn");
-    if (removeBtn) removeBtn.addEventListener("click", (e) => { e.preventDefault(); e.stopPropagation(); removeProduct(el, key); });
-    const selectRowBtn = controls.querySelector(".select-row-btn");
-    if (selectRowBtn) selectRowBtn.addEventListener("click", (e) => { e.preventDefault(); e.stopPropagation(); selectRow(el); });
-
   });
 
   // removeEditHandles() above strips edit-is-hidden from every element,
@@ -696,7 +648,19 @@ function renderEditHandles() {
   });
 }
 
-/* ===== Group toolbar (shown once 1+ elements are selected) ===== */
+/* ===== Selection toolbar (shown once 1+ elements are selected) =====
+   The one control surface for everything — lock, move, resize, and
+   (when exactly one element of the right type is selected) font/
+   edit-text/hide/remove/select-row. Grows to fit whichever of those
+   apply instead of cluttering the element itself; see renderEditHandles()
+   for why the section divider is the one thing that stays inline. */
+function singleSelection() {
+  if (selectedKeys.size !== 1) return null;
+  const key = [...selectedKeys][0];
+  const el = document.querySelector(`[data-edit-key="${CSS.escape(key)}"]`);
+  if (!el) return null;
+  return { key, el, type: elementEditType(el), locked: effectiveValue(key, "locked") === "true" };
+}
 
 function renderSelectionToolbar() {
   let bar = document.getElementById("editSelectionBar");
@@ -711,26 +675,80 @@ function renderSelectionToolbar() {
     document.body.appendChild(bar);
   }
   const allLocked = [...selectedKeys].every((k) => effectiveValue(k, "locked") === "true");
+  const single = singleSelection();
+  // Sections never got move/resize even before this toolbar existed —
+  // they have their own purpose-built spacing control (the divider
+  // handle) and arbitrary scale/translate on an entire page section
+  // tends to look broken (overflow, huge gaps). Hide both the moment any
+  // selected element is a section, single or mixed into a multi-select.
+  const hasSection = [...selectedKeys].some((k) => {
+    const el = document.querySelector(`[data-edit-key="${CSS.escape(k)}"]`);
+    return el && elementEditType(el) === "section";
+  });
+
   bar.innerHTML = `
     <span class="edit-selection-count">${selectedKeys.size} selected</span>
     <button type="button" class="edit-icon-btn ${allLocked ? "is-locked" : ""}" id="selectionLockBtn" title="${allLocked ? "Unlock selected" : "Lock selected"}">${allLocked
       ? '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><rect x="5" y="11" width="14" height="9" rx="1.5"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>'
       : '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><rect x="5" y="11" width="14" height="9" rx="1.5"/><path d="M8 11V7a4 4 0 0 1 7.5-2"/></svg>'
     }</button>
-    <span class="edit-selection-move" id="selectionMoveHandle" title="Drag to reposition all selected">
+    ${single && single.type === "text" && !single.locked ? `<button type="button" class="edit-icon-btn" id="selectionEditTextBtn" title="Edit the words" aria-label="Edit text"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z" stroke-linecap="round" stroke-linejoin="round"/></svg></button>` : ""}
+    ${single && single.type === "text" ? `<button type="button" class="edit-icon-btn font-btn" id="selectionFontBtn" title="Change font" aria-label="Change font">Aa</button>` : ""}
+    ${single && single.type === "section" && !single.locked ? `<button type="button" class="edit-icon-btn" id="selectionHideBtn" title="Hide this section" aria-label="Hide section"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12s3.5-7 9-7 9 7 9 7-3.5 7-9 7-9-7-9-7Z"/><circle cx="12" cy="12" r="2.5"/></svg></button>` : ""}
+    ${!hasSection ? `<span class="edit-selection-move" id="selectionMoveHandle" title="Drag to reposition all selected">
       <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v18M3 12h18M7 7l-4 5 4 5M17 7l4 5-4 5M7 7l5-4 5 4M7 17l5 4 5-4" stroke-linecap="round" stroke-linejoin="round"/></svg>
-    </span>
-    <span class="edit-selection-resize" id="selectionResizeHandle" title="Drag to resize all selected">
+    </span>` : ""}
+    ${!hasSection ? `<span class="edit-selection-resize" id="selectionResizeHandle" title="Drag to resize all selected">
       <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 3v5a2 2 0 0 1-2 2H1M16 21v-5a2 2 0 0 1 2-2h5" stroke-linecap="round" stroke-linejoin="round"/></svg>
-    </span>
+    </span>` : ""}
+    ${single && single.type === "product" ? `<button type="button" class="edit-icon-btn" id="selectionSelectRowBtn" title="Select this whole row" aria-label="Select row"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="9" width="5" height="6" rx="1"/><rect x="9.5" y="9" width="5" height="6" rx="1"/><rect x="16" y="9" width="5" height="6" rx="1"/></svg></button>` : ""}
+    ${single && single.type === "product" ? `<button type="button" class="edit-icon-btn remove-btn" id="selectionRemoveBtn" title="Remove from site" aria-label="Remove product"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 5l14 14M19 5L5 19" stroke-linecap="round"/></svg></button>` : ""}
     <button type="button" class="edit-icon-btn" id="selectionClearBtn" title="Clear selection" aria-label="Clear selection">
       <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 5l14 14M19 5L5 19" stroke-linecap="round"/></svg>
     </button>
   `;
-  document.getElementById("selectionLockBtn").addEventListener("click", () => groupToggleLock(!allLocked));
-  document.getElementById("selectionClearBtn").addEventListener("click", clearSelection);
-  wireGroupMoveHandle(document.getElementById("selectionMoveHandle"));
-  wireGroupResizeHandle(document.getElementById("selectionResizeHandle"));
+  // suppressNextBackgroundClick matters here too, not just for drags:
+  // groupToggleLock/clearSelection/selectRow below all rebuild this same
+  // bar's innerHTML synchronously, which detaches the very button the
+  // browser is still mid-dispatch on. By the time that click bubbles to
+  // document, e.target is the now-disconnected original button, so
+  // closest(".edit-selection-bar") resolves to null (a detached node
+  // can't find a connected ancestor) — and the "click outside clears
+  // selection" listener fires, wiping out what the click just set up.
+  document.getElementById("selectionLockBtn").addEventListener("click", () => {
+    suppressNextBackgroundClick = true;
+    groupToggleLock(!allLocked);
+  });
+  document.getElementById("selectionClearBtn").addEventListener("click", () => {
+    suppressNextBackgroundClick = true;
+    clearSelection();
+  });
+  const moveHandle = document.getElementById("selectionMoveHandle");
+  if (moveHandle) wireGroupMoveHandle(moveHandle);
+  const resizeHandle = document.getElementById("selectionResizeHandle");
+  if (resizeHandle) wireGroupResizeHandle(resizeHandle);
+
+  if (single) {
+    const editTextBtn = document.getElementById("selectionEditTextBtn");
+    if (editTextBtn) editTextBtn.addEventListener("click", () => {
+      single.el.scrollIntoView({ behavior: "smooth", block: "center" });
+      startTextEdit(single.el, single.key);
+    });
+    const fontBtn = document.getElementById("selectionFontBtn");
+    if (fontBtn) fontBtn.addEventListener("click", () => {
+      single.el.scrollIntoView({ behavior: "smooth", block: "center" });
+      toggleFontPopover(single.el, single.key);
+    });
+    const hideBtn = document.getElementById("selectionHideBtn");
+    if (hideBtn) hideBtn.addEventListener("click", () => toggleHidden(single.el, single.key));
+    const selectRowBtn = document.getElementById("selectionSelectRowBtn");
+    if (selectRowBtn) selectRowBtn.addEventListener("click", () => {
+      suppressNextBackgroundClick = true;
+      selectRow(single.el);
+    });
+    const removeBtn = document.getElementById("selectionRemoveBtn");
+    if (removeBtn) removeBtn.addEventListener("click", () => removeProduct(single.el, single.key));
+  }
 }
 
 function groupToggleLock(locked) {
@@ -742,29 +760,44 @@ function groupToggleLock(locked) {
   renderSelectionToolbar();
 }
 
+/* Type-aware per selected element: text resizes via font-size (same
+   0.6x-1.8x multiplier the old per-element handle used), everything
+   else via scale (same 0.7x-1.5x range) — so a single text element
+   selected through this one shared toolbar behaves exactly like the
+   old dedicated inline resize handle did, and a mixed-type multi-
+   selection resizes each member the way that makes sense for it. */
 function wireGroupResizeHandle(handle) {
   let startX = 0, startY = 0;
-  const startScales = {};
-  const liveScales = {};
+  const startValues = {}; // key -> { type, base } (base = scale multiplier or starting font px)
+  const liveValues = {}; // key -> { type, value }
 
   function onMove(e) {
     const delta = (e.clientX - startX) + (e.clientY - startY);
     selectedKeys.forEach((key) => {
       const el = document.querySelector(`[data-edit-key="${CSS.escape(key)}"]`);
-      if (!el || el.classList.contains("edit-is-locked")) return;
-      const base = startScales[key] || 1;
-      const next = Math.max(0.7, Math.min(1.5, base + delta / 150));
-      liveScales[key] = next;
-      recomputeTransform(el, key, { scale: next });
+      if (!el || el.classList.contains("edit-is-locked") || !startValues[key]) return;
+      const { type, base } = startValues[key];
+      if (type === "text") {
+        const mult = Math.max(0.6, Math.min(1.8, 1 + delta / 150));
+        const next = base * mult;
+        liveValues[key] = { type, value: next };
+        el.style.fontSize = next + "px";
+      } else {
+        const next = Math.max(0.7, Math.min(1.5, base + delta / 150));
+        liveValues[key] = { type, value: next };
+        recomputeTransform(el, key, { scale: next });
+      }
     });
   }
   function onUp() {
     document.removeEventListener("pointermove", onMove);
     document.removeEventListener("pointerup", onUp);
+    suppressNextBackgroundClick = true;
     selectedKeys.forEach((key) => {
-      const el = document.querySelector(`[data-edit-key="${CSS.escape(key)}"]`);
-      if (!el || el.classList.contains("edit-is-locked") || !(key in liveScales)) return;
-      queueOverride(key, "scale", String(liveScales[key]));
+      const entry = liveValues[key];
+      if (!entry) return;
+      if (entry.type === "text") queueOverride(key, "font-size", entry.value + "px");
+      else queueOverride(key, "scale", String(entry.value));
     });
   }
   handle.addEventListener("pointerdown", (e) => {
@@ -772,8 +805,16 @@ function wireGroupResizeHandle(handle) {
     startX = e.clientX;
     startY = e.clientY;
     selectedKeys.forEach((key) => {
-      const current = effectiveValue(key, "scale");
-      startScales[key] = current ? parseFloat(current) : 1;
+      const el = document.querySelector(`[data-edit-key="${CSS.escape(key)}"]`);
+      if (!el) return;
+      const type = elementEditType(el);
+      if (type === "text") {
+        const current = parseFloat(effectiveValue(key, "font-size")) || parseFloat(getComputedStyle(el).fontSize) || 16;
+        startValues[key] = { type, base: current };
+      } else {
+        const current = effectiveValue(key, "scale");
+        startValues[key] = { type, base: current ? parseFloat(current) : 1 };
+      }
     });
     document.addEventListener("pointermove", onMove);
     document.addEventListener("pointerup", onUp);
@@ -867,53 +908,6 @@ function findSnap(rect, targets) {
 
 /* ===== Free-position dragging ===== */
 
-function wireMoveHandle(el, key, handle) {
-  let startX = 0, startY = 0;
-  let baseTx = 0, baseTy = 0;
-  let liveTx = 0, liveTy = 0;
-  let snapTargets = [];
-
-  function onMove(e) {
-    let tx = Math.max(-1000, Math.min(1000, baseTx + (e.clientX - startX)));
-    let ty = Math.max(-1000, Math.min(1000, baseTy + (e.clientY - startY)));
-
-    // Preview at the tentative position first so the snap check compares
-    // against where the element would actually be (its own size matters
-    // for edge/center comparisons), then nudge onto any line it's close to.
-    recomputeTransform(el, key, { "translate-x": tx + "px", "translate-y": ty + "px" });
-    const snap = findSnap(el.getBoundingClientRect(), snapTargets);
-    if (snap.vLine != null) tx += snap.dx;
-    if (snap.hLine != null) ty += snap.dy;
-
-    liveTx = tx;
-    liveTy = ty;
-    recomputeTransform(el, key, { "translate-x": tx + "px", "translate-y": ty + "px" });
-
-    if (snap.vLine != null) showAlignGuide("v", snap.vLine); else hideAlignGuide("v");
-    if (snap.hLine != null) showAlignGuide("h", snap.hLine); else hideAlignGuide("h");
-  }
-  function onUp() {
-    document.removeEventListener("pointermove", onMove);
-    document.removeEventListener("pointerup", onUp);
-    hideAlignGuides();
-    queueOverride(key, "translate-x", liveTx ? liveTx + "px" : null);
-    queueOverride(key, "translate-y", liveTy ? liveTy + "px" : null);
-  }
-  handle.addEventListener("pointerdown", (e) => {
-    e.preventDefault();
-    e.stopPropagation();
-    startX = e.clientX;
-    startY = e.clientY;
-    baseTx = parseFloat(effectiveValue(key, "translate-x")) || 0;
-    baseTy = parseFloat(effectiveValue(key, "translate-y")) || 0;
-    liveTx = baseTx;
-    liveTy = baseTy;
-    snapTargets = computeSnapTargets(el, new Set([key]));
-    document.addEventListener("pointermove", onMove);
-    document.addEventListener("pointerup", onUp);
-  });
-}
-
 function wireGroupMoveHandle(handle) {
   let startX = 0, startY = 0;
   const baseTranslates = {};
@@ -961,6 +955,7 @@ function wireGroupMoveHandle(handle) {
   function onUp() {
     document.removeEventListener("pointermove", onMove);
     document.removeEventListener("pointerup", onUp);
+    suppressNextBackgroundClick = true;
     hideAlignGuides();
     selectedKeys.forEach((key) => {
       if (!liveTranslates[key]) return;
@@ -1133,6 +1128,7 @@ function wireSectionDivider(el, key, handle) {
   function onUp() {
     document.removeEventListener("pointermove", onMove);
     document.removeEventListener("pointerup", onUp);
+    suppressNextBackgroundClick = true;
     const finalPadding = parseFloat(el.style.paddingBottom) || 0;
     queueOverride(key, "padding-bottom", finalPadding + "px");
   }
@@ -1145,39 +1141,3 @@ function wireSectionDivider(el, key, handle) {
   });
 }
 
-function wireResizeHandle(el, key, type, handle) {
-  let startX = 0, startY = 0;
-  let startValue = 1;
-  let liveScale = 1;
-
-  function onMove(e) {
-    const delta = (e.clientX - startX) + (e.clientY - startY);
-    if (type === "text") {
-      const next = Math.max(0.6, Math.min(1.8, startValue + delta / 150));
-      el.style.fontSize = (startFontPx * next) + "px";
-    } else {
-      liveScale = Math.max(0.7, Math.min(1.5, startValue + delta / 150));
-      recomputeTransform(el, key, { scale: liveScale });
-    }
-  }
-  let startFontPx = 16;
-  function onUp() {
-    document.removeEventListener("pointermove", onMove);
-    document.removeEventListener("pointerup", onUp);
-    if (type === "text") {
-      queueOverride(key, "font-size", (parseFloat(getComputedStyle(el).fontSize)) + "px");
-    } else {
-      queueOverride(key, "scale", String(liveScale));
-    }
-  }
-  handle.addEventListener("pointerdown", (e) => {
-    e.preventDefault();
-    e.stopPropagation();
-    startX = e.clientX;
-    startY = e.clientY;
-    startFontPx = parseFloat(getComputedStyle(el).fontSize) || 16;
-    startValue = 1;
-    document.addEventListener("pointermove", onMove);
-    document.addEventListener("pointerup", onUp);
-  });
-}

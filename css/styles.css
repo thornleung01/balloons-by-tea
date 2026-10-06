@@ -1680,7 +1680,10 @@ body.edit-mode-active [data-edit-key] { cursor: pointer; }
   transform: translateX(-50%);
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
+  justify-content: center;
   gap: 8px;
+  max-width: min(640px, 92vw);
   background: var(--color-surface-solid);
   border: 1.5px solid var(--color-accent);
   border-radius: var(--radius-pill);
@@ -1743,26 +1746,6 @@ body.edit-mode-active [data-edit-key] { cursor: pointer; }
 .edit-save-commit-btn:hover { background: var(--color-accent-hover); }
 .edit-save-commit-btn[disabled] { opacity: 0.6; cursor: not-allowed; }
 
-.edit-controls {
-  position: absolute;
-  top: 8px;
-  right: 8px;
-  z-index: 40;
-  display: flex;
-  gap: 4px;
-  background: rgba(255, 255, 255, 0.92);
-  border-radius: var(--radius-pill);
-  padding: 4px;
-  box-shadow: var(--shadow-soft);
-}
-/* "block" elements (nav links, the cart button, etc.) are often too
-   small/short to fit this cluster in a corner without it overlapping the
-   element's own text or icon — float it just below the element instead. */
-.edit-controls.edit-controls-below {
-  top: auto;
-  bottom: -38px;
-  right: 0;
-}
 .edit-icon-btn {
   width: 26px; height: 26px;
   border-radius: 50%;
@@ -1821,35 +1804,8 @@ body.edit-mode-active [data-edit-key] { cursor: pointer; }
   pointer-events: none;
 }
 
-.edit-resize-handle {
-  position: absolute;
-  bottom: 4px;
-  right: 4px;
-  width: 22px;
-  height: 22px;
-  border-radius: 6px;
-  background: var(--color-accent);
-  border: 2.5px solid #fff;
-  box-shadow: var(--shadow-soft);
-  cursor: nwse-resize;
-  z-index: 40;
-}
-.edit-move-handle {
-  position: absolute;
-  bottom: 4px;
-  left: 4px;
-  width: 22px;
-  height: 22px;
-  border-radius: 6px;
-  background: var(--color-fg);
-  border: 2.5px solid #fff;
-  box-shadow: var(--shadow-soft);
-  cursor: move;
-  z-index: 40;
-}
-
 /* Figma/Canva-style red snap guides, shown only during an active move
-   drag (see wireMoveHandle/wireGroupMoveHandle in edit-mode.js). */
+   drag (see wireGroupMoveHandle in edit-mode.js). */
 #editAlignGuides { position: fixed; inset: 0; pointer-events: none; z-index: 60; }
 .edit-align-guide-h { position: fixed; left: 0; right: 0; border-top: 1.5px dashed #ff3b3b; }
 .edit-align-guide-v { position: fixed; top: 0; bottom: 0; border-left: 1.5px dashed #ff3b3b; }
