@@ -40,6 +40,13 @@ edit, hide, or delete products with a real form, including uploading
 actual photos by picking a file (no spreadsheet, no Imgur/Drive link
 workaround). Changes appear on the site immediately, no few-minutes delay.
 
+The same page also has an **Orders** tab: every checkout and custom-order
+submission from the public site is saved straight into Supabase (instead
+of the Google Form from 2b, which you no longer need once this is set
+up), and shows up here with the customer's contact details, what they
+asked for, and a status you can set to New / Contacted / Fulfilled. The
+"Orders" tab badge shows how many are still marked New.
+
 **One-time developer setup** (do this once, probably not the same person
 who'll use the admin page day to day):
 
@@ -48,9 +55,10 @@ who'll use the admin page day to day):
    *database* password, not anyone's login, you won't need it day to day.
 2. Once the project's ready, open the **SQL Editor** (left sidebar) → **New
    query** → paste in the entire contents of `supabase-setup.sql` from
-   this project → **Run**. This creates the products table, the photo
-   storage bucket, and the security rules (anyone can view products;
-   only a logged-in user can change them).
+   this project → **Run**. This creates the products table, the orders
+   table, the photo storage bucket, and the security rules (anyone can
+   view products and submit an order; only a logged-in user can change
+   products or read/manage orders).
 3. Create the one login the admin page will use: **Authentication** (left
    sidebar) → **Users** → **Add user** → enter an email and password. This
    is the login for whoever manages products — share it only with them.

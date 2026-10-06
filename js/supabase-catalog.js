@@ -22,10 +22,10 @@ async function loadSupabaseCatalog() {
 
     const collections = buildCollectionsFromSupabaseRows(data || []);
     window.COLLECTIONS = collections;
-    console.info("[Aura Balloon Co.] Loaded live catalog from Supabase.");
+    console.info("[Balloons by Tea] Loaded live catalog from Supabase.");
     return true;
   } catch (err) {
-    console.warn("[Aura Balloon Co.] Could not load the Supabase catalog — trying the next fallback.", err);
+    console.warn("[Balloons by Tea] Could not load the Supabase catalog — trying the next fallback.", err);
     return false;
   }
 }

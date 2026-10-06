@@ -645,6 +645,7 @@ function buildOrderPayload(form) {
   const cart = getCart();
   const summary = cart.map((l) => `${l.qty} x ${l.name} (${collectionLabel(l.collection)}) - ${formatPrice(l.price * l.qty)}`).join("\n");
   return {
+    kind: "checkout",
     name: form.name.value.trim(),
     phone: form.phone.value.trim(),
     email: form.email.value.trim(),
@@ -696,9 +697,22 @@ function validateCheckoutForm(form) {
   return runFieldValidation(form, rules, "error-");
 }
 
-function submitOrder(payload) {
+async function submitOrder(payload) {
+  const client = typeof getSupabaseClient === "function" ? getSupabaseClient() : null;
+  if (client) {
+    const { kind, name, phone, email, address, date, notes, summary, total } = payload;
+    const { error } = await client.from("orders").insert({
+      kind: kind || "checkout",
+      name, phone, email, address,
+      event_date: date,
+      notes, summary, total
+    });
+    if (error) throw error;
+    return;
+  }
+
   if (!isFormConfigured()) {
-    console.info("[Balloons by Tea] Google Form not yet configured, simulating submission.", payload);
+    console.info("[Balloons by Tea] No Supabase project and no Google Form configured, simulating submission.", payload);
     return new Promise((resolve) => setTimeout(resolve, 700));
   }
   const params = new URLSearchParams();
@@ -1002,6 +1016,7 @@ function initCustomOrderForm() {
     ].filter((line) => line !== null);
 
     const payload = {
+      kind: "custom",
       name: `${form.firstName.value.trim()} ${form.lastName.value.trim()}`.trim(),
       phone: form.phone.value.trim(),
       email: form.email.value.trim(),

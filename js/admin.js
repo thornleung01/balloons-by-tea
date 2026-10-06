@@ -68,6 +68,7 @@ async function enterDashboard() {
   hide(document.getElementById("loginView"));
   show(document.getElementById("dashboardView"));
   await refreshItemList();
+  await refreshOrderList();
 }
 
 function showLoginView() {
@@ -249,6 +250,123 @@ async function handleDelete(id, allItems) {
   await refreshItemList();
 }
 
+/* ===== Tabs ===== */
+
+function switchTab(tab) {
+  const isProducts = tab === "products";
+  document.getElementById("tabProductsBtn").classList.toggle("active", isProducts);
+  document.getElementById("tabProductsBtn").setAttribute("aria-selected", String(isProducts));
+  document.getElementById("tabOrdersBtn").classList.toggle("active", !isProducts);
+  document.getElementById("tabOrdersBtn").setAttribute("aria-selected", String(!isProducts));
+  document.getElementById("productsPanel").hidden = !isProducts;
+  document.getElementById("ordersPanel").hidden = isProducts;
+  if (!isProducts) refreshOrderList();
+}
+
+/* ===== Orders ===== */
+
+let ordersStatusFilter = "all";
+const ORDER_STATUSES = ["new", "contacted", "fulfilled"];
+
+function orderKindLabel(kind) {
+  return kind === "custom" ? "Custom order" : "Checkout";
+}
+
+function formatOrderDate(iso) {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return "";
+  return d.toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+}
+
+async function refreshOrderList() {
+  const client = getSupabaseClient();
+  const listEl = document.getElementById("orderList");
+  const { data, error } = await client
+    .from("orders")
+    .select("*")
+    .order("created_at", { ascending: false });
+
+  if (error) {
+    listEl.innerHTML = `<p class="form-status error">Couldn't load orders: ${escapeHtml(error.message)}</p>`;
+    return;
+  }
+
+  const badge = document.getElementById("ordersBadge");
+  const newCount = (data || []).filter((o) => (o.status || "new") === "new").length;
+  if (newCount > 0) {
+    badge.textContent = String(newCount);
+    show(badge);
+  } else {
+    hide(badge);
+  }
+
+  const filtered = (data || []).filter((o) => ordersStatusFilter === "all" || (o.status || "new") === ordersStatusFilter);
+
+  if (!filtered.length) {
+    listEl.innerHTML = `<p class="empty-note">No orders ${ordersStatusFilter === "all" ? "yet" : "with this status"}.</p>`;
+    return;
+  }
+
+  listEl.innerHTML = filtered.map((order) => {
+    const status = order.status || "new";
+    return `
+    <div class="order-row status-${escapeHtml(status)}" data-id="${order.id}">
+      <div class="order-row-head">
+        <div>
+          <span class="order-kind-tag">${escapeHtml(orderKindLabel(order.kind))}</span>
+          <strong>${escapeHtml(order.name || "(no name)")}</strong>
+        </div>
+        <span class="order-date">${escapeHtml(formatOrderDate(order.created_at))}</span>
+      </div>
+      <div class="order-contact">
+        ${order.phone ? `<a href="tel:${escapeHtml(order.phone)}">${escapeHtml(order.phone)}</a>` : ""}
+        ${order.email ? `<a href="mailto:${escapeHtml(order.email)}">${escapeHtml(order.email)}</a>` : ""}
+      </div>
+      ${order.address ? `<div class="order-field"><strong>Address:</strong> ${escapeHtml(order.address)}</div>` : ""}
+      ${order.event_date ? `<div class="order-field"><strong>Date:</strong> ${escapeHtml(order.event_date)}</div>` : ""}
+      ${order.total ? `<div class="order-field"><strong>${escapeHtml(order.total)}</strong></div>` : ""}
+      ${order.summary ? `<div class="order-field order-summary-text">${escapeHtml(order.summary)}</div>` : ""}
+      ${order.notes ? `<div class="order-field order-notes-text">${escapeHtml(order.notes)}</div>` : ""}
+      <div class="order-row-actions">
+        <select class="order-status-select" data-id="${order.id}">
+          ${ORDER_STATUSES.map((s) => `<option value="${s}" ${s === status ? "selected" : ""}>${s.charAt(0).toUpperCase() + s.slice(1)}</option>`).join("")}
+        </select>
+        <button type="button" class="danger delete-order-btn" data-id="${order.id}">Delete</button>
+      </div>
+    </div>
+  `;
+  }).join("");
+
+  listEl.querySelectorAll(".order-status-select").forEach((sel) => {
+    sel.addEventListener("change", () => handleOrderStatusChange(sel.dataset.id, sel.value));
+  });
+  listEl.querySelectorAll(".delete-order-btn").forEach((btn) => {
+    btn.addEventListener("click", () => handleDeleteOrder(btn.dataset.id));
+  });
+}
+
+async function handleOrderStatusChange(id, status) {
+  const client = getSupabaseClient();
+  const { error } = await client.from("orders").update({ status }).eq("id", id);
+  if (error) {
+    alert("Couldn't update status: " + error.message);
+    return;
+  }
+  await refreshOrderList();
+}
+
+async function handleDeleteOrder(id) {
+  if (!confirm("Delete this order? This can't be undone.")) return;
+  const client = getSupabaseClient();
+  const { error } = await client.from("orders").delete().eq("id", id);
+  if (error) {
+    alert("Couldn't delete: " + error.message);
+    return;
+  }
+  await refreshOrderList();
+}
+
 /* ===== Init ===== */
 
 document.addEventListener("DOMContentLoaded", async () => {
@@ -268,6 +386,15 @@ document.addEventListener("DOMContentLoaded", async () => {
   document.getElementById("itemForm").addEventListener("submit", handleSaveItem);
   document.getElementById("f-photo").addEventListener("change", handlePhotoChange);
   document.getElementById("cancelEditBtn").addEventListener("click", resetForm);
+  document.getElementById("tabProductsBtn").addEventListener("click", () => switchTab("products"));
+  document.getElementById("tabOrdersBtn").addEventListener("click", () => switchTab("orders"));
+  document.getElementById("ordersFilter").addEventListener("click", (e) => {
+    const btn = e.target.closest(".orders-filter-btn");
+    if (!btn) return;
+    ordersStatusFilter = btn.dataset.status;
+    document.querySelectorAll(".orders-filter-btn").forEach((b) => b.classList.toggle("active", b === btn));
+    refreshOrderList();
+  });
 
   const { data: { session } } = await client.auth.getSession();
   if (session) {

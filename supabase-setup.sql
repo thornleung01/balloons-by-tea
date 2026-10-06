@@ -67,3 +67,50 @@ create policy "Authenticated can delete product photos"
   on storage.objects for delete
   to authenticated
   using (bucket_id = 'product-photos');
+
+-- Orders table — one row per checkout or custom-order submission.
+-- Anyone (including logged-out shoppers) can INSERT an order, since that's
+-- how the public site submits one. Nobody but a logged-in admin can read,
+-- update, or delete them, so customer contact details stay private.
+
+create table if not exists orders (
+  id bigint generated always as identity primary key,
+  kind text not null default 'checkout',
+  name text not null default '',
+  phone text not null default '',
+  email text not null default '',
+  address text default '',
+  event_date text default '',
+  notes text default '',
+  summary text default '',
+  total text default '',
+  status text not null default 'new',
+  created_at timestamptz not null default now()
+);
+
+alter table orders enable row level security;
+
+drop policy if exists "Anyone can submit an order" on orders;
+create policy "Anyone can submit an order"
+  on orders for insert
+  to anon, authenticated
+  with check (true);
+
+drop policy if exists "Authenticated can manage orders" on orders;
+create policy "Authenticated can manage orders"
+  on orders for select
+  to authenticated
+  using (true);
+
+drop policy if exists "Authenticated can update orders" on orders;
+create policy "Authenticated can update orders"
+  on orders for update
+  to authenticated
+  using (true)
+  with check (true);
+
+drop policy if exists "Authenticated can delete orders" on orders;
+create policy "Authenticated can delete orders"
+  on orders for delete
+  to authenticated
+  using (true);

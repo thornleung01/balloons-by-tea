@@ -1,5 +1,5 @@
 /*
-  Aura Balloon Co. — Supabase connection settings.
+  Balloons by Tea — Supabase connection settings.
 
   Until both values below are filled in, the site and the admin page
   (admin.html) both just show a "not configured yet" state instead of
@@ -29,7 +29,7 @@ let _auraSupabaseClient = null;
 function getSupabaseClient() {
   if (!isSupabaseConfigured()) return null;
   if (!window.supabase || typeof window.supabase.createClient !== "function") {
-    console.warn("[Aura Balloon Co.] Supabase library didn't load (offline, or the CDN is blocked).");
+    console.warn("[Balloons by Tea] Supabase library didn't load (offline, or the CDN is blocked).");
     return null;
   }
   if (!_auraSupabaseClient) {

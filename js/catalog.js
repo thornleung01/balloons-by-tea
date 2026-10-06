@@ -1,5 +1,5 @@
 /*
-  Aura Balloon Co. — live catalog (Google Sheet)
+  Balloons by Tea — live catalog (Google Sheet)
 
   Lets a non-technical person manage products (add/edit/remove items,
   change prices, hide an item) by editing a Google Sheet instead of code.
@@ -145,7 +145,7 @@ function buildCollectionsFromRows(rows) {
     active: colIndex("show?") > -1 ? colIndex("show?") : colIndex("active")
   };
   if (idx.collection === -1 || idx.name === -1 || idx.price === -1) {
-    console.warn("[Aura Balloon Co.] Sheet is missing a required column (Collection, Item Name, Price). Using bundled catalog instead.");
+    console.warn("[Balloons by Tea] Sheet is missing a required column (Collection, Item Name, Price). Using bundled catalog instead.");
     return null;
   }
 
@@ -191,7 +191,7 @@ function buildCollectionsFromRows(rows) {
   });
 
   if (skipped > 0) {
-    console.warn(`[Aura Balloon Co.] Skipped ${skipped} row(s) with an unrecognized Collection value. Expected one of: Birthdays, Weddings, Baby Showers, Corporate & Events.`);
+    console.warn(`[Balloons by Tea] Skipped ${skipped} row(s) with an unrecognized Collection value. Expected one of: Birthdays, Weddings, Baby Showers, Corporate & Events.`);
   }
 
   return result;
@@ -207,9 +207,9 @@ async function loadLiveCatalog() {
     const collections = buildCollectionsFromRows(rows);
     if (collections) {
       window.COLLECTIONS = collections;
-      console.info("[Aura Balloon Co.] Loaded live product catalog from Google Sheet.");
+      console.info("[Balloons by Tea] Loaded live product catalog from Google Sheet.");
     }
   } catch (err) {
-    console.warn("[Aura Balloon Co.] Could not load the live Google Sheet catalog — showing the built-in catalog instead.", err);
+    console.warn("[Balloons by Tea] Could not load the live Google Sheet catalog — showing the built-in catalog instead.", err);
   }
 }

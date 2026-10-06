@@ -1,5 +1,5 @@
 /*
-  Aura Balloon Co. — Google Reviews connection settings.
+  Balloons by Tea — Google Reviews connection settings.
 
   Until both values below are filled in, the homepage review carousel just
   shows the placeholder reviews in js/app.js (REVIEWS array) — nothing
