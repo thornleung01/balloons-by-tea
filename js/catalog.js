@@ -119,11 +119,16 @@ function parsePrice(raw) {
   return isNaN(n) ? 0 : n;
 }
 
-/* Only accept plain http(s) links — guards against someone pasting a
-   javascript:/data: URI into the sheet and having it end up in an src. */
+/* Accepts plain http(s) links, or a relative path into this site's own
+   images/ folder (used by a handful of bundled product photos, e.g. the
+   Sanrio Bouquet migrated in with its original products.js path). Guards
+   against someone pasting a javascript:/data: URI into the sheet and
+   having it end up in an src. */
 function sanitizeImageUrl(raw) {
   const trimmed = String(raw || "").trim();
-  return /^https?:\/\//i.test(trimmed) ? trimmed : "";
+  if (/^https?:\/\//i.test(trimmed)) return trimmed;
+  if (/^images\//i.test(trimmed)) return trimmed;
+  return "";
 }
 
 function isRowActive(raw) {

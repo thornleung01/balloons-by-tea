@@ -116,7 +116,7 @@ async function refreshItemList() {
         <div class="admin-item-row ${item.active === false ? "inactive" : ""}" data-id="${item.id}">
           <div class="admin-item-thumb">${item.image_url ? `<img src="${escapeHtml(item.image_url)}" alt=""/>` : ""}</div>
           <div class="admin-item-body">
-            <div class="name">${escapeHtml(item.name)}</div>
+            <div class="name"><span class="status-dot ${item.active === false ? "status-dot-hidden" : "status-dot-live"}" aria-hidden="true" title="${item.active === false ? "Hidden" : "Live on site"}"></span>${escapeHtml(item.name)}</div>
             <div class="meta">$${Number(item.price).toFixed(0)} ${item.active === false ? "&middot; hidden" : ""}</div>
           </div>
           <div class="admin-item-actions">
@@ -827,7 +827,7 @@ async function refreshOrderList() {
     <div class="order-row status-${escapeHtml(status)}" data-id="${order.id}">
       <div class="order-row-head">
         <div>
-          <span class="order-status-dot" aria-hidden="true"></span>
+          <span class="status-dot" aria-hidden="true"></span>
           <span class="order-kind-tag">${escapeHtml(orderKindLabel(order.kind))}</span>
           <strong>${escapeHtml(order.name || "(no name)")}</strong>
         </div>
