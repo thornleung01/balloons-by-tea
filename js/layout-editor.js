@@ -80,8 +80,20 @@ function applyLayoutOverrides() {
     if (overrides["padding-bottom"]) el.style.paddingBottom = overrides["padding-bottom"];
     if (overrides["font-size"]) el.style.fontSize = overrides["font-size"];
     if (overrides["font-family"]) el.style.fontFamily = overrides["font-family"];
-    if (overrides.scale) el.style.transform = `scale(${overrides.scale})`;
     if (overrides.order) el.style.order = overrides.order;
+
+    // translate (position) and scale (size) share one transform — must be
+    // composed together rather than each overwriting el.style.transform
+    // in isolation, or whichever applies second would wipe out the other.
+    const tx = overrides["translate-x"];
+    const ty = overrides["translate-y"];
+    const scale = overrides.scale;
+    if (tx || ty || scale) {
+      const parts = [];
+      if (tx || ty) parts.push(`translate(${tx || "0px"}, ${ty || "0px"})`);
+      if (scale) parts.push(`scale(${scale})`);
+      el.style.transform = parts.join(" ");
+    }
   });
 }
 

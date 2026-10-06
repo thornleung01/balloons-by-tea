@@ -48,6 +48,19 @@ function buildEditModeToggle() {
   historyBtn.innerHTML = `<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M3 12a9 9 0 1 0 3-6.7" stroke-linecap="round"/><path d="M3 4v4.5h4.5" stroke-linecap="round" stroke-linejoin="round"/><path d="M12 8v4l3 2" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
   document.body.appendChild(historyBtn);
   historyBtn.addEventListener("click", () => toggleHistoryPanel());
+
+  // Shown as soon as the pencil toggle exists (i.e. as soon as we know
+  // this is an admin session) rather than gated behind edit mode being
+  // on — there was previously no way back to admin.html from a public
+  // page except typing the URL or browser back.
+  const adminLink = document.createElement("a");
+  adminLink.id = "editAdminLink";
+  adminLink.className = "edit-mode-toggle edit-admin-link";
+  adminLink.href = "admin.html";
+  adminLink.title = "Back to admin panel";
+  adminLink.setAttribute("aria-label", "Back to admin panel");
+  adminLink.innerHTML = `<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M3 11.5 12 4l9 7.5" stroke-linecap="round" stroke-linejoin="round"/><path d="M5.5 10v9a1 1 0 0 0 1 1H10v-5.5h4V20h3.5a1 1 0 0 0 1-1v-9" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+  document.body.appendChild(adminLink);
 }
 
 function setEditMode(on) {
@@ -152,7 +165,7 @@ function closeHistoryPanel() {
 }
 
 function describeHistoryRow(row) {
-  const labels = { "padding-bottom": "spacing", "font-size": "text size", "font-family": "font", text: "wording", scale: "size", hidden: "visibility", locked: "lock" };
+  const labels = { "padding-bottom": "spacing", "font-size": "text size", "font-family": "font", text: "wording", scale: "size", hidden: "visibility", locked: "lock", "translate-x": "horizontal position", "translate-y": "vertical position" };
   const propLabel = labels[row.property] || row.property;
   const niceKey = row.element_key.startsWith("product:") ? "product card" : row.element_key.replace(/-/g, " ");
   return `${niceKey} — ${propLabel}`;
@@ -207,7 +220,11 @@ function resetElementStyle(el, property, value) {
   if (property === "padding-bottom") el.style.paddingBottom = value || "";
   else if (property === "font-size") el.style.fontSize = value || "";
   else if (property === "font-family") el.style.fontFamily = value || "";
-  else if (property === "scale") el.style.transform = value ? `scale(${value})` : "";
+  // scale/translate share one transform — recomputeTransform re-derives
+  // the whole thing from whatever's currently staged/saved (the caller is
+  // expected to have already updated pendingOverrides/LAYOUT_OVERRIDES
+  // before calling this), so `value` isn't used for these two.
+  else if (property === "scale" || property === "translate-x" || property === "translate-y") recomputeTransform(el, el.dataset.editKey);
   else if (property === "order") el.style.order = value || "";
   else if (property === "text") el.textContent = value != null ? value : (el.dataset.originalText != null ? el.dataset.originalText : el.textContent);
 }
@@ -258,6 +275,11 @@ function revealHiddenForEditing() {
 }
 
 function elementEditType(el) {
+  // Icons/buttons/highlight-blocks that aren't an unambiguous heading or
+  // product card get this set directly in the markup — they're movable
+  // and resizable (scale) like a product card, but don't get the
+  // section-only hide/divider controls or the text-only font/wording ones.
+  if (el.dataset.editType === "block") return "block";
   if (el.classList.contains("product-card")) return "product";
   if (el.tagName === "H1" || el.classList.contains("hero-sub")) return "text";
   return "section";
@@ -269,7 +291,7 @@ function removeEditHandles() {
   // (e.g. a lock toggle elsewhere) an element would end up with several
   // stacked resize handles. Harmless visually (they overlap exactly) but
   // real DOM/listener bloat, now fixed alongside adding the pending dot.
-  document.querySelectorAll(".edit-controls, .edit-divider-handle, .edit-resize-handle, .edit-pending-dot, .edit-font-popover").forEach((el) => el.remove());
+  document.querySelectorAll(".edit-controls, .edit-divider-handle, .edit-resize-handle, .edit-move-handle, .edit-pending-dot, .edit-font-popover").forEach((el) => el.remove());
   document.querySelectorAll("[data-edit-key]").forEach((el) => el.classList.remove("edit-is-hidden", "edit-is-locked", "edit-selected"));
 }
 
@@ -325,6 +347,23 @@ let undoStack = [];
 function effectiveValue(key, property) {
   if (pendingOverrides[key] && property in pendingOverrides[key]) return pendingOverrides[key][property];
   return LAYOUT_OVERRIDES[key] ? LAYOUT_OVERRIDES[key][property] : undefined;
+}
+
+/* translate-x/translate-y (position) and scale (size) both live in the
+   same CSS transform, so they can't each just set el.style.transform in
+   isolation without clobbering whichever one they don't know about — one
+   shared place composes both. liveOverrides lets an in-progress drag
+   preview a tentative value for the property it owns while still reading
+   the other (settled) one normally; omit it to recompute purely from
+   whatever's currently staged/saved (undo, discard, history revert). */
+function recomputeTransform(el, key, liveOverrides) {
+  const tx = (liveOverrides && "translate-x" in liveOverrides) ? liveOverrides["translate-x"] : effectiveValue(key, "translate-x");
+  const ty = (liveOverrides && "translate-y" in liveOverrides) ? liveOverrides["translate-y"] : effectiveValue(key, "translate-y");
+  const scale = (liveOverrides && "scale" in liveOverrides) ? liveOverrides.scale : effectiveValue(key, "scale");
+  const parts = [];
+  if (tx || ty) parts.push(`translate(${tx || "0px"}, ${ty || "0px"})`);
+  if (scale) parts.push(`scale(${scale})`);
+  el.style.transform = parts.join(" ");
 }
 
 function hasPendingChanges() {
@@ -419,9 +458,14 @@ async function commitPendingChanges() {
 function discardPendingChanges() {
   Object.keys(pendingOverrides).forEach((key) => {
     const el = document.querySelector(`[data-edit-key="${CSS.escape(key)}"]`);
+    const properties = Object.keys(pendingOverrides[key]).filter((p) => p !== "locked" && p !== "hidden");
+    // Cleared BEFORE resetting styles below: resetElementStyle's scale/
+    // translate branch reads back through effectiveValue(), which checks
+    // pendingOverrides first — if the staged entry were still there when
+    // that runs, it would just re-read the very value being discarded.
+    delete pendingOverrides[key];
     if (!el) return;
-    Object.keys(pendingOverrides[key]).forEach((property) => {
-      if (property === "locked" || property === "hidden") return;
+    properties.forEach((property) => {
       const savedValue = LAYOUT_OVERRIDES[key] ? LAYOUT_OVERRIDES[key][property] : undefined;
       resetElementStyle(el, property, savedValue);
     });
@@ -594,6 +638,12 @@ function renderEditHandles() {
       resizeHandle.title = "Drag to resize";
       el.appendChild(resizeHandle);
       wireResizeHandle(el, key, type, resizeHandle);
+
+      const moveHandle = document.createElement("span");
+      moveHandle.className = "edit-move-handle";
+      moveHandle.title = "Drag to reposition";
+      el.appendChild(moveHandle);
+      wireMoveHandle(el, key, moveHandle);
     }
 
     if (type === "section" && !locked) {
@@ -652,6 +702,9 @@ function renderSelectionToolbar() {
       ? '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><rect x="5" y="11" width="14" height="9" rx="1.5"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>'
       : '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><rect x="5" y="11" width="14" height="9" rx="1.5"/><path d="M8 11V7a4 4 0 0 1 7.5-2"/></svg>'
     }</button>
+    <span class="edit-selection-move" id="selectionMoveHandle" title="Drag to reposition all selected">
+      <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v18M3 12h18M7 7l-4 5 4 5M17 7l4 5-4 5M7 7l5-4 5 4M7 17l5 4 5-4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    </span>
     <span class="edit-selection-resize" id="selectionResizeHandle" title="Drag to resize all selected">
       <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 3v5a2 2 0 0 1-2 2H1M16 21v-5a2 2 0 0 1 2-2h5" stroke-linecap="round" stroke-linejoin="round"/></svg>
     </span>
@@ -661,6 +714,7 @@ function renderSelectionToolbar() {
   `;
   document.getElementById("selectionLockBtn").addEventListener("click", () => groupToggleLock(!allLocked));
   document.getElementById("selectionClearBtn").addEventListener("click", clearSelection);
+  wireGroupMoveHandle(document.getElementById("selectionMoveHandle"));
   wireGroupResizeHandle(document.getElementById("selectionResizeHandle"));
 }
 
@@ -676,6 +730,7 @@ function groupToggleLock(locked) {
 function wireGroupResizeHandle(handle) {
   let startX = 0, startY = 0;
   const startScales = {};
+  const liveScales = {};
 
   function onMove(e) {
     const delta = (e.clientX - startX) + (e.clientY - startY);
@@ -684,7 +739,8 @@ function wireGroupResizeHandle(handle) {
       if (!el || el.classList.contains("edit-is-locked")) return;
       const base = startScales[key] || 1;
       const next = Math.max(0.7, Math.min(1.5, base + delta / 150));
-      el.style.transform = `scale(${next})`;
+      liveScales[key] = next;
+      recomputeTransform(el, key, { scale: next });
     });
   }
   function onUp() {
@@ -692,9 +748,8 @@ function wireGroupResizeHandle(handle) {
     document.removeEventListener("pointerup", onUp);
     selectedKeys.forEach((key) => {
       const el = document.querySelector(`[data-edit-key="${CSS.escape(key)}"]`);
-      if (!el || el.classList.contains("edit-is-locked")) return;
-      const match = /scale\(([\d.]+)\)/.exec(el.style.transform || "");
-      if (match) queueOverride(key, "scale", match[1]);
+      if (!el || el.classList.contains("edit-is-locked") || !(key in liveScales)) return;
+      queueOverride(key, "scale", String(liveScales[key]));
     });
   }
   handle.addEventListener("pointerdown", (e) => {
@@ -702,10 +757,212 @@ function wireGroupResizeHandle(handle) {
     startX = e.clientX;
     startY = e.clientY;
     selectedKeys.forEach((key) => {
-      const el = document.querySelector(`[data-edit-key="${CSS.escape(key)}"]`);
-      const m = el ? /scale\(([\d.]+)\)/.exec(el.style.transform || "") : null;
-      startScales[key] = m ? parseFloat(m[1]) : 1;
+      const current = effectiveValue(key, "scale");
+      startScales[key] = current ? parseFloat(current) : 1;
     });
+    document.addEventListener("pointermove", onMove);
+    document.addEventListener("pointerup", onUp);
+  });
+}
+
+/* ===== Figma/Canva-style alignment guides =====
+   One shared overlay with up to one horizontal + one vertical dashed
+   line, shown/hidden per axis during a move drag. Snap targets (every
+   other editable element's rect, the dragged element's .container
+   ancestor, and the viewport's horizontal center) are captured once on
+   pointerdown — they don't move during the drag, only the dragged
+   element does, so there's no reason to re-measure the whole page on
+   every pointermove tick. */
+const SNAP_THRESHOLD = 6;
+
+function ensureAlignGuides() {
+  let wrap = document.getElementById("editAlignGuides");
+  if (!wrap) {
+    wrap = document.createElement("div");
+    wrap.id = "editAlignGuides";
+    wrap.innerHTML = `<div class="edit-align-guide edit-align-guide-h" hidden></div><div class="edit-align-guide edit-align-guide-v" hidden></div>`;
+    document.body.appendChild(wrap);
+  }
+  return wrap;
+}
+function showAlignGuide(axis, position) {
+  const wrap = ensureAlignGuides();
+  const guide = wrap.querySelector(axis === "h" ? ".edit-align-guide-h" : ".edit-align-guide-v");
+  if (axis === "h") guide.style.top = position + "px";
+  else guide.style.left = position + "px";
+  guide.hidden = false;
+}
+function hideAlignGuide(axis) {
+  const wrap = document.getElementById("editAlignGuides");
+  if (!wrap) return;
+  wrap.querySelector(axis === "h" ? ".edit-align-guide-h" : ".edit-align-guide-v").hidden = true;
+}
+function hideAlignGuides() {
+  hideAlignGuide("h");
+  hideAlignGuide("v");
+}
+
+function computeSnapTargets(referenceEl, excludeKeys) {
+  const targets = [];
+  document.querySelectorAll("[data-edit-key]").forEach((el) => {
+    const key = el.dataset.editKey;
+    if (!key || excludeKeys.has(key)) return;
+    const r = el.getBoundingClientRect();
+    if (!r.width || !r.height) return;
+    targets.push({ left: r.left, right: r.right, top: r.top, bottom: r.bottom, hCenter: (r.left + r.right) / 2, vCenter: (r.top + r.bottom) / 2 });
+  });
+  const container = referenceEl && referenceEl.closest ? referenceEl.closest(".container") : null;
+  if (container) {
+    const r = container.getBoundingClientRect();
+    targets.push({ left: r.left, right: r.right, top: r.top, bottom: r.bottom, hCenter: (r.left + r.right) / 2, vCenter: (r.top + r.bottom) / 2 });
+  }
+  targets.push({ hCenter: window.innerWidth / 2 });
+  return targets;
+}
+
+/* Compares the dragged rect's own left/right/h-center against every
+   target's left/right/h-center (and top/bottom/v-center the same way on
+   the other axis), picks whichever single comparison is closest within
+   SNAP_THRESHOLD per axis, and returns the delta needed to land exactly
+   on it plus the line position to draw the guide at. */
+function findSnap(rect, targets) {
+  let bestV = null, bestH = null;
+  const myH = { left: rect.left, right: rect.right, hCenter: (rect.left + rect.right) / 2 };
+  const myV = { top: rect.top, bottom: rect.bottom, vCenter: (rect.top + rect.bottom) / 2 };
+
+  targets.forEach((t) => {
+    ["left", "right", "hCenter"].forEach((edgeA) => {
+      if (t[edgeA] == null) return;
+      ["left", "right", "hCenter"].forEach((edgeB) => {
+        const diff = t[edgeA] - myH[edgeB];
+        if (Math.abs(diff) <= SNAP_THRESHOLD && (!bestV || Math.abs(diff) < Math.abs(bestV.diff))) bestV = { diff, line: t[edgeA] };
+      });
+    });
+    ["top", "bottom", "vCenter"].forEach((edgeA) => {
+      if (t[edgeA] == null) return;
+      ["top", "bottom", "vCenter"].forEach((edgeB) => {
+        const diff = t[edgeA] - myV[edgeB];
+        if (Math.abs(diff) <= SNAP_THRESHOLD && (!bestH || Math.abs(diff) < Math.abs(bestH.diff))) bestH = { diff, line: t[edgeA] };
+      });
+    });
+  });
+
+  return { dx: bestV ? bestV.diff : 0, vLine: bestV ? bestV.line : null, dy: bestH ? bestH.diff : 0, hLine: bestH ? bestH.line : null };
+}
+
+/* ===== Free-position dragging ===== */
+
+function wireMoveHandle(el, key, handle) {
+  let startX = 0, startY = 0;
+  let baseTx = 0, baseTy = 0;
+  let liveTx = 0, liveTy = 0;
+  let snapTargets = [];
+
+  function onMove(e) {
+    let tx = Math.max(-1000, Math.min(1000, baseTx + (e.clientX - startX)));
+    let ty = Math.max(-1000, Math.min(1000, baseTy + (e.clientY - startY)));
+
+    // Preview at the tentative position first so the snap check compares
+    // against where the element would actually be (its own size matters
+    // for edge/center comparisons), then nudge onto any line it's close to.
+    recomputeTransform(el, key, { "translate-x": tx + "px", "translate-y": ty + "px" });
+    const snap = findSnap(el.getBoundingClientRect(), snapTargets);
+    if (snap.vLine != null) tx += snap.dx;
+    if (snap.hLine != null) ty += snap.dy;
+
+    liveTx = tx;
+    liveTy = ty;
+    recomputeTransform(el, key, { "translate-x": tx + "px", "translate-y": ty + "px" });
+
+    if (snap.vLine != null) showAlignGuide("v", snap.vLine); else hideAlignGuide("v");
+    if (snap.hLine != null) showAlignGuide("h", snap.hLine); else hideAlignGuide("h");
+  }
+  function onUp() {
+    document.removeEventListener("pointermove", onMove);
+    document.removeEventListener("pointerup", onUp);
+    hideAlignGuides();
+    queueOverride(key, "translate-x", liveTx ? liveTx + "px" : null);
+    queueOverride(key, "translate-y", liveTy ? liveTy + "px" : null);
+  }
+  handle.addEventListener("pointerdown", (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    startX = e.clientX;
+    startY = e.clientY;
+    baseTx = parseFloat(effectiveValue(key, "translate-x")) || 0;
+    baseTy = parseFloat(effectiveValue(key, "translate-y")) || 0;
+    liveTx = baseTx;
+    liveTy = baseTy;
+    snapTargets = computeSnapTargets(el, new Set([key]));
+    document.addEventListener("pointermove", onMove);
+    document.addEventListener("pointerup", onUp);
+  });
+}
+
+function wireGroupMoveHandle(handle) {
+  let startX = 0, startY = 0;
+  const baseTranslates = {};
+  const liveTranslates = {};
+  let snapTargets = [];
+
+  function groupRect() {
+    let left = Infinity, top = Infinity, right = -Infinity, bottom = -Infinity;
+    selectedKeys.forEach((key) => {
+      const el = document.querySelector(`[data-edit-key="${CSS.escape(key)}"]`);
+      if (!el || el.classList.contains("edit-is-locked")) return;
+      const r = el.getBoundingClientRect();
+      left = Math.min(left, r.left); top = Math.min(top, r.top);
+      right = Math.max(right, r.right); bottom = Math.max(bottom, r.bottom);
+    });
+    return { left, top, right, bottom, hCenter: (left + right) / 2, vCenter: (top + bottom) / 2 };
+  }
+
+  function onMove(e) {
+    const rawDx = e.clientX - startX;
+    const rawDy = e.clientY - startY;
+    selectedKeys.forEach((key) => {
+      const el = document.querySelector(`[data-edit-key="${CSS.escape(key)}"]`);
+      if (!el || el.classList.contains("edit-is-locked")) return;
+      const base = baseTranslates[key] || { x: 0, y: 0 };
+      const tx = Math.max(-1000, Math.min(1000, base.x + rawDx));
+      const ty = Math.max(-1000, Math.min(1000, base.y + rawDy));
+      liveTranslates[key] = { x: tx, y: ty };
+      recomputeTransform(el, key, { "translate-x": tx + "px", "translate-y": ty + "px" });
+    });
+
+    const snap = findSnap(groupRect(), snapTargets);
+    if (snap.vLine != null || snap.hLine != null) {
+      selectedKeys.forEach((key) => {
+        const el = document.querySelector(`[data-edit-key="${CSS.escape(key)}"]`);
+        if (!el || el.classList.contains("edit-is-locked") || !liveTranslates[key]) return;
+        if (snap.vLine != null) liveTranslates[key].x += snap.dx;
+        if (snap.hLine != null) liveTranslates[key].y += snap.dy;
+        recomputeTransform(el, key, { "translate-x": liveTranslates[key].x + "px", "translate-y": liveTranslates[key].y + "px" });
+      });
+    }
+    if (snap.vLine != null) showAlignGuide("v", snap.vLine); else hideAlignGuide("v");
+    if (snap.hLine != null) showAlignGuide("h", snap.hLine); else hideAlignGuide("h");
+  }
+  function onUp() {
+    document.removeEventListener("pointermove", onMove);
+    document.removeEventListener("pointerup", onUp);
+    hideAlignGuides();
+    selectedKeys.forEach((key) => {
+      if (!liveTranslates[key]) return;
+      queueOverride(key, "translate-x", liveTranslates[key].x ? liveTranslates[key].x + "px" : null);
+      queueOverride(key, "translate-y", liveTranslates[key].y ? liveTranslates[key].y + "px" : null);
+    });
+  }
+  handle.addEventListener("pointerdown", (e) => {
+    e.preventDefault();
+    startX = e.clientX;
+    startY = e.clientY;
+    selectedKeys.forEach((key) => {
+      baseTranslates[key] = { x: parseFloat(effectiveValue(key, "translate-x")) || 0, y: parseFloat(effectiveValue(key, "translate-y")) || 0 };
+    });
+    const firstKey = [...selectedKeys][0];
+    const firstEl = firstKey ? document.querySelector(`[data-edit-key="${CSS.escape(firstKey)}"]`) : null;
+    snapTargets = computeSnapTargets(firstEl, selectedKeys);
     document.addEventListener("pointermove", onMove);
     document.addEventListener("pointerup", onUp);
   });
@@ -768,10 +1025,10 @@ function nudgeSelected(arrowKey) {
     const el = document.querySelector(`[data-edit-key="${CSS.escape(key)}"]`);
     if (!el || effectiveValue(key, "locked") === "true") return;
     const type = elementEditType(el);
-    if (type === "product") {
-      const current = parseFloat(el.style.transform.replace(/[^\d.]/g, "")) || 1;
+    if (type === "product" || type === "block") {
+      const current = parseFloat(effectiveValue(key, "scale")) || 1;
       const next = Math.max(0.7, Math.min(1.5, current + sign * 0.02));
-      el.style.transform = `scale(${next})`;
+      recomputeTransform(el, key, { scale: next });
       queueOverride(key, "scale", String(next));
     } else if (type === "text") {
       const currentPx = parseFloat(el.style.fontSize) || parseFloat(getComputedStyle(el).fontSize) || 16;
@@ -876,6 +1133,7 @@ function wireSectionDivider(el, key, handle) {
 function wireResizeHandle(el, key, type, handle) {
   let startX = 0, startY = 0;
   let startValue = 1;
+  let liveScale = 1;
 
   function onMove(e) {
     const delta = (e.clientX - startX) + (e.clientY - startY);
@@ -883,8 +1141,8 @@ function wireResizeHandle(el, key, type, handle) {
       const next = Math.max(0.6, Math.min(1.8, startValue + delta / 150));
       el.style.fontSize = (startFontPx * next) + "px";
     } else {
-      const next = Math.max(0.7, Math.min(1.5, startValue + delta / 150));
-      el.style.transform = `scale(${next})`;
+      liveScale = Math.max(0.7, Math.min(1.5, startValue + delta / 150));
+      recomputeTransform(el, key, { scale: liveScale });
     }
   }
   let startFontPx = 16;
@@ -894,8 +1152,7 @@ function wireResizeHandle(el, key, type, handle) {
     if (type === "text") {
       queueOverride(key, "font-size", (parseFloat(getComputedStyle(el).fontSize)) + "px");
     } else {
-      const match = /scale\(([\d.]+)\)/.exec(el.style.transform || "");
-      queueOverride(key, "scale", match ? match[1] : "1");
+      queueOverride(key, "scale", String(liveScale));
     }
   }
   handle.addEventListener("pointerdown", (e) => {

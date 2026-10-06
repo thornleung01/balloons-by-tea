@@ -57,7 +57,11 @@ function renderNav() {
     const icon = NAV_ICONS[item.icon] || NAV_ICONS.none;
     const pageKey = item.key || "";
     const divider = i < items.length - 1 ? '<li class="nav-divider" aria-hidden="true"></li>' : "";
-    return `<li><a href="${escapeHtml(item.href)}" data-page="${escapeHtml(pageKey)}" aria-label="${escapeHtml(item.label)}">${icon}<span>${escapeHtml(item.label)}</span></a></li>${divider}`;
+    // item.id (not item.key, which is empty for admin-added items) is the
+    // one identifier guaranteed unique and stable across a label/href
+    // edit or a reorder, so edit-mode's per-link move/resize overrides
+    // stay attached to the right link even after either kind of change.
+    return `<li><a href="${escapeHtml(item.href)}" data-page="${escapeHtml(pageKey)}" aria-label="${escapeHtml(item.label)}" data-edit-key="nav-item:${item.id}" data-edit-type="block">${icon}<span>${escapeHtml(item.label)}</span></a></li>${divider}`;
   }).join("");
 }
 

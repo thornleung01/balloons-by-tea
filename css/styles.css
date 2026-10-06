@@ -1589,6 +1589,7 @@ button {
 .edit-mode-toggle:hover { transform: scale(1.08); }
 .edit-mode-toggle.active { background: var(--color-accent); color: #fff; border-color: var(--color-accent); }
 .edit-history-toggle { left: 82px; width: 44px; height: 44px; bottom: 26px; }
+.edit-admin-link { left: 138px; width: 44px; height: 44px; bottom: 26px; }
 
 .edit-history-panel {
   position: fixed;
@@ -1644,6 +1645,17 @@ body.edit-mode-active nav.nav[data-edit-key] {
   position: sticky;
   top: 0;
 }
+/* Same issue, different element: .word-badge > * (the decorative-bow
+   headings — About, FAQ, Custom Order, category titles) relies on
+   position:absolute + inset:0 to stretch and center within the badge
+   artwork. The generic rule above downgrades it to relative, collapsing
+   the heading to hug just its text instead of filling the badge — which
+   then drags the edit-controls cluster along with it, floating oddly
+   next to the words instead of anchored at the badge's corner. */
+body.edit-mode-active .word-badge > [data-edit-key] {
+  position: absolute;
+  inset: 0;
+}
 body.edit-mode-active [data-edit-key]:hover { outline-color: var(--color-accent); }
 body.edit-mode-active [data-edit-key].edit-is-locked:hover { outline-color: var(--color-fg-faint); }
 body.edit-mode-active [data-edit-key].edit-is-hidden { opacity: 0.35; }
@@ -1678,6 +1690,14 @@ body.edit-mode-active [data-edit-key] { cursor: pointer; }
   color: #fff;
   display: flex; align-items: center; justify-content: center;
   cursor: nwse-resize;
+}
+.edit-selection-move {
+  width: 26px; height: 26px;
+  border-radius: 50%;
+  background: var(--color-fg);
+  color: #fff;
+  display: flex; align-items: center; justify-content: center;
+  cursor: move;
 }
 
 .edit-save-bar {
@@ -1800,6 +1820,25 @@ body.edit-mode-active [data-edit-key] { cursor: pointer; }
   cursor: nwse-resize;
   z-index: 40;
 }
+.edit-move-handle {
+  position: absolute;
+  bottom: 6px;
+  left: 6px;
+  width: 16px;
+  height: 16px;
+  border-radius: 4px;
+  background: var(--color-fg);
+  border: 2px solid #fff;
+  box-shadow: var(--shadow-soft);
+  cursor: move;
+  z-index: 40;
+}
+
+/* Figma/Canva-style red snap guides, shown only during an active move
+   drag (see wireMoveHandle/wireGroupMoveHandle in edit-mode.js). */
+#editAlignGuides { position: fixed; inset: 0; pointer-events: none; z-index: 60; }
+.edit-align-guide-h { position: fixed; left: 0; right: 0; border-top: 1.5px dashed #ff3b3b; }
+.edit-align-guide-v { position: fixed; top: 0; bottom: 0; border-left: 1.5px dashed #ff3b3b; }
 
 .edit-divider-handle {
   position: absolute;
