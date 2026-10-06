@@ -52,14 +52,16 @@ function buildEditModeToggle() {
   // Shown as soon as the pencil toggle exists (i.e. as soon as we know
   // this is an admin session) rather than gated behind edit mode being
   // on — there was previously no way back to admin.html from a public
-  // page except typing the URL or browser back.
+  // page except typing the URL or browser back. A gear/dashboard icon
+  // rather than a house — a house reads as "go to the homepage", which
+  // is a real, different link already in the nav.
   const adminLink = document.createElement("a");
   adminLink.id = "editAdminLink";
   adminLink.className = "edit-mode-toggle edit-admin-link";
   adminLink.href = "admin.html";
   adminLink.title = "Back to admin panel";
   adminLink.setAttribute("aria-label", "Back to admin panel");
-  adminLink.innerHTML = `<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M3 11.5 12 4l9 7.5" stroke-linecap="round" stroke-linejoin="round"/><path d="M5.5 10v9a1 1 0 0 0 1 1H10v-5.5h4V20h3.5a1 1 0 0 0 1-1v-9" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+  adminLink.innerHTML = `<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><rect x="3" y="4" width="18" height="14" rx="1.6" stroke-linejoin="round"/><path d="M3 9h18" stroke-linecap="round"/><path d="M7 13h4" stroke-linecap="round"/><path d="M3 21h18" stroke-linecap="round"/></svg>`;
   document.body.appendChild(adminLink);
 }
 
