@@ -8,7 +8,11 @@
 */
 
 let currentEditId = null;
-let currentPhotoFile = null;
+/* Each entry is { type: "url", value: string } for an already-uploaded
+   photo being kept, or { type: "file", value: File } for a newly chosen
+   one not uploaded yet. Order in this array is the order shown on the
+   site; entries[0] becomes the card thumbnail (image_url). */
+let currentPhotoEntries = [];
 
 const HTML_ESCAPE_MAP = {
   "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
@@ -114,7 +118,7 @@ async function refreshItemList() {
       <h3>${escapeHtml(collectionTitle(slug))}</h3>
       ${bySlug[slug].map((item) => `
         <div class="admin-item-row ${item.active === false ? "inactive" : ""}" data-id="${item.id}">
-          <div class="admin-item-thumb">${item.image_url ? `<img src="${escapeHtml(item.image_url)}" alt=""/>` : ""}</div>
+          <div class="admin-item-thumb">${item.image_url ? `<img src="${escapeHtml(item.image_url)}" alt=""/>` : ""}${Array.isArray(item.images) && item.images.length > 1 ? `<span class="admin-item-thumb-count">${item.images.length}</span>` : ""}</div>
           <div class="admin-item-body">
             <div class="name"><span class="status-dot ${item.active === false ? "status-dot-hidden" : "status-dot-live"}" aria-hidden="true" title="${item.active === false ? "Hidden" : "Live on site"}"></span>${escapeHtml(item.name)}</div>
             <div class="meta">$${Number(item.price).toFixed(0)} ${item.active === false ? "&middot; hidden" : ""}</div>
@@ -143,7 +147,6 @@ async function refreshItemList() {
 
 function startEdit(item) {
   currentEditId = item.id;
-  currentPhotoFile = null;
   document.getElementById("f-collection").value = item.collection;
   document.getElementById("f-name").value = item.name || "";
   document.getElementById("f-price").value = item.price || 0;
@@ -152,8 +155,11 @@ function startEdit(item) {
   document.getElementById("f-active").checked = item.active !== false;
   document.getElementById("f-photo").value = "";
 
-  const preview = document.getElementById("photoPreview");
-  preview.innerHTML = item.image_url ? `<img src="${escapeHtml(item.image_url)}" alt=""/>` : "No photo";
+  const existingUrls = Array.isArray(item.images) && item.images.length
+    ? item.images
+    : (item.image_url ? [item.image_url] : []);
+  currentPhotoEntries = existingUrls.map((url) => ({ type: "url", value: url }));
+  renderPhotoGallery();
 
   document.getElementById("formTitle").textContent = "Edit Item";
   document.getElementById("saveBtn").textContent = "Update Item";
@@ -164,26 +170,54 @@ function startEdit(item) {
 
 function resetForm() {
   currentEditId = null;
-  currentPhotoFile = null;
+  currentPhotoEntries = [];
   document.getElementById("itemForm").reset();
-  document.getElementById("photoPreview").innerHTML = "No photo";
+  renderPhotoGallery();
   document.getElementById("formTitle").textContent = "Add Item";
   document.getElementById("saveBtn").textContent = "Add Item";
   hide(document.getElementById("cancelEditBtn"));
   setFormStatus("", null);
 }
 
-async function handlePhotoChange(e) {
-  const file = e.target.files[0];
-  currentPhotoFile = file || null;
-  const preview = document.getElementById("photoPreview");
-  if (!file) {
-    preview.innerHTML = "No photo";
-    return;
-  }
-  const reader = new FileReader();
-  reader.onload = () => { preview.innerHTML = `<img src="${reader.result}" alt=""/>`; };
-  reader.readAsDataURL(file);
+function handlePhotoChange(e) {
+  const files = Array.from(e.target.files || []);
+  files.forEach((file) => currentPhotoEntries.push({ type: "file", value: file }));
+  e.target.value = "";
+  renderPhotoGallery();
+}
+
+function photoEntryPreviewUrl(entry) {
+  return entry.type === "url" ? entry.value : URL.createObjectURL(entry.value);
+}
+
+function renderPhotoGallery() {
+  const gallery = document.getElementById("photoGallery");
+  if (!gallery) return;
+  gallery.innerHTML = currentPhotoEntries.map((entry, i) => `
+    <div class="photo-gallery-item ${i === 0 ? "is-primary" : ""}" data-index="${i}">
+      <img src="${photoEntryPreviewUrl(entry)}" alt=""/>
+      ${i === 0 ? '<span class="photo-gallery-primary-tag">Thumbnail</span>' : ""}
+      <button type="button" class="photo-gallery-move move-left" data-move="-1" data-index="${i}" ${i === 0 ? "disabled" : ""} aria-label="Move photo earlier">&lsaquo;</button>
+      <button type="button" class="photo-gallery-move move-right" data-move="1" data-index="${i}" ${i === currentPhotoEntries.length - 1 ? "disabled" : ""} aria-label="Move photo later">&rsaquo;</button>
+      <button type="button" class="photo-gallery-remove" data-remove="${i}" aria-label="Remove photo">&times;</button>
+    </div>
+  `).join("");
+
+  gallery.querySelectorAll("[data-remove]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      currentPhotoEntries.splice(Number(btn.dataset.remove), 1);
+      renderPhotoGallery();
+    });
+  });
+  gallery.querySelectorAll("[data-move]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const i = Number(btn.dataset.index);
+      const j = i + Number(btn.dataset.move);
+      if (j < 0 || j >= currentPhotoEntries.length) return;
+      [currentPhotoEntries[i], currentPhotoEntries[j]] = [currentPhotoEntries[j], currentPhotoEntries[i]];
+      renderPhotoGallery();
+    });
+  });
 }
 
 async function handleSaveItem(e) {
@@ -209,16 +243,23 @@ async function handleSaveItem(e) {
   setFormStatus("Saving...", null);
 
   try {
-    if (currentPhotoFile) {
-      const safeName = currentPhotoFile.name.replace(/[^a-zA-Z0-9.-]/g, "_");
-      const path = `${Date.now()}-${safeName}`;
-      const { error: uploadError } = await client.storage
-        .from("product-photos")
-        .upload(path, currentPhotoFile, { upsert: true });
-      if (uploadError) throw new Error("Photo upload failed: " + uploadError.message);
-      const { data: pub } = client.storage.from("product-photos").getPublicUrl(path);
-      payload.image_url = pub.publicUrl;
+    const finalUrls = [];
+    for (const entry of currentPhotoEntries) {
+      if (entry.type === "url") {
+        finalUrls.push(entry.value);
+      } else {
+        const safeName = entry.value.name.replace(/[^a-zA-Z0-9.-]/g, "_");
+        const path = `${Date.now()}-${safeName}`;
+        const { error: uploadError } = await client.storage
+          .from("product-photos")
+          .upload(path, entry.value, { upsert: true });
+        if (uploadError) throw new Error("Photo upload failed: " + uploadError.message);
+        const { data: pub } = client.storage.from("product-photos").getPublicUrl(path);
+        finalUrls.push(pub.publicUrl);
+      }
     }
+    payload.images = finalUrls;
+    payload.image_url = finalUrls[0] || null;
 
     let error;
     if (currentEditId) {

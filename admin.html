@@ -104,11 +104,9 @@
             </select>
           </div>
           <div class="field">
-            <label for="f-photo">Photo (optional)</label>
-            <div class="photo-field">
-              <div class="photo-preview" id="photoPreview">No photo</div>
-              <input id="f-photo" name="photo" type="file" accept="image/*"/>
-            </div>
+            <label for="f-photo">Photos (optional, first one is the card thumbnail)</label>
+            <div class="photo-gallery" id="photoGallery"></div>
+            <input id="f-photo" name="photo" type="file" accept="image/*" multiple/>
           </div>
           <div class="field">
             <label for="f-active" style="display:inline-flex;align-items:center;gap:8px;">

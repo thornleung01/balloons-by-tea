@@ -63,13 +63,18 @@ function buildCollectionsFromSupabaseRows(rows) {
       STYLE_PRESETS[STYLE_DEFAULT_BY_COLLECTION[slug]] ||
       STYLE_PRESETS["golden classic"];
 
+    const images = Array.isArray(row.images)
+      ? row.images.map(sanitizeImageUrl).filter(Boolean)
+      : [];
+
     result[slug].items.push({
       id: "sb-" + row.id,
       name: row.name || "",
       price: Number(row.price) || 0,
       description: row.description || "",
       colors,
-      image: sanitizeImageUrl(row.image_url)
+      image: sanitizeImageUrl(row.image_url),
+      images: images.length ? images : undefined
     });
   });
 

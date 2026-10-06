@@ -20,9 +20,13 @@ create table if not exists products (
   description text default '',
   style text,
   image_url text,
+  images text[] default '{}',
   active boolean not null default true,
   created_at timestamptz not null default now()
 );
+
+-- Safe to re-run against a project created before this column existed.
+alter table products add column if not exists images text[] default '{}';
 
 alter table products enable row level security;
 
