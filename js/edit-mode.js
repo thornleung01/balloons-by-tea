@@ -38,6 +38,16 @@ function buildEditModeToggle() {
   btn.innerHTML = `<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
   document.body.appendChild(btn);
   btn.addEventListener("click", () => setEditMode(!editModeActive));
+
+  const historyBtn = document.createElement("button");
+  historyBtn.type = "button";
+  historyBtn.id = "editHistoryToggle";
+  historyBtn.className = "edit-mode-toggle edit-history-toggle";
+  historyBtn.title = "Change history";
+  historyBtn.hidden = true;
+  historyBtn.innerHTML = `<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M3 12a9 9 0 1 0 3-6.7" stroke-linecap="round"/><path d="M3 4v4.5h4.5" stroke-linecap="round" stroke-linejoin="round"/><path d="M12 8v4l3 2" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+  document.body.appendChild(historyBtn);
+  historyBtn.addEventListener("click", () => toggleHistoryPanel());
 }
 
 function setEditMode(on) {
@@ -46,6 +56,7 @@ function setEditMode(on) {
   btn.classList.toggle("active", on);
   btn.setAttribute("aria-pressed", String(on));
   document.body.classList.toggle("edit-mode-active", on);
+  document.getElementById("editHistoryToggle").hidden = !on;
 
   if (on) {
     revealHiddenForEditing();
@@ -53,6 +64,124 @@ function setEditMode(on) {
   } else {
     removeEditHandles();
     applyLayoutOverrides();
+    closeHistoryPanel();
+  }
+}
+
+/* ===== Change history / revert ===== */
+
+async function toggleHistoryPanel() {
+  const existing = document.getElementById("editHistoryPanel");
+  if (existing) { closeHistoryPanel(); return; }
+
+  const panel = document.createElement("div");
+  panel.id = "editHistoryPanel";
+  panel.className = "edit-history-panel";
+  panel.innerHTML = `
+    <div class="edit-history-head">
+      <strong>Change history</strong>
+      <button type="button" class="edit-icon-btn" id="editHistoryClose" aria-label="Close">
+        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 5l14 14M19 5L5 19" stroke-linecap="round"/></svg>
+      </button>
+    </div>
+    <div class="edit-history-list" id="editHistoryList"><p class="edit-history-empty">Loading…</p></div>
+  `;
+  document.body.appendChild(panel);
+  document.getElementById("editHistoryClose").addEventListener("click", closeHistoryPanel);
+  await loadHistoryList();
+}
+
+function closeHistoryPanel() {
+  const panel = document.getElementById("editHistoryPanel");
+  if (panel) panel.remove();
+}
+
+function describeHistoryRow(row) {
+  const labels = { "padding-bottom": "spacing", "font-size": "text size", scale: "size", hidden: "visibility", locked: "lock" };
+  const propLabel = labels[row.property] || row.property;
+  const niceKey = row.element_key.startsWith("product:") ? "product card" : row.element_key.replace(/-/g, " ");
+  return `${niceKey} — ${propLabel}`;
+}
+
+async function loadHistoryList() {
+  const listEl = document.getElementById("editHistoryList");
+  if (!listEl) return;
+  const client = getSupabaseClient();
+  const page = document.body.dataset.page || "";
+  const { data, error } = await client
+    .from("layout_overrides_history")
+    .select("*")
+    .eq("page", page)
+    .order("changed_at", { ascending: false })
+    .limit(30);
+
+  if (error) {
+    listEl.innerHTML = `<p class="edit-history-empty">Couldn't load history: ${error.message}</p>`;
+    return;
+  }
+  if (!data || !data.length) {
+    listEl.innerHTML = `<p class="edit-history-empty">No changes yet.</p>`;
+    return;
+  }
+
+  listEl.innerHTML = data.map((row) => `
+    <div class="edit-history-row" data-history-id="${row.id}">
+      <div class="edit-history-row-main">
+        <div class="edit-history-what">${describeHistoryRow(row)}</div>
+        <div class="edit-history-when">${new Date(row.changed_at).toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}</div>
+      </div>
+      <button type="button" class="edit-history-revert-btn" data-revert-id="${row.id}">Revert</button>
+    </div>
+  `).join("");
+
+  listEl.querySelectorAll("[data-revert-id]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const row = data.find((r) => String(r.id) === btn.dataset.revertId);
+      if (row) revertHistoryRow(row);
+    });
+  });
+}
+
+/* applyLayoutOverrides() only ever ADDS inline styles for overrides that
+   currently exist — on a fresh page load there's nothing stale to clear,
+   so that's fine there. But a revert happening live, in the same session
+   as the original drag, needs to actively remove/replace whatever inline
+   style that drag already set; otherwise the DOM just keeps showing the
+   old value even after the override is deleted underneath it. */
+function resetElementStyle(el, property, value) {
+  if (property === "padding-bottom") el.style.paddingBottom = value || "";
+  else if (property === "font-size") el.style.fontSize = value || "";
+  else if (property === "scale") el.style.transform = value ? `scale(${value})` : "";
+  else if (property === "order") el.style.order = value || "";
+}
+
+async function revertHistoryRow(row) {
+  try {
+    if (row.old_value == null) {
+      await clearLayoutOverride(row.element_key, row.property);
+    } else {
+      await saveLayoutOverride(row.element_key, row.property, row.old_value);
+    }
+
+    const el = document.querySelector(`[data-edit-key="${CSS.escape(row.element_key)}"]`);
+    if (el) {
+      if (row.property === "hidden") {
+        el.classList.toggle("edit-is-hidden", row.old_value === "true");
+        if (!editModeActive) el.style.display = row.old_value === "true" ? "none" : "";
+      } else {
+        resetElementStyle(el, row.property, row.old_value);
+      }
+    }
+
+    if (editModeActive) {
+      revealHiddenForEditing();
+      renderEditHandles();
+    } else {
+      applyLayoutOverrides();
+    }
+    await loadHistoryList();
+  } catch (err) {
+    alert("Couldn't revert: " + err.message);
   }
 }
 

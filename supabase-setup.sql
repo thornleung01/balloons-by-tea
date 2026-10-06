@@ -252,6 +252,34 @@ create policy "Authenticated can manage layout overrides"
   using (true)
   with check (true);
 
+-- Change history for layout_overrides, so an edit-mode change can be
+-- reverted. Admin-only (not public) since this is an internal audit
+-- trail, not content a visitor needs.
+
+create table if not exists layout_overrides_history (
+  id bigint generated always as identity primary key,
+  page text not null,
+  element_key text not null,
+  property text not null,
+  old_value text,
+  new_value text,
+  changed_at timestamptz not null default now()
+);
+
+alter table layout_overrides_history enable row level security;
+
+drop policy if exists "Authenticated can read layout history" on layout_overrides_history;
+create policy "Authenticated can read layout history"
+  on layout_overrides_history for select
+  to authenticated
+  using (true);
+
+drop policy if exists "Authenticated can write layout history" on layout_overrides_history;
+create policy "Authenticated can write layout history"
+  on layout_overrides_history for insert
+  to authenticated
+  with check (true);
+
 -- Storage bucket for site images (logo, hero image, collection card photos)
 insert into storage.buckets (id, name, public)
   values ('site-images', 'site-images', true)

@@ -52,10 +52,30 @@ function applyLayoutOverrides() {
 
 /* Single upsert used by edit-mode.js for every kind of override (resize,
    hide, lock) — one row per (page, element, property), same shape as
-   every other admin write in this project. */
+   every other admin write in this project. Every call also logs a
+   before/after row to layout_overrides_history, which is what the edit-
+   mode History panel reads and reverts from. */
+async function logLayoutHistory(elementKey, property, oldValue, newValue) {
+  const client = getSupabaseClient();
+  const page = document.body.dataset.page || "";
+  // History is a nice-to-have audit trail, not a reason to block or fail
+  // the actual save, so a logging error is swallowed rather than thrown.
+  try {
+    await client.from("layout_overrides_history").insert({
+      page, element_key: elementKey, property,
+      old_value: oldValue == null ? null : String(oldValue),
+      new_value: newValue == null ? null : String(newValue)
+    });
+  } catch (err) {
+    console.warn("[Balloons by Tea] Could not log layout history.", err);
+  }
+}
+
 async function saveLayoutOverride(elementKey, property, value) {
   const client = getSupabaseClient();
   const page = document.body.dataset.page || "";
+  const oldValue = LAYOUT_OVERRIDES[elementKey] ? LAYOUT_OVERRIDES[elementKey][property] : undefined;
+
   const { error } = await client
     .from("layout_overrides")
     .upsert({ page, element_key: elementKey, property, value: String(value) }, { onConflict: "page,element_key,property" });
@@ -63,11 +83,15 @@ async function saveLayoutOverride(elementKey, property, value) {
 
   if (!LAYOUT_OVERRIDES[elementKey]) LAYOUT_OVERRIDES[elementKey] = {};
   LAYOUT_OVERRIDES[elementKey][property] = String(value);
+
+  await logLayoutHistory(elementKey, property, oldValue, value);
 }
 
 async function clearLayoutOverride(elementKey, property) {
   const client = getSupabaseClient();
   const page = document.body.dataset.page || "";
+  const oldValue = LAYOUT_OVERRIDES[elementKey] ? LAYOUT_OVERRIDES[elementKey][property] : undefined;
+
   const { error } = await client
     .from("layout_overrides")
     .delete()
@@ -77,4 +101,6 @@ async function clearLayoutOverride(elementKey, property) {
   if (error) throw error;
 
   if (LAYOUT_OVERRIDES[elementKey]) delete LAYOUT_OVERRIDES[elementKey][property];
+
+  await logLayoutHistory(elementKey, property, oldValue, null);
 }
