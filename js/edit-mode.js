@@ -51,6 +51,11 @@ function buildEditModeToggle() {
 }
 
 function setEditMode(on) {
+  if (!on && editModeActive && hasPendingChanges()) {
+    if (!confirm("You have unsaved changes. Discard them and exit edit mode?")) return;
+    discardPendingChanges();
+  }
+
   editModeActive = on;
   const btn = document.getElementById("editModeToggle");
   btn.classList.toggle("active", on);
@@ -202,8 +207,7 @@ function revealHiddenForEditing() {
     const key = el.dataset.editKey;
     if (!key) return;
     el.style.display = "";
-    const overrides = LAYOUT_OVERRIDES[key];
-    if (overrides && overrides.hidden === "true") {
+    if (effectiveValue(key, "hidden") === "true") {
       el.classList.add("edit-is-hidden");
     }
   });
@@ -253,6 +257,108 @@ function toggleSelect(key, additive) {
   renderSelectionToolbar();
 }
 
+/* ===== Stage-then-save =====
+   Every drag/lock/hide/remove below used to write straight to Supabase on
+   release. Now it only stages into pendingOverrides/pendingProductRemovals
+   (applying the visual change immediately, same as before) and nothing
+   actually persists until the floating Save bar's Save button is clicked.
+   effectiveValue() is what every read site (lock icons, the group-lock
+   toolbar, the hidden-dim pass) uses instead of reading LAYOUT_OVERRIDES
+   directly, so a staged-but-unsaved change still looks "live" everywhere. */
+let pendingOverrides = {};
+let pendingProductRemovals = new Set();
+
+function effectiveValue(key, property) {
+  if (pendingOverrides[key] && property in pendingOverrides[key]) return pendingOverrides[key][property];
+  return LAYOUT_OVERRIDES[key] ? LAYOUT_OVERRIDES[key][property] : undefined;
+}
+
+function hasPendingChanges() {
+  return Object.keys(pendingOverrides).length > 0 || pendingProductRemovals.size > 0;
+}
+
+function queueOverride(key, property, value) {
+  if (!pendingOverrides[key]) pendingOverrides[key] = {};
+  pendingOverrides[key][property] = value; // null means "clear this override on save"
+  renderSaveBar();
+}
+
+function renderSaveBar() {
+  const count = Object.keys(pendingOverrides).length + pendingProductRemovals.size;
+  let bar = document.getElementById("editSaveBar");
+  if (!count) {
+    if (bar) bar.remove();
+    return;
+  }
+  if (!bar) {
+    bar = document.createElement("div");
+    bar.id = "editSaveBar";
+    bar.className = "edit-save-bar";
+    document.body.appendChild(bar);
+  }
+  bar.innerHTML = `
+    <span class="edit-save-count">${count} unsaved change${count === 1 ? "" : "s"}</span>
+    <button type="button" class="edit-save-discard-btn" id="editDiscardBtn">Discard</button>
+    <button type="button" class="edit-save-commit-btn" id="editSaveBtn">Save</button>
+  `;
+  document.getElementById("editDiscardBtn").addEventListener("click", discardPendingChanges);
+  document.getElementById("editSaveBtn").addEventListener("click", commitPendingChanges);
+}
+
+async function commitPendingChanges() {
+  const saveBtn = document.getElementById("editSaveBtn");
+  if (saveBtn) { saveBtn.disabled = true; saveBtn.textContent = "Saving…"; }
+  try {
+    for (const key of Object.keys(pendingOverrides)) {
+      for (const property of Object.keys(pendingOverrides[key])) {
+        const value = pendingOverrides[key][property];
+        if (value === null) await clearLayoutOverride(key, property);
+        else await saveLayoutOverride(key, property, value);
+      }
+    }
+    if (pendingProductRemovals.size) {
+      const client = getSupabaseClient();
+      for (const productId of pendingProductRemovals) {
+        const { error } = await client.from("products").update({ active: false }).eq("id", productId);
+        if (error) throw error;
+      }
+    }
+    pendingOverrides = {};
+    pendingProductRemovals.clear();
+    renderEditHandles();
+    renderSaveBar();
+    if (document.getElementById("editHistoryPanel")) await loadHistoryList();
+  } catch (err) {
+    alert("Couldn't save all changes: " + err.message);
+    if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = "Save"; }
+  }
+}
+
+/* Reverts every staged-but-unsaved change back to its last-saved value.
+   "locked"/"hidden" aren't inline styles — clearing pendingOverrides and
+   re-rendering (which reads LAYOUT_OVERRIDES, the saved state, once the
+   pending overlay is gone) is enough to restore those on its own. */
+function discardPendingChanges() {
+  Object.keys(pendingOverrides).forEach((key) => {
+    const el = document.querySelector(`[data-edit-key="${CSS.escape(key)}"]`);
+    if (!el) return;
+    Object.keys(pendingOverrides[key]).forEach((property) => {
+      if (property === "locked" || property === "hidden") return;
+      const savedValue = LAYOUT_OVERRIDES[key] ? LAYOUT_OVERRIDES[key][property] : undefined;
+      resetElementStyle(el, property, savedValue);
+    });
+  });
+  pendingProductRemovals.forEach((productId) => {
+    const el = document.querySelector(`[data-edit-key="product:${productId}"]`);
+    if (el) el.classList.remove("edit-is-hidden");
+  });
+  pendingOverrides = {};
+  pendingProductRemovals.clear();
+  revealHiddenForEditing();
+  renderEditHandles();
+  renderSaveBar();
+}
+
 function selectRow(el) {
   const parent = el.parentElement;
   const top = Math.round(el.getBoundingClientRect().top);
@@ -272,7 +378,7 @@ function renderEditHandles() {
     const key = el.dataset.editKey;
     if (!key) return;
     const type = elementEditType(el);
-    const locked = !!(LAYOUT_OVERRIDES[key] && LAYOUT_OVERRIDES[key].locked === "true");
+    const locked = effectiveValue(key, "locked") === "true";
     el.classList.toggle("edit-is-locked", locked);
     el.classList.toggle("edit-selected", selectedKeys.has(key));
 
@@ -336,6 +442,15 @@ function renderEditHandles() {
       toggleSelect(key, e.shiftKey);
     }, true);
   });
+
+  // removeEditHandles() above strips edit-is-hidden from every element,
+  // including a product that's staged for removal but not yet saved —
+  // re-apply its dim here so an unrelated re-render doesn't make it look
+  // like the pending removal was undone.
+  pendingProductRemovals.forEach((productId) => {
+    const el = document.querySelector(`[data-edit-key="product:${productId}"]`);
+    if (el) el.classList.add("edit-is-hidden");
+  });
 }
 
 /* ===== Group toolbar (shown once 1+ elements are selected) ===== */
@@ -352,7 +467,7 @@ function renderSelectionToolbar() {
     bar.className = "edit-selection-bar";
     document.body.appendChild(bar);
   }
-  const allLocked = [...selectedKeys].every((k) => LAYOUT_OVERRIDES[k] && LAYOUT_OVERRIDES[k].locked === "true");
+  const allLocked = [...selectedKeys].every((k) => effectiveValue(k, "locked") === "true");
   bar.innerHTML = `
     <span class="edit-selection-count">${selectedKeys.size} selected</span>
     <button type="button" class="edit-icon-btn ${allLocked ? "is-locked" : ""}" id="selectionLockBtn" title="${allLocked ? "Unlock selected" : "Lock selected"}">${allLocked
@@ -371,20 +486,13 @@ function renderSelectionToolbar() {
   wireGroupResizeHandle(document.getElementById("selectionResizeHandle"));
 }
 
-async function groupToggleLock(locked) {
-  try {
-    for (const key of selectedKeys) {
-      if (locked) await saveLayoutOverride(key, "locked", "true");
-      else await clearLayoutOverride(key, "locked");
-    }
-    renderEditHandles();
-    // renderEditHandles() alone leaves the toolbar's lock button bound to
-    // its old "allLocked" closure from the last time the bar was built, so
-    // without this the button never flips to its "unlock" label/action.
-    renderSelectionToolbar();
-  } catch (err) {
-    alert("Couldn't update lock: " + err.message);
-  }
+function groupToggleLock(locked) {
+  selectedKeys.forEach((key) => queueOverride(key, "locked", locked ? "true" : null));
+  renderEditHandles();
+  // renderEditHandles() alone leaves the toolbar's lock button bound to
+  // its old "allLocked" closure from the last time the bar was built, so
+  // without this the button never flips to its "unlock" label/action.
+  renderSelectionToolbar();
 }
 
 function wireGroupResizeHandle(handle) {
@@ -401,19 +509,15 @@ function wireGroupResizeHandle(handle) {
       el.style.transform = `scale(${next})`;
     });
   }
-  async function onUp() {
+  function onUp() {
     document.removeEventListener("pointermove", onMove);
     document.removeEventListener("pointerup", onUp);
-    try {
-      for (const key of selectedKeys) {
-        const el = document.querySelector(`[data-edit-key="${CSS.escape(key)}"]`);
-        if (!el || el.classList.contains("edit-is-locked")) continue;
-        const match = /scale\(([\d.]+)\)/.exec(el.style.transform || "");
-        if (match) await saveLayoutOverride(key, "scale", match[1]);
-      }
-    } catch (err) {
-      alert("Couldn't save sizes: " + err.message);
-    }
+    selectedKeys.forEach((key) => {
+      const el = document.querySelector(`[data-edit-key="${CSS.escape(key)}"]`);
+      if (!el || el.classList.contains("edit-is-locked")) return;
+      const match = /scale\(([\d.]+)\)/.exec(el.style.transform || "");
+      if (match) queueOverride(key, "scale", match[1]);
+    });
   }
   handle.addEventListener("pointerdown", (e) => {
     e.preventDefault();
@@ -429,42 +533,28 @@ function wireGroupResizeHandle(handle) {
   });
 }
 
-async function toggleLock(key, locked) {
-  try {
-    if (locked) await saveLayoutOverride(key, "locked", "true");
-    else await clearLayoutOverride(key, "locked");
-    renderEditHandles();
-  } catch (err) {
-    alert("Couldn't update lock: " + err.message);
-  }
+function toggleLock(key, locked) {
+  queueOverride(key, "locked", locked ? "true" : null);
+  renderEditHandles();
 }
 
-async function toggleHidden(el, key) {
+function toggleHidden(el, key) {
   const alreadyHidden = el.classList.contains("edit-is-hidden");
-  try {
-    if (alreadyHidden) {
-      await clearLayoutOverride(key, "hidden");
-      el.classList.remove("edit-is-hidden");
-    } else {
-      await saveLayoutOverride(key, "hidden", "true");
-      el.classList.add("edit-is-hidden");
-    }
-  } catch (err) {
-    alert("Couldn't update: " + err.message);
+  if (alreadyHidden) {
+    queueOverride(key, "hidden", null);
+    el.classList.remove("edit-is-hidden");
+  } else {
+    queueOverride(key, "hidden", "true");
+    el.classList.add("edit-is-hidden");
   }
 }
 
-async function removeProduct(el, key) {
-  if (!confirm("Remove this product from the site? You can turn it back on from the Products admin tab.")) return;
+function removeProduct(el, key) {
+  if (!confirm("Remove this product from the site? This stays staged until you click Save (and you can turn it back on from the Products admin tab afterward).")) return;
   const productId = key.replace("product:", "");
-  const client = getSupabaseClient();
-  try {
-    const { error } = await client.from("products").update({ active: false }).eq("id", productId);
-    if (error) throw error;
-    el.classList.add("edit-is-hidden");
-  } catch (err) {
-    alert("Couldn't remove: " + err.message);
-  }
+  pendingProductRemovals.add(productId);
+  el.classList.add("edit-is-hidden");
+  renderSaveBar();
 }
 
 function wireSectionDivider(el, key, handle) {
@@ -476,15 +566,11 @@ function wireSectionDivider(el, key, handle) {
     const next = Math.max(0, Math.min(280, startPadding + delta));
     el.style.paddingBottom = next + "px";
   }
-  async function onUp() {
+  function onUp() {
     document.removeEventListener("pointermove", onMove);
     document.removeEventListener("pointerup", onUp);
     const finalPadding = parseFloat(el.style.paddingBottom) || 0;
-    try {
-      await saveLayoutOverride(key, "padding-bottom", finalPadding + "px");
-    } catch (err) {
-      alert("Couldn't save spacing: " + err.message);
-    }
+    queueOverride(key, "padding-bottom", finalPadding + "px");
   }
   handle.addEventListener("pointerdown", (e) => {
     e.preventDefault();
@@ -510,18 +596,14 @@ function wireResizeHandle(el, key, type, handle) {
     }
   }
   let startFontPx = 16;
-  async function onUp() {
+  function onUp() {
     document.removeEventListener("pointermove", onMove);
     document.removeEventListener("pointerup", onUp);
-    try {
-      if (type === "text") {
-        await saveLayoutOverride(key, "font-size", (parseFloat(getComputedStyle(el).fontSize)) + "px");
-      } else {
-        const match = /scale\(([\d.]+)\)/.exec(el.style.transform || "");
-        await saveLayoutOverride(key, "scale", match ? match[1] : "1");
-      }
-    } catch (err) {
-      alert("Couldn't save size: " + err.message);
+    if (type === "text") {
+      queueOverride(key, "font-size", (parseFloat(getComputedStyle(el).fontSize)) + "px");
+    } else {
+      const match = /scale\(([\d.]+)\)/.exec(el.style.transform || "");
+      queueOverride(key, "scale", match ? match[1] : "1");
     }
   }
   handle.addEventListener("pointerdown", (e) => {

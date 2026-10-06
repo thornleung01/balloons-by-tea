@@ -1668,6 +1668,43 @@ body.edit-mode-active [data-edit-key] { cursor: pointer; }
   cursor: nwse-resize;
 }
 
+.edit-save-bar {
+  position: fixed;
+  top: 18px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: var(--color-surface-solid);
+  border: 1.5px solid var(--color-accent);
+  border-radius: var(--radius-pill);
+  padding: 8px 10px 8px 16px;
+  box-shadow: var(--shadow-lift);
+  z-index: 49;
+}
+.edit-save-count { font-size: 0.82rem; font-weight: 600; color: var(--color-fg); white-space: nowrap; }
+.edit-save-discard-btn, .edit-save-commit-btn {
+  font-size: 0.82rem;
+  font-weight: 600;
+  padding: 7px 14px;
+  border-radius: var(--radius-pill);
+  white-space: nowrap;
+}
+.edit-save-discard-btn {
+  background: transparent;
+  border: 1.5px solid var(--color-border);
+  color: var(--color-fg-soft);
+}
+.edit-save-discard-btn:hover { border-color: var(--color-fg-soft); color: var(--color-fg); }
+.edit-save-commit-btn {
+  background: var(--color-accent);
+  border: 1.5px solid var(--color-accent);
+  color: #fff;
+}
+.edit-save-commit-btn:hover { background: var(--color-accent-hover); }
+.edit-save-commit-btn[disabled] { opacity: 0.6; cursor: not-allowed; }
+
 .edit-controls {
   position: absolute;
   top: 8px;
