@@ -230,6 +230,50 @@ body.admin-body {
 
 .empty-note { font-size: 0.9rem; color: var(--color-fg-faint); text-align: center; padding: var(--space-4) 0; }
 
+.admin-item-select {
+  flex-shrink: 0;
+  width: 17px; height: 17px;
+  cursor: pointer;
+  accent-color: var(--color-accent);
+}
+
+.bulk-select-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+  margin: var(--space-2) 0;
+  min-height: 30px;
+}
+.bulk-select-all {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.85rem;
+  color: var(--color-fg-soft);
+  cursor: pointer;
+}
+.bulk-select-all input { width: 16px; height: 16px; cursor: pointer; accent-color: var(--color-accent); }
+.bulk-action-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--color-accent-tint);
+  border: 1px solid var(--color-accent);
+  border-radius: var(--radius-pill);
+  padding: 6px 6px 6px 14px;
+}
+#bulkSelectedCount { font-size: 0.82rem; font-weight: 600; color: var(--color-fg); white-space: nowrap; }
+.bulk-action-bar button {
+  font-size: 0.78rem; font-weight: 600; padding: 6px 12px; border-radius: var(--radius-pill);
+  border: 1px solid var(--color-border);
+  background: var(--color-surface-solid);
+  white-space: nowrap;
+}
+.bulk-action-bar button:hover { border-color: var(--color-accent); color: var(--color-fg); }
+.bulk-action-bar button.danger:hover { border-color: var(--color-destructive); color: var(--color-destructive); }
+
 /* Tabs */
 .admin-tabs { display: flex; flex-wrap: wrap; gap: var(--space-2) var(--space-3); margin-bottom: var(--space-3); border-bottom: 1px solid var(--color-border); }
 .admin-tab {

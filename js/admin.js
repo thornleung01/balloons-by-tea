@@ -124,6 +124,10 @@ let productsCache = [];
 let itemSearchQuery = "";
 let itemFilterSlug = "all";
 let itemSortMode = "collection";
+// IDs as strings throughout, matching how every data-id attribute in this
+// file is already compared (String(d.id) === btn.dataset.id) — avoids a
+// number/string mismatch between Supabase's bigint ids and DOM dataset values.
+let selectedProductIds = new Set();
 
 async function refreshItemList() {
   const client = getSupabaseClient();
@@ -140,6 +144,7 @@ async function refreshItemList() {
   }
 
   productsCache = data || [];
+  selectedProductIds.clear();
   populateItemFilterOptions();
   renderProductList();
 }
@@ -158,6 +163,7 @@ function renderProductList() {
 
   if (!productsCache.length) {
     listEl.innerHTML = `<p class="empty-note">No items yet — add your first one on the left.</p>`;
+    syncBulkSelectionUI([]);
     return;
   }
 
@@ -175,11 +181,13 @@ function renderProductList() {
 
   if (!items.length) {
     listEl.innerHTML = `<p class="empty-note">No items match. Try a different search or category.</p>`;
+    syncBulkSelectionUI([]);
     return;
   }
 
   const renderRow = (item) => `
     <div class="admin-item-row ${item.active === false ? "inactive" : ""}" data-id="${item.id}">
+      <input type="checkbox" class="admin-item-select" data-select-id="${item.id}" aria-label="Select ${escapeHtml(item.name)}" ${selectedProductIds.has(String(item.id)) ? "checked" : ""}/>
       <div class="admin-item-thumb">${item.image_url ? `<img src="${escapeHtml(item.image_url)}" alt=""/>` : ""}${Array.isArray(item.images) && item.images.length > 1 ? `<span class="admin-item-thumb-count">${item.images.length}</span>` : ""}</div>
       <div class="admin-item-body">
         <div class="name">${escapeHtml(item.name)}</div>
@@ -224,6 +232,74 @@ function renderProductList() {
   listEl.querySelectorAll(".active-toggle").forEach((toggle) => {
     toggle.addEventListener("change", () => handleToggleActive(toggle.dataset.id, toggle.checked, toggle));
   });
+  listEl.querySelectorAll(".admin-item-select").forEach((box) => {
+    box.addEventListener("change", () => {
+      if (box.checked) selectedProductIds.add(box.dataset.selectId);
+      else selectedProductIds.delete(box.dataset.selectId);
+      syncBulkSelectionUI(items);
+    });
+  });
+  syncBulkSelectionUI(items);
+}
+
+/* Keeps the "select all" checkbox and the bulk action bar in sync with
+   selectedProductIds. Takes the currently visible (filtered/sorted) items
+   so "select all" only ever covers what's on screen, not the full catalog. */
+function syncBulkSelectionUI(visibleItems) {
+  const selectAllBox = document.getElementById("itemSelectAll");
+  if (selectAllBox) {
+    const visibleIds = visibleItems.map((item) => String(item.id));
+    const selectedVisibleCount = visibleIds.filter((id) => selectedProductIds.has(id)).length;
+    selectAllBox.checked = visibleIds.length > 0 && selectedVisibleCount === visibleIds.length;
+    selectAllBox.indeterminate = selectedVisibleCount > 0 && selectedVisibleCount < visibleIds.length;
+  }
+
+  const bar = document.getElementById("bulkActionBar");
+  const count = selectedProductIds.size;
+  bar.hidden = count === 0;
+  if (count > 0) {
+    document.getElementById("bulkSelectedCount").textContent = `${count} selected`;
+  }
+}
+
+function clearProductSelection() {
+  selectedProductIds.clear();
+  renderProductList();
+}
+
+async function bulkSetActive(active) {
+  const ids = [...selectedProductIds];
+  if (!ids.length) return;
+  const client = getSupabaseClient();
+  const bar = document.getElementById("bulkActionBar");
+  bar.querySelectorAll("button").forEach((b) => { b.disabled = true; });
+  const { error } = await client.from("products").update({ active }).in("id", ids);
+  bar.querySelectorAll("button").forEach((b) => { b.disabled = false; });
+  if (error) {
+    alert("Couldn't update: " + error.message);
+    return;
+  }
+  selectedProductIds.clear();
+  await refreshItemList();
+}
+
+async function bulkDeleteProducts() {
+  const ids = [...selectedProductIds];
+  if (!ids.length) return;
+  const label = ids.length === 1 ? "this item" : `these ${ids.length} items`;
+  if (!confirm(`Delete ${label}? This can't be undone.`)) return;
+  const client = getSupabaseClient();
+  const bar = document.getElementById("bulkActionBar");
+  bar.querySelectorAll("button").forEach((b) => { b.disabled = true; });
+  const { error } = await client.from("products").delete().in("id", ids);
+  bar.querySelectorAll("button").forEach((b) => { b.disabled = false; });
+  if (error) {
+    alert("Couldn't delete: " + error.message);
+    return;
+  }
+  if (ids.includes(String(currentEditId))) resetForm();
+  selectedProductIds.clear();
+  await refreshItemList();
 }
 
 async function handleToggleActive(id, active, toggleEl) {
@@ -1218,6 +1294,20 @@ document.addEventListener("DOMContentLoaded", async () => {
     itemSortMode = e.target.value;
     renderProductList();
   });
+  document.getElementById("itemSelectAll").addEventListener("change", (e) => {
+    // Only the currently visible (filtered/sorted) rows, not the whole
+    // catalog — matches what the checkbox's indeterminate state reflects.
+    document.querySelectorAll("#itemList .admin-item-select").forEach((box) => {
+      box.checked = e.target.checked;
+      if (e.target.checked) selectedProductIds.add(box.dataset.selectId);
+      else selectedProductIds.delete(box.dataset.selectId);
+    });
+    renderProductList();
+  });
+  document.getElementById("bulkShowBtn").addEventListener("click", () => bulkSetActive(true));
+  document.getElementById("bulkHideBtn").addEventListener("click", () => bulkSetActive(false));
+  document.getElementById("bulkDeleteBtn").addEventListener("click", bulkDeleteProducts);
+  document.getElementById("bulkClearBtn").addEventListener("click", clearProductSelection);
 
   document.getElementById("collectionForm").addEventListener("submit", handleSaveCollection);
   document.getElementById("c-photo").addEventListener("change", handleCollectionPhotoChange);

@@ -145,6 +145,19 @@
             <option value="newest">Newest First</option>
           </select>
         </div>
+        <div class="bulk-select-row">
+          <label class="bulk-select-all">
+            <input type="checkbox" id="itemSelectAll"/>
+            <span>Select all</span>
+          </label>
+          <div class="bulk-action-bar" id="bulkActionBar" hidden>
+            <span id="bulkSelectedCount">0 selected</span>
+            <button type="button" id="bulkShowBtn">Show</button>
+            <button type="button" id="bulkHideBtn">Hide</button>
+            <button type="button" class="danger" id="bulkDeleteBtn">Delete</button>
+            <button type="button" id="bulkClearBtn">Clear</button>
+          </div>
+        </div>
         <div id="itemList"></div>
       </div>
     </div>
