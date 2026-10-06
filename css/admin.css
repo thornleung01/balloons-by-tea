@@ -82,7 +82,10 @@ body.admin-body {
   border: 1.5px solid var(--color-border);
 }
 .photo-gallery-item.is-primary { border-color: var(--color-accent); }
-.photo-gallery-item img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.photo-gallery-item img { width: 100%; height: 100%; object-fit: cover; display: block; cursor: zoom-in; }
+.photo-gallery-item { cursor: grab; }
+.photo-gallery-item.dragging { opacity: 0.4; cursor: grabbing; }
+.photo-gallery-item.drag-over { box-shadow: 0 0 0 2px var(--color-accent); }
 .photo-gallery-primary-tag {
   position: absolute; left: 0; bottom: 0; right: 0;
   font-size: 0.6rem; font-weight: 700; text-align: center;
@@ -108,6 +111,37 @@ body.admin-body {
 .photo-gallery-move.move-left { left: 2px; }
 .photo-gallery-move.move-right { left: 22px; }
 .photo-gallery-move:disabled { opacity: 0.35; cursor: default; }
+
+.toggle-switch {
+  position: relative;
+  display: inline-block;
+  width: 38px; height: 22px;
+  flex-shrink: 0;
+  cursor: pointer;
+}
+.toggle-switch input {
+  position: absolute; opacity: 0; width: 100%; height: 100%; margin: 0; cursor: pointer;
+}
+.toggle-slider {
+  position: absolute; inset: 0;
+  background: var(--color-border-input);
+  border-radius: var(--radius-pill);
+  transition: background 160ms var(--ease);
+}
+.toggle-slider::before {
+  content: "";
+  position: absolute;
+  width: 16px; height: 16px;
+  left: 3px; top: 3px;
+  background: #fff;
+  border-radius: 50%;
+  box-shadow: var(--shadow-soft);
+  transition: transform 160ms var(--ease);
+}
+.toggle-switch input:checked + .toggle-slider { background: var(--color-success); }
+.toggle-switch input:checked + .toggle-slider::before { transform: translateX(16px); }
+.toggle-switch input:disabled + .toggle-slider { opacity: 0.6; cursor: default; }
+.toggle-switch input:focus-visible + .toggle-slider { outline: 2px solid var(--color-accent); outline-offset: 2px; }
 
 .form-status { font-size: 0.85rem; min-height: 1.2em; margin-top: var(--space-2); }
 .form-status.error { color: var(--color-destructive); }

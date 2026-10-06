@@ -120,10 +120,14 @@ async function refreshItemList() {
         <div class="admin-item-row ${item.active === false ? "inactive" : ""}" data-id="${item.id}">
           <div class="admin-item-thumb">${item.image_url ? `<img src="${escapeHtml(item.image_url)}" alt=""/>` : ""}${Array.isArray(item.images) && item.images.length > 1 ? `<span class="admin-item-thumb-count">${item.images.length}</span>` : ""}</div>
           <div class="admin-item-body">
-            <div class="name"><span class="status-dot ${item.active === false ? "status-dot-hidden" : "status-dot-live"}" aria-hidden="true" title="${item.active === false ? "Hidden" : "Live on site"}"></span>${escapeHtml(item.name)}</div>
+            <div class="name">${escapeHtml(item.name)}</div>
             <div class="meta">$${Number(item.price).toFixed(0)} ${item.active === false ? "&middot; hidden" : ""}</div>
           </div>
           <div class="admin-item-actions">
+            <label class="toggle-switch" title="${item.active === false ? "Hidden, click to show on site" : "Live on site, click to hide"}">
+              <input type="checkbox" class="active-toggle" data-id="${item.id}" ${item.active !== false ? "checked" : ""}/>
+              <span class="toggle-slider"></span>
+            </label>
             <button type="button" class="edit-btn" data-id="${item.id}">Edit</button>
             <button type="button" class="danger delete-btn" data-id="${item.id}">Delete</button>
           </div>
@@ -141,6 +145,22 @@ async function refreshItemList() {
   listEl.querySelectorAll(".delete-btn").forEach((btn) => {
     btn.addEventListener("click", () => handleDelete(btn.dataset.id, data));
   });
+  listEl.querySelectorAll(".active-toggle").forEach((toggle) => {
+    toggle.addEventListener("change", () => handleToggleActive(toggle.dataset.id, toggle.checked, toggle));
+  });
+}
+
+async function handleToggleActive(id, active, toggleEl) {
+  const client = getSupabaseClient();
+  toggleEl.disabled = true;
+  const { error } = await client.from("products").update({ active }).eq("id", id);
+  if (error) {
+    alert("Couldn't update: " + error.message);
+    toggleEl.checked = !active;
+    toggleEl.disabled = false;
+    return;
+  }
+  await refreshItemList();
 }
 
 /* ===== Form (add / edit) ===== */
@@ -190,12 +210,14 @@ function photoEntryPreviewUrl(entry) {
   return entry.type === "url" ? entry.value : URL.createObjectURL(entry.value);
 }
 
+let draggedPhotoIndex = null;
+
 function renderPhotoGallery() {
   const gallery = document.getElementById("photoGallery");
   if (!gallery) return;
   gallery.innerHTML = currentPhotoEntries.map((entry, i) => `
-    <div class="photo-gallery-item ${i === 0 ? "is-primary" : ""}" data-index="${i}">
-      <img src="${photoEntryPreviewUrl(entry)}" alt=""/>
+    <div class="photo-gallery-item ${i === 0 ? "is-primary" : ""}" data-index="${i}" draggable="true">
+      <img src="${photoEntryPreviewUrl(entry)}" alt="" data-preview="${i}"/>
       ${i === 0 ? '<span class="photo-gallery-primary-tag">Thumbnail</span>' : ""}
       <button type="button" class="photo-gallery-move move-left" data-move="-1" data-index="${i}" ${i === 0 ? "disabled" : ""} aria-label="Move photo earlier">&lsaquo;</button>
       <button type="button" class="photo-gallery-move move-right" data-move="1" data-index="${i}" ${i === currentPhotoEntries.length - 1 ? "disabled" : ""} aria-label="Move photo later">&rsaquo;</button>
@@ -204,13 +226,15 @@ function renderPhotoGallery() {
   `).join("");
 
   gallery.querySelectorAll("[data-remove]").forEach((btn) => {
-    btn.addEventListener("click", () => {
+    btn.addEventListener("click", (e) => {
+      e.stopPropagation();
       currentPhotoEntries.splice(Number(btn.dataset.remove), 1);
       renderPhotoGallery();
     });
   });
   gallery.querySelectorAll("[data-move]").forEach((btn) => {
-    btn.addEventListener("click", () => {
+    btn.addEventListener("click", (e) => {
+      e.stopPropagation();
       const i = Number(btn.dataset.index);
       const j = i + Number(btn.dataset.move);
       if (j < 0 || j >= currentPhotoEntries.length) return;
@@ -218,6 +242,98 @@ function renderPhotoGallery() {
       renderPhotoGallery();
     });
   });
+  gallery.querySelectorAll("[data-preview]").forEach((img) => {
+    img.addEventListener("click", () => openPhotoPreview(Number(img.dataset.preview)));
+  });
+
+  gallery.querySelectorAll(".photo-gallery-item").forEach((item) => {
+    item.addEventListener("dragstart", () => {
+      draggedPhotoIndex = Number(item.dataset.index);
+      item.classList.add("dragging");
+    });
+    item.addEventListener("dragend", () => {
+      item.classList.remove("dragging");
+      draggedPhotoIndex = null;
+    });
+    item.addEventListener("dragover", (e) => {
+      e.preventDefault();
+      item.classList.add("drag-over");
+    });
+    item.addEventListener("dragleave", () => item.classList.remove("drag-over"));
+    item.addEventListener("drop", (e) => {
+      e.preventDefault();
+      item.classList.remove("drag-over");
+      const targetIndex = Number(item.dataset.index);
+      if (draggedPhotoIndex === null || draggedPhotoIndex === targetIndex) return;
+      const [moved] = currentPhotoEntries.splice(draggedPhotoIndex, 1);
+      currentPhotoEntries.splice(targetIndex, 0, moved);
+      renderPhotoGallery();
+    });
+  });
+}
+
+/* ===== Photo preview modal — reuses the public site's lightbox CSS
+   classes (loaded via css/styles.css) without needing js/app.js, which
+   wires up unrelated cart/checkout/nav behavior admin.html doesn't want. */
+let previewIndex = 0;
+
+function ensurePhotoPreviewModal() {
+  let modal = document.getElementById("adminPhotoPreview");
+  if (modal) return modal;
+
+  modal = document.createElement("div");
+  modal.className = "modal lightbox-modal";
+  modal.id = "adminPhotoPreview";
+  modal.innerHTML = `
+    <div class="modal-scrim" data-close-preview></div>
+    <div class="lightbox-panel">
+      <button type="button" class="icon-btn lightbox-close" data-close-preview aria-label="Close">&times;</button>
+      <div class="lightbox-img-wrap">
+        <button type="button" class="carousel-nav lightbox-nav lightbox-prev" aria-label="Previous photo">&lsaquo;</button>
+        <img class="lightbox-img" src="" alt=""/>
+        <button type="button" class="carousel-nav lightbox-nav lightbox-next" aria-label="Next photo">&rsaquo;</button>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(modal);
+
+  modal.querySelectorAll("[data-close-preview]").forEach((el) => el.addEventListener("click", closePhotoPreview));
+  modal.querySelector(".lightbox-prev").addEventListener("click", () => stepPhotoPreview(-1));
+  modal.querySelector(".lightbox-next").addEventListener("click", () => stepPhotoPreview(1));
+  document.addEventListener("keydown", (e) => {
+    if (!modal.classList.contains("open")) return;
+    if (e.key === "Escape") closePhotoPreview();
+    if (e.key === "ArrowLeft") stepPhotoPreview(-1);
+    if (e.key === "ArrowRight") stepPhotoPreview(1);
+  });
+  return modal;
+}
+
+function renderPhotoPreviewFrame() {
+  const modal = document.getElementById("adminPhotoPreview");
+  if (!modal) return;
+  modal.querySelector(".lightbox-img").src = photoEntryPreviewUrl(currentPhotoEntries[previewIndex]);
+  const multi = currentPhotoEntries.length > 1;
+  modal.querySelector(".lightbox-prev").hidden = !multi;
+  modal.querySelector(".lightbox-next").hidden = !multi;
+}
+
+function stepPhotoPreview(delta) {
+  if (currentPhotoEntries.length < 2) return;
+  previewIndex = (previewIndex + delta + currentPhotoEntries.length) % currentPhotoEntries.length;
+  renderPhotoPreviewFrame();
+}
+
+function openPhotoPreview(index) {
+  const modal = ensurePhotoPreviewModal();
+  previewIndex = index;
+  renderPhotoPreviewFrame();
+  modal.classList.add("open");
+}
+
+function closePhotoPreview() {
+  const modal = document.getElementById("adminPhotoPreview");
+  if (modal) modal.classList.remove("open");
 }
 
 async function handleSaveItem(e) {
