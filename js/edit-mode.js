@@ -62,11 +62,19 @@ function setEditMode(on) {
     revealHiddenForEditing();
     renderEditHandles();
   } else {
+    selectedKeys.clear();
+    renderSelectionToolbar();
     removeEditHandles();
     applyLayoutOverrides();
     closeHistoryPanel();
   }
 }
+
+document.addEventListener("click", (e) => {
+  if (!editModeActive || !selectedKeys.size) return;
+  if (e.target.closest("[data-edit-key], .edit-selection-bar, .edit-history-panel, .edit-mode-toggle")) return;
+  clearSelection();
+});
 
 /* ===== Change history / revert ===== */
 
@@ -209,7 +217,53 @@ function elementEditType(el) {
 
 function removeEditHandles() {
   document.querySelectorAll(".edit-controls, .edit-divider-handle").forEach((el) => el.remove());
-  document.querySelectorAll("[data-edit-key]").forEach((el) => el.classList.remove("edit-is-hidden", "edit-is-locked"));
+  document.querySelectorAll("[data-edit-key]").forEach((el) => el.classList.remove("edit-is-hidden", "edit-is-locked", "edit-selected"));
+}
+
+/* ===== Multi-select ("sort of like Figma") =====
+   Plain click selects just that element; shift-click adds/removes it from
+   the current selection. "Select row" grabs every product card sharing
+   the clicked one's visual row (same rounded top offset within its grid
+   container) so a whole row can be locked or resized together without
+   shift-clicking each card individually. */
+let selectedKeys = new Set();
+
+function clearSelection() {
+  selectedKeys.clear();
+  document.querySelectorAll(".edit-selected").forEach((el) => el.classList.remove("edit-selected"));
+  renderSelectionToolbar();
+}
+
+function toggleSelect(key, additive) {
+  if (!additive) {
+    if (selectedKeys.size === 1 && selectedKeys.has(key)) {
+      selectedKeys.clear();
+    } else {
+      selectedKeys.clear();
+      selectedKeys.add(key);
+    }
+  } else if (selectedKeys.has(key)) {
+    selectedKeys.delete(key);
+  } else {
+    selectedKeys.add(key);
+  }
+  document.querySelectorAll("[data-edit-key]").forEach((el) => {
+    el.classList.toggle("edit-selected", selectedKeys.has(el.dataset.editKey));
+  });
+  renderSelectionToolbar();
+}
+
+function selectRow(el) {
+  const parent = el.parentElement;
+  const top = Math.round(el.getBoundingClientRect().top);
+  const rowSiblings = Array.from(parent.children).filter(
+    (sib) => sib.dataset && sib.dataset.editKey && Math.round(sib.getBoundingClientRect().top) === top
+  );
+  selectedKeys = new Set(rowSiblings.map((sib) => sib.dataset.editKey));
+  document.querySelectorAll("[data-edit-key]").forEach((e) => {
+    e.classList.toggle("edit-selected", selectedKeys.has(e.dataset.editKey));
+  });
+  renderSelectionToolbar();
 }
 
 function renderEditHandles() {
@@ -220,6 +274,7 @@ function renderEditHandles() {
     const type = elementEditType(el);
     const locked = !!(LAYOUT_OVERRIDES[key] && LAYOUT_OVERRIDES[key].locked === "true");
     el.classList.toggle("edit-is-locked", locked);
+    el.classList.toggle("edit-selected", selectedKeys.has(key));
 
     const controls = document.createElement("div");
     controls.className = "edit-controls";
@@ -230,6 +285,7 @@ function renderEditHandles() {
       }</button>
       ${type === "section" ? `<button type="button" class="edit-icon-btn hide-btn" title="Hide this section" aria-label="Hide section"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12s3.5-7 9-7 9 7 9 7-3.5 7-9 7-9-7-9-7Z"/><circle cx="12" cy="12" r="2.5"/></svg></button>` : ""}
       ${type === "product" ? `<button type="button" class="edit-icon-btn remove-btn" title="Remove from site" aria-label="Remove product"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 5l14 14M19 5L5 19" stroke-linecap="round"/></svg></button>` : ""}
+      ${type === "product" ? `<button type="button" class="edit-icon-btn select-row-btn" title="Select this whole row" aria-label="Select row"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="9" width="5" height="6" rx="1"/><rect x="9.5" y="9" width="5" height="6" rx="1"/><rect x="16" y="9" width="5" height="6" rx="1"/></svg></button>` : ""}
     `;
     el.appendChild(controls);
 
@@ -257,6 +313,119 @@ function renderEditHandles() {
     if (hideBtn) hideBtn.addEventListener("click", (e) => { e.stopPropagation(); toggleHidden(el, key); });
     const removeBtn = controls.querySelector(".remove-btn");
     if (removeBtn) removeBtn.addEventListener("click", (e) => { e.stopPropagation(); removeProduct(el, key); });
+    const selectRowBtn = controls.querySelector(".select-row-btn");
+    if (selectRowBtn) selectRowBtn.addEventListener("click", (e) => { e.stopPropagation(); selectRow(el); });
+
+    /* Capture phase, not bubble: .product-art and .add-btn have their own
+       click listeners (open lightbox / add to cart) registered directly on
+       themselves in app.js. A bubble-phase listener here would fire too
+       late — those descendant listeners already ran. Capturing on the way
+       down lets us intercept and stopPropagation() before the event ever
+       reaches them.
+       Every [data-edit-key] element gets one of these (sections AND the
+       product cards nested inside them), and capture fires outside-in, so
+       without the closest() check below a section would always win the
+       click before it ever reached the card nested inside it. Only the
+       innermost matching element should handle the click — everything
+       else just lets it keep capturing downward. */
+    el.addEventListener("click", (e) => {
+      if (e.target.closest(".edit-controls, .edit-resize-handle, .edit-divider-handle")) return;
+      if (e.target.closest("[data-edit-key]") !== el) return;
+      e.preventDefault();
+      e.stopPropagation();
+      toggleSelect(key, e.shiftKey);
+    }, true);
+  });
+}
+
+/* ===== Group toolbar (shown once 1+ elements are selected) ===== */
+
+function renderSelectionToolbar() {
+  let bar = document.getElementById("editSelectionBar");
+  if (!selectedKeys.size) {
+    if (bar) bar.remove();
+    return;
+  }
+  if (!bar) {
+    bar = document.createElement("div");
+    bar.id = "editSelectionBar";
+    bar.className = "edit-selection-bar";
+    document.body.appendChild(bar);
+  }
+  const allLocked = [...selectedKeys].every((k) => LAYOUT_OVERRIDES[k] && LAYOUT_OVERRIDES[k].locked === "true");
+  bar.innerHTML = `
+    <span class="edit-selection-count">${selectedKeys.size} selected</span>
+    <button type="button" class="edit-icon-btn ${allLocked ? "is-locked" : ""}" id="selectionLockBtn" title="${allLocked ? "Unlock selected" : "Lock selected"}">${allLocked
+      ? '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><rect x="5" y="11" width="14" height="9" rx="1.5"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>'
+      : '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><rect x="5" y="11" width="14" height="9" rx="1.5"/><path d="M8 11V7a4 4 0 0 1 7.5-2"/></svg>'
+    }</button>
+    <span class="edit-selection-resize" id="selectionResizeHandle" title="Drag to resize all selected">
+      <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 3v5a2 2 0 0 1-2 2H1M16 21v-5a2 2 0 0 1 2-2h5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    </span>
+    <button type="button" class="edit-icon-btn" id="selectionClearBtn" title="Clear selection" aria-label="Clear selection">
+      <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 5l14 14M19 5L5 19" stroke-linecap="round"/></svg>
+    </button>
+  `;
+  document.getElementById("selectionLockBtn").addEventListener("click", () => groupToggleLock(!allLocked));
+  document.getElementById("selectionClearBtn").addEventListener("click", clearSelection);
+  wireGroupResizeHandle(document.getElementById("selectionResizeHandle"));
+}
+
+async function groupToggleLock(locked) {
+  try {
+    for (const key of selectedKeys) {
+      if (locked) await saveLayoutOverride(key, "locked", "true");
+      else await clearLayoutOverride(key, "locked");
+    }
+    renderEditHandles();
+    // renderEditHandles() alone leaves the toolbar's lock button bound to
+    // its old "allLocked" closure from the last time the bar was built, so
+    // without this the button never flips to its "unlock" label/action.
+    renderSelectionToolbar();
+  } catch (err) {
+    alert("Couldn't update lock: " + err.message);
+  }
+}
+
+function wireGroupResizeHandle(handle) {
+  let startX = 0, startY = 0;
+  const startScales = {};
+
+  function onMove(e) {
+    const delta = (e.clientX - startX) + (e.clientY - startY);
+    selectedKeys.forEach((key) => {
+      const el = document.querySelector(`[data-edit-key="${CSS.escape(key)}"]`);
+      if (!el || el.classList.contains("edit-is-locked")) return;
+      const base = startScales[key] || 1;
+      const next = Math.max(0.7, Math.min(1.5, base + delta / 150));
+      el.style.transform = `scale(${next})`;
+    });
+  }
+  async function onUp() {
+    document.removeEventListener("pointermove", onMove);
+    document.removeEventListener("pointerup", onUp);
+    try {
+      for (const key of selectedKeys) {
+        const el = document.querySelector(`[data-edit-key="${CSS.escape(key)}"]`);
+        if (!el || el.classList.contains("edit-is-locked")) continue;
+        const match = /scale\(([\d.]+)\)/.exec(el.style.transform || "");
+        if (match) await saveLayoutOverride(key, "scale", match[1]);
+      }
+    } catch (err) {
+      alert("Couldn't save sizes: " + err.message);
+    }
+  }
+  handle.addEventListener("pointerdown", (e) => {
+    e.preventDefault();
+    startX = e.clientX;
+    startY = e.clientY;
+    selectedKeys.forEach((key) => {
+      const el = document.querySelector(`[data-edit-key="${CSS.escape(key)}"]`);
+      const m = el ? /scale\(([\d.]+)\)/.exec(el.style.transform || "") : null;
+      startScales[key] = m ? parseFloat(m[1]) : 1;
+    });
+    document.addEventListener("pointermove", onMove);
+    document.addEventListener("pointerup", onUp);
   });
 }
 
