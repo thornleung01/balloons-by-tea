@@ -1637,6 +1637,13 @@ body.edit-mode-active [data-edit-key] {
   outline: 1.5px dashed transparent;
   transition: outline-color 120ms var(--ease);
 }
+/* .nav relies on position:sticky to stay pinned while scrolling; the
+   generic rule above would silently downgrade it to relative during edit
+   mode (higher specificity wins), so restore sticky specifically for it. */
+body.edit-mode-active nav.nav[data-edit-key] {
+  position: sticky;
+  top: 0;
+}
 body.edit-mode-active [data-edit-key]:hover { outline-color: var(--color-accent); }
 body.edit-mode-active [data-edit-key].edit-is-locked:hover { outline-color: var(--color-fg-faint); }
 body.edit-mode-active [data-edit-key].edit-is-hidden { opacity: 0.35; }

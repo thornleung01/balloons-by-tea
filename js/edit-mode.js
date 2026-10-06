@@ -120,7 +120,7 @@ async function loadHistoryList() {
   const listEl = document.getElementById("editHistoryList");
   if (!listEl) return;
   const client = getSupabaseClient();
-  const page = document.body.dataset.page || "";
+  const page = currentLayoutPage();
   const { data, error } = await client
     .from("layout_overrides_history")
     .select("*")

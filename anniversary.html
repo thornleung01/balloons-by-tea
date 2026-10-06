@@ -11,7 +11,7 @@
 </head>
 <body data-page="categories" data-collection="anniversary">
 
-<nav class="nav">
+<nav class="nav" data-edit-key="nav">
   <div class="container nav-row">
     <a href="index.html" class="brand">
       <img src="images/logo.png" alt="Balloons by Tea" class="brand-logo"/>
@@ -38,15 +38,15 @@
   </div>
 </nav>
 
-<header class="collection-hero">
+<header class="collection-hero" data-edit-key="collection-hero">
   <div class="container">
     <div class="word-badge collection-title-badge">
-      <h1>Anniversary</h1>
+      <h1 data-edit-key="collection-heading">Anniversary</h1>
     </div>
   </div>
 </header>
 
-<section class="section pattern-bg">
+<section class="section pattern-bg" data-edit-key="product-section">
   <div class="container">
     <div class="catalog-controls">
       <div class="search-field">
@@ -217,6 +217,8 @@
 <script src="js/supabase-config.js"></script>
 <script src="js/supabase-catalog.js"></script>
 <script src="js/site-content.js"></script>
+<script src="js/layout-editor.js"></script>
+<script src="js/edit-mode.js"></script>
 <script src="js/app.js"></script>
 </body>
 </html>
