@@ -1274,19 +1274,25 @@ button {
   background: var(--color-surface-solid);
   box-shadow: var(--shadow-soft);
 }
+/* Fixed box, not sized to whatever each photo's natural dimensions
+   happen to be — otherwise a wide upload renders wide-and-short, a tall
+   one narrow-and-tall, and the lightbox visibly changes size from one
+   product to the next. Every photo now gets the same box; object-fit:
+   contain letterboxes/pillarboxes it to fit without cropping or
+   stretching, regardless of its original upload size or aspect ratio. */
 .lightbox-img-wrap {
   position: relative;
-  max-width: 100%;
-  max-height: 74vh;
+  width: min(640px, 92vw);
+  height: min(640px, 74vh);
   background: var(--color-bg-alt);
   border-radius: var(--radius-lg);
   overflow: hidden;
-  display: inline-flex;
+  display: flex;
   align-items: center;
   justify-content: center;
   box-shadow: var(--shadow-lift);
 }
-.lightbox-img { width: auto; height: auto; max-width: 100%; max-height: 74vh; object-fit: contain; display: block; }
+.lightbox-img { width: 100%; height: 100%; object-fit: contain; display: block; }
 .lightbox-nav {
   position: absolute;
   top: 50%;
