@@ -61,6 +61,10 @@
     <div class="admin-tabs" role="tablist">
       <button type="button" class="admin-tab active" id="tabProductsBtn" role="tab" aria-selected="true">Products</button>
       <button type="button" class="admin-tab" id="tabOrdersBtn" role="tab" aria-selected="false">Orders <span class="admin-tab-badge" id="ordersBadge" hidden>0</span></button>
+      <button type="button" class="admin-tab" id="tabCollectionsBtn" role="tab" aria-selected="false">Collections</button>
+      <button type="button" class="admin-tab" id="tabNavBtn" role="tab" aria-selected="false">Nav</button>
+      <button type="button" class="admin-tab" id="tabFaqBtn" role="tab" aria-selected="false">FAQ</button>
+      <button type="button" class="admin-tab" id="tabSettingsBtn" role="tab" aria-selected="false">Settings</button>
     </div>
 
     <div id="productsPanel" class="admin-grid">
@@ -137,6 +141,183 @@
         </div>
       </div>
       <div id="orderList"></div>
+    </div>
+
+    <div id="collectionsPanel" class="admin-grid" hidden>
+      <div class="admin-card">
+        <h2 id="collectionFormTitle">Add Category</h2>
+        <form id="collectionForm" novalidate>
+          <div class="field">
+            <label for="c-title">Title</label>
+            <input id="c-title" name="title" type="text" required/>
+          </div>
+          <div class="field">
+            <label for="c-tagline">Tagline</label>
+            <input id="c-tagline" name="tagline" type="text"/>
+          </div>
+          <div class="field">
+            <label for="c-sort">Order</label>
+            <input id="c-sort" name="sort_order" type="number" step="1" value="0"/>
+          </div>
+          <div class="field">
+            <label for="c-photo">Card image (optional)</label>
+            <div class="photo-field">
+              <div class="photo-preview" id="collectionPhotoPreview">No photo</div>
+              <input id="c-photo" name="photo" type="file" accept="image/*"/>
+            </div>
+          </div>
+          <div class="form-status" id="collectionFormStatus"></div>
+          <div class="modal-actions">
+            <button type="button" class="btn btn-outline" id="cancelCollectionEditBtn" hidden>Cancel edit</button>
+            <button type="submit" class="btn btn-primary btn-block" id="saveCollectionBtn">Add Category</button>
+          </div>
+        </form>
+      </div>
+      <div class="admin-card">
+        <h2>Current Categories</h2>
+        <div id="collectionList"></div>
+      </div>
+    </div>
+
+    <div id="navPanel" class="admin-grid" hidden>
+      <div class="admin-card">
+        <h2 id="navFormTitle">Add Nav Item</h2>
+        <form id="navForm" novalidate>
+          <div class="field">
+            <label for="n-label">Label</label>
+            <input id="n-label" name="label" type="text" required/>
+          </div>
+          <div class="field">
+            <label for="n-href">Link (URL)</label>
+            <input id="n-href" name="href" type="text" required placeholder="e.g. category.html?slug=garden-party"/>
+          </div>
+          <div class="field">
+            <label for="n-icon">Icon</label>
+            <select id="n-icon" name="icon">
+              <option value="none">Default (star)</option>
+              <option value="home">Home</option>
+              <option value="shop">Shop</option>
+              <option value="custom-order">Custom Order</option>
+              <option value="about">About</option>
+              <option value="faq">FAQ</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="n-sort">Order</label>
+            <input id="n-sort" name="sort_order" type="number" step="1" value="0"/>
+          </div>
+          <div class="field">
+            <label for="n-visible" style="display:inline-flex;align-items:center;gap:8px;">
+              <input id="n-visible" name="visible" type="checkbox" style="width:auto;min-height:auto;" checked/>
+              Show in nav
+            </label>
+          </div>
+          <div class="form-status" id="navFormStatus"></div>
+          <div class="modal-actions">
+            <button type="button" class="btn btn-outline" id="cancelNavEditBtn" hidden>Cancel edit</button>
+            <button type="submit" class="btn btn-primary btn-block" id="saveNavBtn">Add Nav Item</button>
+          </div>
+        </form>
+      </div>
+      <div class="admin-card">
+        <h2>Current Nav Items</h2>
+        <div id="navList"></div>
+      </div>
+    </div>
+
+    <div id="faqPanel" class="admin-grid" hidden>
+      <div class="admin-card">
+        <h2 id="faqFormTitle">Add FAQ Item</h2>
+        <form id="faqForm" novalidate>
+          <div class="field">
+            <label for="fq-question">Question</label>
+            <input id="fq-question" name="question" type="text" required/>
+          </div>
+          <div class="field">
+            <label for="fq-answer">Answer</label>
+            <textarea id="fq-answer" name="answer" required placeholder="Separate paragraphs with a blank line"></textarea>
+          </div>
+          <div class="field">
+            <label for="fq-sort">Order</label>
+            <input id="fq-sort" name="sort_order" type="number" step="1" value="0"/>
+          </div>
+          <div class="field">
+            <label for="fq-open" style="display:inline-flex;align-items:center;gap:8px;">
+              <input id="fq-open" name="is_open_default" type="checkbox" style="width:auto;min-height:auto;"/>
+              Open by default
+            </label>
+          </div>
+          <div class="form-status" id="faqFormStatus"></div>
+          <div class="modal-actions">
+            <button type="button" class="btn btn-outline" id="cancelFaqEditBtn" hidden>Cancel edit</button>
+            <button type="submit" class="btn btn-primary btn-block" id="saveFaqBtn">Add FAQ Item</button>
+          </div>
+        </form>
+      </div>
+      <div class="admin-card">
+        <h2>Current FAQ Items</h2>
+        <div id="faqList"></div>
+      </div>
+    </div>
+
+    <div id="settingsPanel" class="admin-card" hidden>
+      <h2>Site Settings</h2>
+      <form id="settingsForm" novalidate>
+        <fieldset class="settings-fieldset">
+          <legend>Hero</legend>
+          <div class="field"><label for="s-hero_heading">Headline</label><input id="s-hero_heading" name="hero_heading" type="text"/></div>
+          <div class="field"><label for="s-hero_subtext">Subtext</label><textarea id="s-hero_subtext" name="hero_subtext"></textarea></div>
+          <div class="field"><label for="s-hero_cta_text">Button text</label><input id="s-hero_cta_text" name="hero_cta_text" type="text"/></div>
+          <div class="field">
+            <label for="s-hero_image">Hero image</label>
+            <div class="photo-field">
+              <div class="photo-preview" id="heroPhotoPreview">No photo</div>
+              <input id="s-hero_image" type="file" accept="image/*"/>
+            </div>
+          </div>
+          <div class="field">
+            <label for="s-logo_image">Logo</label>
+            <div class="photo-field">
+              <div class="photo-preview" id="logoPhotoPreview">No photo</div>
+              <input id="s-logo_image" type="file" accept="image/*"/>
+            </div>
+          </div>
+        </fieldset>
+        <fieldset class="settings-fieldset">
+          <legend>Contact</legend>
+          <div class="field"><label for="s-contact_phone">Phone</label><input id="s-contact_phone" name="contact_phone" type="text"/></div>
+          <div class="field"><label for="s-contact_email">Email</label><input id="s-contact_email" name="contact_email" type="text"/></div>
+          <div class="field"><label for="s-contact_whatsapp">WhatsApp link</label><input id="s-contact_whatsapp" name="contact_whatsapp" type="text" placeholder="https://wa.me/1..."/></div>
+        </fieldset>
+        <fieldset class="settings-fieldset">
+          <legend>Social</legend>
+          <div class="field"><label for="s-social_instagram">Instagram</label><input id="s-social_instagram" name="social_instagram" type="text"/></div>
+          <div class="field"><label for="s-social_rednote">RedNote</label><input id="s-social_rednote" name="social_rednote" type="text"/></div>
+          <div class="field"><label for="s-social_tiktok">TikTok</label><input id="s-social_tiktok" name="social_tiktok" type="text"/></div>
+          <div class="field"><label for="s-social_youtube">YouTube</label><input id="s-social_youtube" name="social_youtube" type="text"/></div>
+        </fieldset>
+        <fieldset class="settings-fieldset">
+          <legend>About page</legend>
+          <div class="field"><label for="s-about_intro_1">Intro paragraph 1</label><textarea id="s-about_intro_1" name="about_intro_1"></textarea></div>
+          <div class="field"><label for="s-about_intro_2">Intro paragraph 2</label><textarea id="s-about_intro_2" name="about_intro_2"></textarea></div>
+          <div class="field"><label for="s-about_highlight_1_heading">Highlight 1 heading</label><input id="s-about_highlight_1_heading" name="about_highlight_1_heading" type="text"/></div>
+          <div class="field"><label for="s-about_highlight_1_body">Highlight 1 body</label><textarea id="s-about_highlight_1_body" name="about_highlight_1_body"></textarea></div>
+          <div class="field"><label for="s-about_highlight_2_heading">Highlight 2 heading</label><input id="s-about_highlight_2_heading" name="about_highlight_2_heading" type="text"/></div>
+          <div class="field"><label for="s-about_highlight_2_body">Highlight 2 body</label><textarea id="s-about_highlight_2_body" name="about_highlight_2_body"></textarea></div>
+          <div class="field"><label for="s-about_highlight_3_heading">Highlight 3 heading</label><input id="s-about_highlight_3_heading" name="about_highlight_3_heading" type="text"/></div>
+          <div class="field"><label for="s-about_highlight_3_body">Highlight 3 body</label><textarea id="s-about_highlight_3_body" name="about_highlight_3_body"></textarea></div>
+        </fieldset>
+        <fieldset class="settings-fieldset">
+          <legend>Theme colors</legend>
+          <div class="field"><label for="s-theme_coral">Accent (coral)</label><input id="s-theme_coral" name="theme_coral" type="color"/></div>
+          <div class="field"><label for="s-theme_blush">Blush</label><input id="s-theme_blush" name="theme_blush" type="color"/></div>
+          <div class="field"><label for="s-theme_baby_blue">Baby blue</label><input id="s-theme_baby_blue" name="theme_baby_blue" type="color"/></div>
+          <div class="field"><label for="s-theme_soft_yellow">Soft yellow</label><input id="s-theme_soft_yellow" name="theme_soft_yellow" type="color"/></div>
+          <div class="field"><label for="s-theme_brown">Text (brown)</label><input id="s-theme_brown" name="theme_brown" type="color"/></div>
+        </fieldset>
+        <div class="form-status" id="settingsFormStatus"></div>
+        <button type="submit" class="btn btn-primary btn-block" id="saveSettingsBtn">Save Settings</button>
+      </form>
     </div>
   </div>
 

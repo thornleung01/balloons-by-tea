@@ -92,7 +92,7 @@ body.admin-body {
 .empty-note { font-size: 0.9rem; color: var(--color-fg-faint); text-align: center; padding: var(--space-4) 0; }
 
 /* Tabs */
-.admin-tabs { display: flex; gap: var(--space-2); margin-bottom: var(--space-3); border-bottom: 1px solid var(--color-border); }
+.admin-tabs { display: flex; flex-wrap: wrap; gap: var(--space-2) var(--space-3); margin-bottom: var(--space-3); border-bottom: 1px solid var(--color-border); }
 .admin-tab {
   display: flex; align-items: center; gap: 6px;
   padding: 10px 4px; margin-bottom: -1px;
@@ -137,3 +137,8 @@ body.admin-body {
 .order-summary-text, .order-notes-text { white-space: pre-line; background: var(--color-bg-alt); border-radius: var(--radius-sm); padding: 8px 10px; }
 .order-row-actions { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); margin-top: var(--space-2); }
 .order-status-select { font-size: 0.85rem; padding: 6px 8px; border-radius: var(--radius-sm); border: 1px solid var(--color-border); background: var(--color-surface-solid); color: var(--color-fg); }
+
+/* Settings tab */
+.settings-fieldset { border: none; padding: 0; margin: 0 0 var(--space-4); }
+.settings-fieldset legend { font-family: 'Playfair Display', Georgia, serif; font-weight: 700; font-size: 1.05rem; margin-bottom: var(--space-2); padding: 0; }
+.field input[type="color"] { padding: 4px; cursor: pointer; }

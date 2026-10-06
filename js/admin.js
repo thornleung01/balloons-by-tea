@@ -18,6 +18,8 @@ function escapeHtml(str) {
 }
 
 function collectionTitle(slug) {
+  const live = collectionsCache.find((c) => c.slug === slug);
+  if (live) return live.title;
   return (window.COLLECTIONS && window.COLLECTIONS[slug] && window.COLLECTIONS[slug].title) || slug;
 }
 
@@ -67,6 +69,7 @@ async function enterDashboard() {
   show(document.getElementById("logoutBtn"));
   hide(document.getElementById("loginView"));
   show(document.getElementById("dashboardView"));
+  await loadCollectionsCache();
   await refreshItemList();
   await refreshOrderList();
 }
@@ -252,15 +255,525 @@ async function handleDelete(id, allItems) {
 
 /* ===== Tabs ===== */
 
+const TABS = {
+  products: { btnId: "tabProductsBtn", panelId: "productsPanel" },
+  orders: { btnId: "tabOrdersBtn", panelId: "ordersPanel", onEnter: refreshOrderList },
+  collections: { btnId: "tabCollectionsBtn", panelId: "collectionsPanel", onEnter: refreshCollectionList },
+  nav: { btnId: "tabNavBtn", panelId: "navPanel", onEnter: refreshNavList },
+  faq: { btnId: "tabFaqBtn", panelId: "faqPanel", onEnter: refreshFaqList },
+  settings: { btnId: "tabSettingsBtn", panelId: "settingsPanel", onEnter: loadSettingsIntoForm }
+};
+
 function switchTab(tab) {
-  const isProducts = tab === "products";
-  document.getElementById("tabProductsBtn").classList.toggle("active", isProducts);
-  document.getElementById("tabProductsBtn").setAttribute("aria-selected", String(isProducts));
-  document.getElementById("tabOrdersBtn").classList.toggle("active", !isProducts);
-  document.getElementById("tabOrdersBtn").setAttribute("aria-selected", String(!isProducts));
-  document.getElementById("productsPanel").hidden = !isProducts;
-  document.getElementById("ordersPanel").hidden = isProducts;
-  if (!isProducts) refreshOrderList();
+  Object.keys(TABS).forEach((key) => {
+    const { btnId, panelId } = TABS[key];
+    const active = key === tab;
+    document.getElementById(btnId).classList.toggle("active", active);
+    document.getElementById(btnId).setAttribute("aria-selected", String(active));
+    document.getElementById(panelId).hidden = !active;
+  });
+  const entry = TABS[tab];
+  if (entry && entry.onEnter) entry.onEnter();
+}
+
+/* ===== Collections ===== */
+
+let collectionsCache = [];
+let currentCollectionEditId = null;
+let currentCollectionPhotoFile = null;
+
+function slugify(text) {
+  return String(text).toLowerCase().trim()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 60) || "category";
+}
+
+async function loadCollectionsCache() {
+  const client = getSupabaseClient();
+  const { data, error } = await client.from("collections").select("*").order("sort_order", { ascending: true });
+  if (error) return;
+  collectionsCache = data || [];
+  const select = document.getElementById("f-collection");
+  if (select) {
+    const prev = select.value;
+    select.innerHTML = collectionsCache.map((c) => `<option value="${escapeHtml(c.slug)}">${escapeHtml(c.title)}</option>`).join("");
+    if ([...select.options].some((o) => o.value === prev)) select.value = prev;
+  }
+}
+
+async function refreshCollectionList() {
+  await loadCollectionsCache();
+  const listEl = document.getElementById("collectionList");
+
+  if (!collectionsCache.length) {
+    listEl.innerHTML = `<p class="empty-note">No categories yet.</p>`;
+    return;
+  }
+
+  const client = getSupabaseClient();
+  const { data: productRows } = await client.from("products").select("collection");
+  const usedSlugs = new Set((productRows || []).map((p) => p.collection));
+
+  listEl.innerHTML = collectionsCache.map((c) => `
+    <div class="admin-item-row" data-id="${c.id}">
+      <div class="admin-item-thumb">${c.card_image_url ? `<img src="${escapeHtml(c.card_image_url)}" alt=""/>` : ""}</div>
+      <div class="admin-item-body">
+        <div class="name">${escapeHtml(c.title)} ${c.is_legacy ? '<span class="form-status" style="display:inline;">(built-in)</span>' : ""}</div>
+        <div class="meta">${escapeHtml(c.tagline || "")}</div>
+      </div>
+      <div class="admin-item-actions">
+        <button type="button" class="edit-btn" data-id="${c.id}">Edit</button>
+        ${c.is_legacy ? "" : `<button type="button" class="danger delete-btn" data-id="${c.id}">Delete</button>`}
+      </div>
+    </div>
+  `).join("");
+
+  listEl.querySelectorAll(".edit-btn").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const row = collectionsCache.find((c) => String(c.id) === btn.dataset.id);
+      if (row) startCollectionEdit(row);
+    });
+  });
+  listEl.querySelectorAll(".delete-btn").forEach((btn) => {
+    btn.addEventListener("click", () => handleDeleteCollection(btn.dataset.id, usedSlugs));
+  });
+}
+
+function startCollectionEdit(row) {
+  currentCollectionEditId = row.id;
+  currentCollectionPhotoFile = null;
+  document.getElementById("c-title").value = row.title || "";
+  document.getElementById("c-tagline").value = row.tagline || "";
+  document.getElementById("c-sort").value = row.sort_order || 0;
+  document.getElementById("c-photo").value = "";
+  document.getElementById("collectionPhotoPreview").innerHTML = row.card_image_url ? `<img src="${escapeHtml(row.card_image_url)}" alt=""/>` : "No photo";
+  document.getElementById("collectionFormTitle").textContent = "Edit Category";
+  document.getElementById("saveCollectionBtn").textContent = "Update Category";
+  show(document.getElementById("cancelCollectionEditBtn"));
+  window.scrollTo({ top: 0, behavior: "smooth" });
+}
+
+function resetCollectionForm() {
+  currentCollectionEditId = null;
+  currentCollectionPhotoFile = null;
+  document.getElementById("collectionForm").reset();
+  document.getElementById("collectionPhotoPreview").innerHTML = "No photo";
+  document.getElementById("collectionFormTitle").textContent = "Add Category";
+  document.getElementById("saveCollectionBtn").textContent = "Add Category";
+  hide(document.getElementById("cancelCollectionEditBtn"));
+  document.getElementById("collectionFormStatus").textContent = "";
+}
+
+function handleCollectionPhotoChange(e) {
+  const file = e.target.files[0];
+  currentCollectionPhotoFile = file || null;
+  const preview = document.getElementById("collectionPhotoPreview");
+  if (!file) { preview.innerHTML = "No photo"; return; }
+  const reader = new FileReader();
+  reader.onload = () => { preview.innerHTML = `<img src="${reader.result}" alt=""/>`; };
+  reader.readAsDataURL(file);
+}
+
+async function uploadSiteImage(client, file) {
+  const safeName = file.name.replace(/[^a-zA-Z0-9.-]/g, "_");
+  const path = `${Date.now()}-${safeName}`;
+  const { error } = await client.storage.from("site-images").upload(path, file, { upsert: true });
+  if (error) throw new Error("Image upload failed: " + error.message);
+  const { data: pub } = client.storage.from("site-images").getPublicUrl(path);
+  return pub.publicUrl;
+}
+
+async function handleSaveCollection(e) {
+  e.preventDefault();
+  const client = getSupabaseClient();
+  const saveBtn = document.getElementById("saveCollectionBtn");
+  const statusEl = document.getElementById("collectionFormStatus");
+
+  const title = document.getElementById("c-title").value.trim();
+  if (!title) { statusEl.textContent = "Title is required."; statusEl.className = "form-status error"; return; }
+
+  const payload = {
+    title,
+    tagline: document.getElementById("c-tagline").value.trim(),
+    sort_order: parseInt(document.getElementById("c-sort").value, 10) || 0
+  };
+
+  saveBtn.disabled = true;
+  statusEl.textContent = "Saving...";
+  statusEl.className = "form-status";
+
+  try {
+    if (currentCollectionPhotoFile) {
+      payload.card_image_url = await uploadSiteImage(client, currentCollectionPhotoFile);
+    }
+
+    let error;
+    if (currentCollectionEditId) {
+      ({ error } = await client.from("collections").update(payload).eq("id", currentCollectionEditId));
+    } else {
+      payload.slug = slugify(title);
+      payload.is_legacy = false;
+      ({ error } = await client.from("collections").insert(payload));
+    }
+    if (error) throw error;
+
+    const message = currentCollectionEditId ? "Category updated." : "Category added.";
+    resetCollectionForm();
+    statusEl.textContent = message;
+    statusEl.className = "form-status success";
+    await refreshCollectionList();
+  } catch (err) {
+    statusEl.textContent = err.message || "Something went wrong saving this category.";
+    statusEl.className = "form-status error";
+  } finally {
+    saveBtn.disabled = false;
+  }
+}
+
+async function handleDeleteCollection(id, usedSlugs) {
+  const row = collectionsCache.find((c) => String(c.id) === String(id));
+  if (!row) return;
+  if (usedSlugs.has(row.slug)) {
+    alert(`Can't delete "${row.title}" — it still has products assigned to it. Move or delete those products first.`);
+    return;
+  }
+  if (!confirm(`Delete "${row.title}"? This can't be undone.`)) return;
+  const client = getSupabaseClient();
+  const { error } = await client.from("collections").delete().eq("id", id);
+  if (error) { alert("Couldn't delete: " + error.message); return; }
+  if (currentCollectionEditId === id) resetCollectionForm();
+  await refreshCollectionList();
+}
+
+/* ===== Nav items ===== */
+
+let navCache = [];
+let currentNavEditId = null;
+
+async function refreshNavList() {
+  const client = getSupabaseClient();
+  const { data, error } = await client.from("nav_items").select("*").order("sort_order", { ascending: true });
+  const listEl = document.getElementById("navList");
+  if (error) {
+    listEl.innerHTML = `<p class="form-status error">Couldn't load nav items: ${escapeHtml(error.message)}</p>`;
+    return;
+  }
+  navCache = data || [];
+  if (!navCache.length) {
+    listEl.innerHTML = `<p class="empty-note">No nav items yet.</p>`;
+    return;
+  }
+
+  listEl.innerHTML = navCache.map((n) => `
+    <div class="admin-item-row ${n.visible === false ? "inactive" : ""}" data-id="${n.id}">
+      <div class="admin-item-body">
+        <div class="name">${escapeHtml(n.label)} ${n.key ? '<span class="form-status" style="display:inline;">(built-in)</span>' : ""}</div>
+        <div class="meta">${escapeHtml(n.href)} ${n.visible === false ? "&middot; hidden" : ""}</div>
+      </div>
+      <div class="admin-item-actions">
+        <button type="button" class="edit-btn" data-id="${n.id}">Edit</button>
+        ${n.key ? "" : `<button type="button" class="danger delete-btn" data-id="${n.id}">Delete</button>`}
+      </div>
+    </div>
+  `).join("");
+
+  listEl.querySelectorAll(".edit-btn").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const row = navCache.find((n) => String(n.id) === btn.dataset.id);
+      if (row) startNavEdit(row);
+    });
+  });
+  listEl.querySelectorAll(".delete-btn").forEach((btn) => {
+    btn.addEventListener("click", () => handleDeleteNav(btn.dataset.id));
+  });
+}
+
+function startNavEdit(row) {
+  currentNavEditId = row.id;
+  document.getElementById("n-label").value = row.label || "";
+  document.getElementById("n-href").value = row.href || "";
+  document.getElementById("n-icon").value = row.icon || "none";
+  document.getElementById("n-sort").value = row.sort_order || 0;
+  document.getElementById("n-visible").checked = row.visible !== false;
+  document.getElementById("navFormTitle").textContent = "Edit Nav Item";
+  document.getElementById("saveNavBtn").textContent = "Update Nav Item";
+  show(document.getElementById("cancelNavEditBtn"));
+  window.scrollTo({ top: 0, behavior: "smooth" });
+}
+
+function resetNavForm() {
+  currentNavEditId = null;
+  document.getElementById("navForm").reset();
+  document.getElementById("navFormTitle").textContent = "Add Nav Item";
+  document.getElementById("saveNavBtn").textContent = "Add Nav Item";
+  hide(document.getElementById("cancelNavEditBtn"));
+  document.getElementById("navFormStatus").textContent = "";
+}
+
+async function handleSaveNav(e) {
+  e.preventDefault();
+  const client = getSupabaseClient();
+  const saveBtn = document.getElementById("saveNavBtn");
+  const statusEl = document.getElementById("navFormStatus");
+
+  const label = document.getElementById("n-label").value.trim();
+  const href = document.getElementById("n-href").value.trim();
+  if (!label || !href) { statusEl.textContent = "Label and link are both required."; statusEl.className = "form-status error"; return; }
+
+  const payload = {
+    label,
+    href,
+    icon: document.getElementById("n-icon").value,
+    sort_order: parseInt(document.getElementById("n-sort").value, 10) || 0,
+    visible: document.getElementById("n-visible").checked
+  };
+
+  saveBtn.disabled = true;
+  statusEl.textContent = "Saving...";
+  statusEl.className = "form-status";
+
+  try {
+    let error;
+    if (currentNavEditId) {
+      ({ error } = await client.from("nav_items").update(payload).eq("id", currentNavEditId));
+    } else {
+      ({ error } = await client.from("nav_items").insert(payload));
+    }
+    if (error) throw error;
+
+    const message = currentNavEditId ? "Nav item updated." : "Nav item added.";
+    resetNavForm();
+    statusEl.textContent = message;
+    statusEl.className = "form-status success";
+    await refreshNavList();
+  } catch (err) {
+    statusEl.textContent = err.message || "Something went wrong saving this nav item.";
+    statusEl.className = "form-status error";
+  } finally {
+    saveBtn.disabled = false;
+  }
+}
+
+async function handleDeleteNav(id) {
+  const row = navCache.find((n) => String(n.id) === String(id));
+  if (!row || row.key) return;
+  if (!confirm(`Delete "${row.label}"? This can't be undone.`)) return;
+  const client = getSupabaseClient();
+  const { error } = await client.from("nav_items").delete().eq("id", id);
+  if (error) { alert("Couldn't delete: " + error.message); return; }
+  if (currentNavEditId === id) resetNavForm();
+  await refreshNavList();
+}
+
+/* ===== FAQ items ===== */
+
+let faqCache = [];
+let currentFaqEditId = null;
+
+async function refreshFaqList() {
+  const client = getSupabaseClient();
+  const { data, error } = await client.from("faq_items").select("*").order("sort_order", { ascending: true });
+  const listEl = document.getElementById("faqList");
+  if (error) {
+    listEl.innerHTML = `<p class="form-status error">Couldn't load FAQ items: ${escapeHtml(error.message)}</p>`;
+    return;
+  }
+  faqCache = data || [];
+  if (!faqCache.length) {
+    listEl.innerHTML = `<p class="empty-note">No FAQ items yet.</p>`;
+    return;
+  }
+
+  listEl.innerHTML = faqCache.map((f) => `
+    <div class="admin-item-row" data-id="${f.id}">
+      <div class="admin-item-body">
+        <div class="name">${escapeHtml(f.question)} ${f.is_open_default ? '<span class="form-status" style="display:inline;">(open by default)</span>' : ""}</div>
+      </div>
+      <div class="admin-item-actions">
+        <button type="button" class="edit-btn" data-id="${f.id}">Edit</button>
+        <button type="button" class="danger delete-btn" data-id="${f.id}">Delete</button>
+      </div>
+    </div>
+  `).join("");
+
+  listEl.querySelectorAll(".edit-btn").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const row = faqCache.find((f) => String(f.id) === btn.dataset.id);
+      if (row) startFaqEdit(row);
+    });
+  });
+  listEl.querySelectorAll(".delete-btn").forEach((btn) => {
+    btn.addEventListener("click", () => handleDeleteFaq(btn.dataset.id));
+  });
+}
+
+function startFaqEdit(row) {
+  currentFaqEditId = row.id;
+  document.getElementById("fq-question").value = row.question || "";
+  document.getElementById("fq-answer").value = row.answer || "";
+  document.getElementById("fq-sort").value = row.sort_order || 0;
+  document.getElementById("fq-open").checked = !!row.is_open_default;
+  document.getElementById("faqFormTitle").textContent = "Edit FAQ Item";
+  document.getElementById("saveFaqBtn").textContent = "Update FAQ Item";
+  show(document.getElementById("cancelFaqEditBtn"));
+  window.scrollTo({ top: 0, behavior: "smooth" });
+}
+
+function resetFaqForm() {
+  currentFaqEditId = null;
+  document.getElementById("faqForm").reset();
+  document.getElementById("faqFormTitle").textContent = "Add FAQ Item";
+  document.getElementById("saveFaqBtn").textContent = "Add FAQ Item";
+  hide(document.getElementById("cancelFaqEditBtn"));
+  document.getElementById("faqFormStatus").textContent = "";
+}
+
+async function handleSaveFaq(e) {
+  e.preventDefault();
+  const client = getSupabaseClient();
+  const saveBtn = document.getElementById("saveFaqBtn");
+  const statusEl = document.getElementById("faqFormStatus");
+
+  const question = document.getElementById("fq-question").value.trim();
+  const answer = document.getElementById("fq-answer").value.trim();
+  if (!question || !answer) { statusEl.textContent = "Question and answer are both required."; statusEl.className = "form-status error"; return; }
+
+  const payload = {
+    question,
+    answer,
+    sort_order: parseInt(document.getElementById("fq-sort").value, 10) || 0,
+    is_open_default: document.getElementById("fq-open").checked
+  };
+
+  saveBtn.disabled = true;
+  statusEl.textContent = "Saving...";
+  statusEl.className = "form-status";
+
+  try {
+    let error;
+    if (currentFaqEditId) {
+      ({ error } = await client.from("faq_items").update(payload).eq("id", currentFaqEditId));
+    } else {
+      ({ error } = await client.from("faq_items").insert(payload));
+    }
+    if (error) throw error;
+
+    const message = currentFaqEditId ? "FAQ item updated." : "FAQ item added.";
+    resetFaqForm();
+    statusEl.textContent = message;
+    statusEl.className = "form-status success";
+    await refreshFaqList();
+  } catch (err) {
+    statusEl.textContent = err.message || "Something went wrong saving this FAQ item.";
+    statusEl.className = "form-status error";
+  } finally {
+    saveBtn.disabled = false;
+  }
+}
+
+async function handleDeleteFaq(id) {
+  if (!confirm("Delete this FAQ item? This can't be undone.")) return;
+  const client = getSupabaseClient();
+  const { error } = await client.from("faq_items").delete().eq("id", id);
+  if (error) { alert("Couldn't delete: " + error.message); return; }
+  if (currentFaqEditId === id) resetFaqForm();
+  await refreshFaqList();
+}
+
+/* ===== Settings ===== */
+
+let currentHeroPhotoFile = null;
+let currentLogoPhotoFile = null;
+const SETTINGS_KEYS = [
+  "hero_heading", "hero_subtext", "hero_cta_text",
+  "contact_phone", "contact_email", "contact_whatsapp",
+  "social_instagram", "social_rednote", "social_tiktok", "social_youtube",
+  "about_intro_1", "about_intro_2",
+  "about_highlight_1_heading", "about_highlight_1_body",
+  "about_highlight_2_heading", "about_highlight_2_body",
+  "about_highlight_3_heading", "about_highlight_3_body",
+  "theme_coral", "theme_blush", "theme_baby_blue", "theme_soft_yellow", "theme_brown"
+];
+
+async function loadSettingsIntoForm() {
+  const client = getSupabaseClient();
+  const { data, error } = await client.from("site_settings").select("*");
+  const statusEl = document.getElementById("settingsFormStatus");
+  if (error) {
+    statusEl.textContent = "Couldn't load settings: " + error.message;
+    statusEl.className = "form-status error";
+    return;
+  }
+  const map = {};
+  (data || []).forEach((row) => { map[row.key] = row.value; });
+
+  SETTINGS_KEYS.forEach((key) => {
+    const input = document.getElementById(`s-${key}`);
+    if (input && map[key] != null) input.value = map[key];
+  });
+
+  document.getElementById("heroPhotoPreview").innerHTML = map.hero_image_url ? `<img src="${escapeHtml(map.hero_image_url)}" alt=""/>` : "No photo";
+  document.getElementById("logoPhotoPreview").innerHTML = map.logo_url ? `<img src="${escapeHtml(map.logo_url)}" alt=""/>` : "No photo";
+  currentHeroPhotoFile = null;
+  currentLogoPhotoFile = null;
+  statusEl.textContent = "";
+}
+
+function handleHeroPhotoChange(e) {
+  const file = e.target.files[0];
+  currentHeroPhotoFile = file || null;
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = () => { document.getElementById("heroPhotoPreview").innerHTML = `<img src="${reader.result}" alt=""/>`; };
+  reader.readAsDataURL(file);
+}
+
+function handleLogoPhotoChange(e) {
+  const file = e.target.files[0];
+  currentLogoPhotoFile = file || null;
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = () => { document.getElementById("logoPhotoPreview").innerHTML = `<img src="${reader.result}" alt=""/>`; };
+  reader.readAsDataURL(file);
+}
+
+async function handleSaveSettings(e) {
+  e.preventDefault();
+  const client = getSupabaseClient();
+  const saveBtn = document.getElementById("saveSettingsBtn");
+  const statusEl = document.getElementById("settingsFormStatus");
+
+  saveBtn.disabled = true;
+  statusEl.textContent = "Saving...";
+  statusEl.className = "form-status";
+
+  try {
+    const rows = SETTINGS_KEYS.map((key) => ({
+      key,
+      value: document.getElementById(`s-${key}`).value
+    }));
+
+    if (currentHeroPhotoFile) {
+      rows.push({ key: "hero_image_url", value: await uploadSiteImage(client, currentHeroPhotoFile) });
+    }
+    if (currentLogoPhotoFile) {
+      rows.push({ key: "logo_url", value: await uploadSiteImage(client, currentLogoPhotoFile) });
+    }
+
+    const { error } = await client.from("site_settings").upsert(rows, { onConflict: "key" });
+    if (error) throw error;
+
+    currentHeroPhotoFile = null;
+    currentLogoPhotoFile = null;
+    statusEl.textContent = "Settings saved.";
+    statusEl.className = "form-status success";
+  } catch (err) {
+    statusEl.textContent = err.message || "Something went wrong saving settings.";
+    statusEl.className = "form-status error";
+  } finally {
+    saveBtn.disabled = false;
+  }
 }
 
 /* ===== Orders ===== */
@@ -386,8 +899,9 @@ document.addEventListener("DOMContentLoaded", async () => {
   document.getElementById("itemForm").addEventListener("submit", handleSaveItem);
   document.getElementById("f-photo").addEventListener("change", handlePhotoChange);
   document.getElementById("cancelEditBtn").addEventListener("click", resetForm);
-  document.getElementById("tabProductsBtn").addEventListener("click", () => switchTab("products"));
-  document.getElementById("tabOrdersBtn").addEventListener("click", () => switchTab("orders"));
+  Object.keys(TABS).forEach((key) => {
+    document.getElementById(TABS[key].btnId).addEventListener("click", () => switchTab(key));
+  });
   document.getElementById("ordersFilter").addEventListener("click", (e) => {
     const btn = e.target.closest(".orders-filter-btn");
     if (!btn) return;
@@ -395,6 +909,20 @@ document.addEventListener("DOMContentLoaded", async () => {
     document.querySelectorAll(".orders-filter-btn").forEach((b) => b.classList.toggle("active", b === btn));
     refreshOrderList();
   });
+
+  document.getElementById("collectionForm").addEventListener("submit", handleSaveCollection);
+  document.getElementById("c-photo").addEventListener("change", handleCollectionPhotoChange);
+  document.getElementById("cancelCollectionEditBtn").addEventListener("click", resetCollectionForm);
+
+  document.getElementById("navForm").addEventListener("submit", handleSaveNav);
+  document.getElementById("cancelNavEditBtn").addEventListener("click", resetNavForm);
+
+  document.getElementById("faqForm").addEventListener("submit", handleSaveFaq);
+  document.getElementById("cancelFaqEditBtn").addEventListener("click", resetFaqForm);
+
+  document.getElementById("settingsForm").addEventListener("submit", handleSaveSettings);
+  document.getElementById("s-hero_image").addEventListener("change", handleHeroPhotoChange);
+  document.getElementById("s-logo_image").addEventListener("change", handleLogoPhotoChange);
 
   const { data: { session } } = await client.auth.getSession();
   if (session) {

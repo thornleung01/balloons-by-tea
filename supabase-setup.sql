@@ -114,3 +114,134 @@ create policy "Authenticated can delete orders"
   on orders for delete
   to authenticated
   using (true);
+
+-- Site content tables — hero text, about page copy, contact info, social
+-- links, theme colors, nav links, shop categories, and FAQ, all editable
+-- from admin.html instead of hardcoded in HTML/CSS. Same public-read /
+-- authenticated-write pattern as products, since this is public content
+-- (unlike orders).
+
+create table if not exists site_settings (
+  key text primary key,
+  value text
+);
+
+alter table site_settings enable row level security;
+
+drop policy if exists "Public can read settings" on site_settings;
+create policy "Public can read settings"
+  on site_settings for select
+  to anon, authenticated
+  using (true);
+
+drop policy if exists "Authenticated can manage settings" on site_settings;
+create policy "Authenticated can manage settings"
+  on site_settings for all
+  to authenticated
+  using (true)
+  with check (true);
+
+create table if not exists collections (
+  id bigint generated always as identity primary key,
+  slug text not null unique,
+  title text not null,
+  tagline text default '',
+  card_image_url text,
+  is_legacy boolean not null default false,
+  sort_order int not null default 0,
+  created_at timestamptz not null default now()
+);
+
+alter table collections enable row level security;
+
+drop policy if exists "Public can read collections" on collections;
+create policy "Public can read collections"
+  on collections for select
+  to anon, authenticated
+  using (true);
+
+drop policy if exists "Authenticated can manage collections" on collections;
+create policy "Authenticated can manage collections"
+  on collections for all
+  to authenticated
+  using (true)
+  with check (true);
+
+create table if not exists nav_items (
+  id bigint generated always as identity primary key,
+  key text,
+  label text not null,
+  href text not null,
+  icon text not null default 'none',
+  sort_order int not null default 0,
+  visible boolean not null default true,
+  created_at timestamptz not null default now()
+);
+
+alter table nav_items enable row level security;
+
+drop policy if exists "Public can read nav items" on nav_items;
+create policy "Public can read nav items"
+  on nav_items for select
+  to anon, authenticated
+  using (true);
+
+drop policy if exists "Authenticated can manage nav items" on nav_items;
+create policy "Authenticated can manage nav items"
+  on nav_items for all
+  to authenticated
+  using (true)
+  with check (true);
+
+create table if not exists faq_items (
+  id bigint generated always as identity primary key,
+  question text not null,
+  answer text not null,
+  sort_order int not null default 0,
+  is_open_default boolean not null default false,
+  created_at timestamptz not null default now()
+);
+
+alter table faq_items enable row level security;
+
+drop policy if exists "Public can read faq items" on faq_items;
+create policy "Public can read faq items"
+  on faq_items for select
+  to anon, authenticated
+  using (true);
+
+drop policy if exists "Authenticated can manage faq items" on faq_items;
+create policy "Authenticated can manage faq items"
+  on faq_items for all
+  to authenticated
+  using (true)
+  with check (true);
+
+-- Storage bucket for site images (logo, hero image, collection card photos)
+insert into storage.buckets (id, name, public)
+  values ('site-images', 'site-images', true)
+  on conflict (id) do nothing;
+
+drop policy if exists "Public can view site images" on storage.objects;
+create policy "Public can view site images"
+  on storage.objects for select
+  to anon, authenticated
+  using (bucket_id = 'site-images');
+
+drop policy if exists "Authenticated can upload site images" on storage.objects;
+create policy "Authenticated can upload site images"
+  on storage.objects for insert
+  to authenticated
+  with check (bucket_id = 'site-images');
+
+drop policy if exists "Authenticated can update site images" on storage.objects;
+create policy "Authenticated can update site images"
+  on storage.objects for update
+  to authenticated
+  using (bucket_id = 'site-images');
+
+drop policy if exists "Authenticated can delete site images" on storage.objects;
+create policy "Authenticated can delete site images"
+  on storage.objects for delete
+  to authenticated
+  using (bucket_id = 'site-images');

@@ -1153,10 +1153,20 @@ document.addEventListener("DOMContentLoaded", async () => {
       await loadLiveCatalog();
     }
   })();
+  const siteContentPromise = typeof loadSiteContent === "function" ? loadSiteContent() : Promise.resolve(false);
   const reviewCarouselPromise = initReviewCarousel();
 
   await catalogLoadPromise;
+  await siteContentPromise;
+  applyThemeColors();
+  renderNav();
   initNav();
+  renderFooterContactAndCategories();
+  renderHero();
+  renderAboutContent();
+  renderShopGrid();
+  renderCategoryFilterAndTitle();
+  renderFaqItems();
   initCustomSelects();
   initCatalogControls();
   initBestSellers();

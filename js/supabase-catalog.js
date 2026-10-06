@@ -39,10 +39,22 @@ function buildCollectionsFromSupabaseRows(rows) {
       items: []
     };
   });
+  /* Categories added via admin (js/site-content.js's loadSiteContent())
+     won't be in the bundled js/products.js COLLECTIONS object above, so
+     without this they'd silently drop every product assigned to them.
+     Seed from live collections data first, and from the rows themselves
+     as a last resort, so no product's collection is ever missing a
+     bucket regardless of load order. */
+  (window.SITE_COLLECTIONS || []).forEach((c) => {
+    if (!result[c.slug]) result[c.slug] = { title: c.title, tagline: c.tagline || "", items: [] };
+  });
+  rows.forEach((row) => {
+    const slug = String(row.collection || "").trim().toLowerCase();
+    if (!result[slug]) result[slug] = { title: slug, tagline: "", items: [] };
+  });
 
   rows.forEach((row) => {
     const slug = String(row.collection || "").trim().toLowerCase();
-    if (!result[slug]) return;
     if (row.active === false) return;
 
     const styleKey = String(row.style || "").trim().toLowerCase();

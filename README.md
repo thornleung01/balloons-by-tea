@@ -47,6 +47,31 @@ up), and shows up here with the customer's contact details, what they
 asked for, and a status you can set to New / Contacted / Fulfilled. The
 "Orders" tab badge shows how many are still marked New.
 
+Four more tabs cover everything else that used to require editing code:
+
+- **Collections** — rename, reorder, or change the tagline/card photo of
+  Anniversary/Birthday/Kids/Other Occasions, or add a brand-new category
+  from scratch. A new category can't get a clean `its-name.html` file
+  automatically (the site has no build step), so it lives at
+  `category.html?slug=its-name` instead — the 4 original categories keep
+  their existing clean URLs. A category can't be deleted while products
+  are still assigned to it.
+- **Nav** — rename, reorder, hide, or add a link in the top navigation.
+  The 5 built-in links (Home/Shop/Custom Order/About/FAQ) can be edited
+  but not deleted, since the site's core structure depends on them; links
+  you add yourself can be deleted freely.
+- **FAQ** — add, edit, reorder, or delete questions, and choose which one
+  (if any) is expanded by default. Separate paragraphs in an answer with
+  a blank line.
+- **Settings** — hero text, the hero image and logo, contact info
+  (phone/email/WhatsApp), social links, the About page copy, and the 5
+  brand colors, all in one form.
+
+Everything on this page is additive: if Supabase isn't configured yet, or
+a particular piece of content hasn't been saved there, the site just
+shows its original built-in content instead — nothing can break from an
+empty or half-filled-in admin page.
+
 **One-time developer setup** (do this once, probably not the same person
 who'll use the admin page day to day):
 
@@ -383,6 +408,7 @@ anniversary.html         Collection page
 birthday.html            Collection page
 kids.html                Collection page
 other-occasions.html     Collection page
+category.html            Collection page template for categories added via admin (2a)
 custom-order.html        Custom order request form (shares the checkout's Google Form setup)
 faq.html                 FAQ page (collapsible questions)
 admin.html               Live product admin page (section 2a) — password-protected
@@ -393,7 +419,8 @@ js/products.js           Built-in/fallback product catalog data
 js/catalog.js            Optional live catalog — loads products from a Google Sheet (2b)
 js/supabase-config.js    Paste your Supabase project URL + anon key here (2a)
 js/supabase-catalog.js   Loads products from Supabase for the public site (2a)
-js/admin.js              Admin page logic: login, add/edit/delete, photo upload (2a)
+js/admin.js              Admin page logic: login, products, orders, collections, nav, FAQ, settings (2a)
+js/site-content.js       Loads hero/about/footer/nav/FAQ/theme content from Supabase for the public site (2a)
 js/google-reviews-config.js  Paste your Google Maps API key + Place ID here (section 6)
 js/google-reviews.js     Loads real reviews from Google for the homepage carousel (section 6)
 js/app.js                Cart, checkout modal, Google Form submission, review carousel, nav

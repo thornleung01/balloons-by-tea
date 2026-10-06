@@ -32,7 +32,7 @@ const crypto = require("crypto");
 
 const ROOT = path.resolve(__dirname, "..");
 
-// The 9 top-level pages that are supposed to share this markup.
+// The 10 top-level pages that are supposed to share this markup.
 // (admin.html and 404.html are intentionally excluded: they are not part of
 // the public page set that ships the shared nav/footer/cart/checkout chrome.)
 const PAGES = [
@@ -45,6 +45,7 @@ const PAGES = [
   "birthday.html",
   "kids.html",
   "other-occasions.html",
+  "category.html",
 ];
 
 /**
