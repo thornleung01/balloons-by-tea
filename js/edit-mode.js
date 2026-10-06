@@ -110,7 +110,7 @@ function closeHistoryPanel() {
 }
 
 function describeHistoryRow(row) {
-  const labels = { "padding-bottom": "spacing", "font-size": "text size", scale: "size", hidden: "visibility", locked: "lock" };
+  const labels = { "padding-bottom": "spacing", "font-size": "text size", "font-family": "font", scale: "size", hidden: "visibility", locked: "lock" };
   const propLabel = labels[row.property] || row.property;
   const niceKey = row.element_key.startsWith("product:") ? "product card" : row.element_key.replace(/-/g, " ");
   return `${niceKey} — ${propLabel}`;
@@ -164,6 +164,7 @@ async function loadHistoryList() {
 function resetElementStyle(el, property, value) {
   if (property === "padding-bottom") el.style.paddingBottom = value || "";
   else if (property === "font-size") el.style.fontSize = value || "";
+  else if (property === "font-family") el.style.fontFamily = value || "";
   else if (property === "scale") el.style.transform = value ? `scale(${value})` : "";
   else if (property === "order") el.style.order = value || "";
 }
@@ -225,7 +226,7 @@ function removeEditHandles() {
   // (e.g. a lock toggle elsewhere) an element would end up with several
   // stacked resize handles. Harmless visually (they overlap exactly) but
   // real DOM/listener bloat, now fixed alongside adding the pending dot.
-  document.querySelectorAll(".edit-controls, .edit-divider-handle, .edit-resize-handle, .edit-pending-dot").forEach((el) => el.remove());
+  document.querySelectorAll(".edit-controls, .edit-divider-handle, .edit-resize-handle, .edit-pending-dot, .edit-font-popover").forEach((el) => el.remove());
   document.querySelectorAll("[data-edit-key]").forEach((el) => el.classList.remove("edit-is-hidden", "edit-is-locked", "edit-selected"));
 }
 
@@ -407,6 +408,59 @@ function selectRow(el) {
   renderSelectionToolbar();
 }
 
+/* ===== Font picker (text elements only) =====
+   Curated to exactly the fonts already loaded on every page (the Google
+   Fonts <link> plus the Blue Winter @font-face) — anything else would
+   just silently fall back to the browser default, so the list is closed
+   rather than a free-text field. "Default" clears the override. */
+const EDIT_FONT_CHOICES = [
+  { label: "Default", value: null },
+  { label: "Blue Winter", value: "'Blue Winter', 'Playfair Display', Georgia, serif" },
+  { label: "Playfair Display", value: "'Playfair Display', Georgia, serif" },
+  { label: "Nunito", value: "'Nunito', sans-serif" },
+  { label: "Inter", value: "'Inter', sans-serif" },
+  { label: "Fredoka", value: "'Fredoka', sans-serif" }
+];
+
+function closeFontPopover() {
+  document.querySelectorAll(".edit-font-popover").forEach((p) => p.remove());
+}
+
+function toggleFontPopover(el, key) {
+  const wasOpenHere = !!el.querySelector(":scope > .edit-font-popover");
+  closeFontPopover();
+  if (wasOpenHere) return;
+
+  const current = effectiveValue(key, "font-family") || null;
+  const popover = document.createElement("div");
+  popover.className = "edit-font-popover";
+  popover.innerHTML = EDIT_FONT_CHOICES.map((choice) => `
+    <button type="button" class="edit-font-option${choice.value === current ? " is-active" : ""}" style="font-family:${choice.value || "inherit"};">
+      <span>${choice.label}</span>${choice.value === current ? '<span class="edit-font-check">✓</span>' : ""}
+    </button>
+  `).join("");
+  el.appendChild(popover);
+
+  popover.querySelectorAll(".edit-font-option").forEach((optBtn, i) => {
+    optBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      const choice = EDIT_FONT_CHOICES[i];
+      el.style.fontFamily = choice.value || "";
+      queueOverride(key, "font-family", choice.value);
+      popover.remove();
+    });
+  });
+}
+
+/* Capture phase on document itself — document is the outermost node in
+   the capture dispatch order, so this always runs before any descendant
+   [data-edit-key] element's own capture-phase selection handler, even
+   though that handler calls stopPropagation() (which would otherwise
+   prevent this from ever firing if it were a bubble-phase listener). */
+document.addEventListener("click", (e) => {
+  if (!e.target.closest(".edit-font-popover, .font-btn")) closeFontPopover();
+}, true);
+
 function renderEditHandles() {
   removeEditHandles();
   document.querySelectorAll("[data-edit-key]").forEach((el) => {
@@ -425,6 +479,7 @@ function renderEditHandles() {
         ? '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><rect x="5" y="11" width="14" height="9" rx="1.5"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>'
         : '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><rect x="5" y="11" width="14" height="9" rx="1.5"/><path d="M8 11V7a4 4 0 0 1 7.5-2"/></svg>'
       }</button>
+      ${type === "text" ? `<button type="button" class="edit-icon-btn font-btn" title="Change font" aria-label="Change font">Aa</button>` : ""}
       ${type === "section" ? `<button type="button" class="edit-icon-btn hide-btn" title="Hide this section" aria-label="Hide section"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12s3.5-7 9-7 9 7 9 7-3.5 7-9 7-9-7-9-7Z"/><circle cx="12" cy="12" r="2.5"/></svg></button>` : ""}
       ${type === "product" ? `<button type="button" class="edit-icon-btn remove-btn" title="Remove from site" aria-label="Remove product"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 5l14 14M19 5L5 19" stroke-linecap="round"/></svg></button>` : ""}
       ${type === "product" ? `<button type="button" class="edit-icon-btn select-row-btn" title="Select this whole row" aria-label="Select row"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="9" width="5" height="6" rx="1"/><rect x="9.5" y="9" width="5" height="6" rx="1"/><rect x="16" y="9" width="5" height="6" rx="1"/></svg></button>` : ""}
@@ -451,6 +506,8 @@ function renderEditHandles() {
       e.stopPropagation();
       toggleLock(key, !locked);
     });
+    const fontBtn = controls.querySelector(".font-btn");
+    if (fontBtn) fontBtn.addEventListener("click", (e) => { e.stopPropagation(); toggleFontPopover(el, key); });
     const hideBtn = controls.querySelector(".hide-btn");
     if (hideBtn) hideBtn.addEventListener("click", (e) => { e.stopPropagation(); toggleHidden(el, key); });
     const removeBtn = controls.querySelector(".remove-btn");
@@ -471,7 +528,7 @@ function renderEditHandles() {
        innermost matching element should handle the click — everything
        else just lets it keep capturing downward. */
     el.addEventListener("click", (e) => {
-      if (e.target.closest(".edit-controls, .edit-resize-handle, .edit-divider-handle")) return;
+      if (e.target.closest(".edit-controls, .edit-resize-handle, .edit-divider-handle, .edit-font-popover")) return;
       if (e.target.closest("[data-edit-key]") !== el) return;
       e.preventDefault();
       e.stopPropagation();

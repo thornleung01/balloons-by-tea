@@ -1736,6 +1736,38 @@ body.edit-mode-active [data-edit-key] { cursor: pointer; }
 .edit-icon-btn:hover { background: var(--color-accent-tint); color: var(--color-accent); }
 .edit-icon-btn.is-locked { background: var(--color-accent); color: #fff; }
 .edit-icon-btn.remove-btn:hover { background: var(--color-destructive); color: #fff; }
+.edit-icon-btn.font-btn { font-family: var(--font-body); font-size: 0.72rem; font-weight: 700; }
+
+.edit-font-popover {
+  position: absolute;
+  top: 40px;
+  right: 8px;
+  z-index: 42;
+  background: var(--color-surface-solid);
+  border: 1.5px solid var(--nav-pill-border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-lift);
+  padding: 6px;
+  min-width: 170px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.edit-font-option {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 7px 10px;
+  border-radius: var(--radius-sm);
+  font-size: 0.92rem;
+  color: var(--color-fg);
+  text-align: left;
+  cursor: pointer;
+}
+.edit-font-option:hover { background: var(--color-bg-alt); }
+.edit-font-option.is-active { background: var(--color-accent-tint); font-weight: 700; }
+.edit-font-option .edit-font-check { color: var(--color-accent); }
 
 .edit-pending-dot {
   position: absolute;

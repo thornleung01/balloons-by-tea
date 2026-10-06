@@ -65,6 +65,7 @@ function applyLayoutOverrides() {
     }
     if (overrides["padding-bottom"]) el.style.paddingBottom = overrides["padding-bottom"];
     if (overrides["font-size"]) el.style.fontSize = overrides["font-size"];
+    if (overrides["font-family"]) el.style.fontFamily = overrides["font-family"];
     if (overrides.scale) el.style.transform = `scale(${overrides.scale})`;
     if (overrides.order) el.style.order = overrides.order;
   });
