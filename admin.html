@@ -61,6 +61,7 @@
     <div class="admin-tabs" role="tablist">
       <button type="button" class="admin-tab active" id="tabProductsBtn" role="tab" aria-selected="true">Products</button>
       <button type="button" class="admin-tab" id="tabOrdersBtn" role="tab" aria-selected="false">Orders <span class="admin-tab-badge" id="ordersBadge" hidden>0</span></button>
+      <button type="button" class="admin-tab" id="tabAnalyticsBtn" role="tab" aria-selected="false">Analytics</button>
       <button type="button" class="admin-tab" id="tabCollectionsBtn" role="tab" aria-selected="false">Collections</button>
       <button type="button" class="admin-tab" id="tabLibraryBtn" role="tab" aria-selected="false">Library</button>
       <button type="button" class="admin-tab" id="tabNavBtn" role="tab" aria-selected="false">Nav</button>
@@ -175,6 +176,20 @@
         </div>
       </div>
       <div id="orderList"></div>
+    </div>
+
+    <div id="analyticsPanel" class="admin-card" hidden>
+      <div class="orders-head">
+        <h2>Analytics</h2>
+        <div class="orders-filter" id="analyticsRangeFilter">
+          <button type="button" class="orders-filter-btn" data-range="7">Last 7 days</button>
+          <button type="button" class="orders-filter-btn active" data-range="30">Last 30 days</button>
+          <button type="button" class="orders-filter-btn" data-range="90">Last 90 days</button>
+          <button type="button" class="orders-filter-btn" data-range="all">All time</button>
+        </div>
+      </div>
+      <p class="panel-subtitle">Pairs with <a href="https://clarity.microsoft.com" target="_blank" rel="noopener">Microsoft Clarity</a> (session recordings/heatmaps) for the "why" behind these numbers.</p>
+      <div id="analyticsContent"></div>
     </div>
 
     <div id="collectionsPanel" class="admin-grid" hidden>

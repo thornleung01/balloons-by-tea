@@ -446,6 +446,28 @@ body.admin-body {
 .order-date { font-size: 0.78rem; color: var(--color-fg-faint); white-space: nowrap; }
 .order-contact { display: flex; gap: var(--space-2); font-size: 0.85rem; margin-top: 2px; }
 .order-contact a { color: var(--color-accent); }
+
+.analytics-card {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: var(--space-3);
+  margin-bottom: var(--space-3);
+}
+.analytics-card h3 { font-size: 0.95rem; margin-bottom: var(--space-2); }
+.analytics-funnel-row {
+  display: grid;
+  grid-template-columns: minmax(140px, 1fr) 2fr auto;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: 0.82rem;
+  margin-bottom: 6px;
+}
+.analytics-funnel-label { color: var(--color-fg-soft); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.analytics-funnel-track { background: var(--color-bg-alt); border-radius: var(--radius-pill); height: 10px; overflow: hidden; }
+.analytics-funnel-fill { background: var(--color-accent); height: 100%; border-radius: var(--radius-pill); transition: width 300ms var(--ease); }
+.analytics-funnel-count { font-weight: 700; min-width: 2ch; text-align: right; }
+.analytics-big-number { font-size: 2.2rem; font-weight: 700; color: var(--color-accent); line-height: 1; margin-bottom: var(--space-2); }
+.analytics-note { font-size: 0.78rem; color: var(--color-fg-faint); margin: 6px 0; }
 .order-field { font-size: 0.85rem; color: var(--color-fg-soft); margin-top: 6px; }
 .order-summary-text, .order-notes-text { white-space: pre-line; background: var(--color-bg-alt); border-radius: var(--radius-sm); padding: 8px 10px; }
 .order-row-actions { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); margin-top: var(--space-2); }

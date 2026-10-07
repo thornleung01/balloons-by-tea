@@ -1103,6 +1103,7 @@ const TABS = {
   // just-added category after a full page reload.
   products: { btnId: "tabProductsBtn", panelId: "productsPanel", onEnter: renderProductList },
   orders: { btnId: "tabOrdersBtn", panelId: "ordersPanel", onEnter: refreshOrderList },
+  analytics: { btnId: "tabAnalyticsBtn", panelId: "analyticsPanel", onEnter: refreshAnalyticsPanel },
   collections: { btnId: "tabCollectionsBtn", panelId: "collectionsPanel", onEnter: refreshCollectionList },
   library: { btnId: "tabLibraryBtn", panelId: "libraryPanel", onEnter: refreshLibraryPanel },
   nav: { btnId: "tabNavBtn", panelId: "navPanel", onEnter: refreshNavList },
@@ -1810,6 +1811,143 @@ async function handleDeleteOrder(id) {
   await refreshOrderList();
 }
 
+/* ===== Analytics =====
+   Reads the analytics_events table js/analytics.js writes to from every
+   public page (see trackEvent() there for the exact event names/shapes).
+   A funnel step's count is the number of DISTINCT SESSIONS that logged
+   that event, not the raw row count — a field-error event can fire
+   several times in one session (one per failed submit attempt), and
+   counting rows instead of sessions would overstate drop-off. */
+let analyticsRangeDays = 30;
+
+function analyticsRangeStartIso() {
+  if (analyticsRangeDays === "all") return "1970-01-01T00:00:00Z";
+  const d = new Date();
+  d.setDate(d.getDate() - Number(analyticsRangeDays));
+  return d.toISOString();
+}
+
+async function refreshAnalyticsPanel() {
+  const content = document.getElementById("analyticsContent");
+  content.innerHTML = `<p class="empty-note">Loading...</p>`;
+  const client = getSupabaseClient();
+  const { data, error } = await client
+    .from("analytics_events")
+    .select("event_name,session_id,metadata,created_at")
+    .gte("created_at", analyticsRangeStartIso())
+    .order("created_at", { ascending: false })
+    .limit(10000);
+
+  if (error) {
+    // Most likely cause: the analytics_events table/migration hasn't been
+    // run yet (see supabase-setup.sql) — give a specific, actionable
+    // message instead of a raw Postgres error for that common case.
+    const isMissingTable = /relation.*analytics_events.*does not exist|could not find the table/i.test(error.message);
+    content.innerHTML = `<p class="form-status error">${isMissingTable
+      ? "The analytics_events table doesn't exist yet — run the latest supabase-setup.sql in your Supabase SQL Editor to turn tracking on."
+      : "Couldn't load analytics: " + escapeHtml(error.message)}</p>`;
+    return;
+  }
+  renderAnalyticsPanel(data || []);
+}
+
+function distinctSessionCount(events, eventName) {
+  return new Set(events.filter((e) => e.event_name === eventName).map((e) => e.session_id)).size;
+}
+
+function funnelBarHtml(label, count, maxCount) {
+  const pct = maxCount > 0 ? Math.round((count / maxCount) * 100) : 0;
+  return `
+    <div class="analytics-funnel-row">
+      <span class="analytics-funnel-label">${escapeHtml(label)}</span>
+      <div class="analytics-funnel-track"><div class="analytics-funnel-fill" style="width:${pct}%"></div></div>
+      <span class="analytics-funnel-count">${count}</span>
+    </div>
+  `;
+}
+
+function fieldBreakdownHtml(title, counts) {
+  if (!counts.length) return `<div class="analytics-card"><h3>${escapeHtml(title)}</h3><p class="empty-note">No data in this range.</p></div>`;
+  const max = counts[0][1];
+  return `
+    <div class="analytics-card">
+      <h3>${escapeHtml(title)}</h3>
+      ${counts.map(([field, count]) => funnelBarHtml(field, count, max)).join("")}
+    </div>
+  `;
+}
+
+function renderAnalyticsPanel(events) {
+  const content = document.getElementById("analyticsContent");
+  if (!events.length) {
+    content.innerHTML = `<p class="empty-note">No analytics events in this range yet.</p>`;
+    return;
+  }
+
+  const mainFunnelSteps = [
+    ["page_view", "Visited the site"],
+    ["add_to_cart", "Added something to cart"],
+    ["cart_opened", "Opened the cart"],
+    ["checkout_started", "Started checkout"],
+    ["checkout_submitted", "Completed checkout"]
+  ];
+  const mainCounts = mainFunnelSteps.map(([name, label]) => [label, distinctSessionCount(events, name)]);
+  const mainMax = mainCounts[0][1] || 1;
+
+  const customFunnelSteps = [
+    ["custom_order_started", "Started the custom-order form"],
+    ["custom_order_submitted", "Submitted a custom-order request"]
+  ];
+  const customCounts = customFunnelSteps.map(([name, label]) => [label, distinctSessionCount(events, name)]);
+  const customMax = customCounts[0][1] || 1;
+
+  const checkoutFieldErrors = {};
+  const customFieldErrors = {};
+  let abandonCount = 0;
+  const abandonFieldCounts = {};
+  let checkoutFailedCount = 0;
+
+  events.forEach((e) => {
+    if (e.event_name === "checkout_field_error") {
+      const f = (e.metadata && e.metadata.field) || "unknown";
+      checkoutFieldErrors[f] = (checkoutFieldErrors[f] || 0) + 1;
+    } else if (e.event_name === "custom_order_field_error") {
+      const f = (e.metadata && e.metadata.field) || "unknown";
+      customFieldErrors[f] = (customFieldErrors[f] || 0) + 1;
+    } else if (e.event_name === "checkout_abandoned") {
+      abandonCount += 1;
+      ((e.metadata && e.metadata.filledFields) || []).forEach((f) => {
+        abandonFieldCounts[f] = (abandonFieldCounts[f] || 0) + 1;
+      });
+    } else if (e.event_name === "checkout_failed") {
+      checkoutFailedCount += 1;
+    }
+  });
+
+  const sortedCounts = (obj) => Object.entries(obj).sort((a, b) => b[1] - a[1]);
+
+  content.innerHTML = `
+    <div class="analytics-card">
+      <h3>Checkout funnel</h3>
+      ${mainCounts.map(([label, count]) => funnelBarHtml(label, count, mainMax)).join("")}
+      ${checkoutFailedCount > 0 ? `<p class="analytics-note">${checkoutFailedCount} checkout submission${checkoutFailedCount === 1 ? "" : "s"} failed with a backend error in this range.</p>` : ""}
+    </div>
+    <div class="analytics-card">
+      <h3>Checkout abandoned (closed with unsaved input)</h3>
+      <p class="analytics-big-number">${abandonCount}</p>
+      ${abandonFieldCounts && Object.keys(abandonFieldCounts).length
+        ? `<p class="analytics-note">Fields already filled in when people bailed, most common first:</p>${sortedCounts(abandonFieldCounts).map(([f, c]) => funnelBarHtml(f, c, sortedCounts(abandonFieldCounts)[0][1])).join("")}`
+        : `<p class="empty-note">No abandonment data in this range.</p>`}
+    </div>
+    ${fieldBreakdownHtml("Checkout form — which field trips people up", sortedCounts(checkoutFieldErrors))}
+    <div class="analytics-card">
+      <h3>Custom-order funnel</h3>
+      ${customCounts.map(([label, count]) => funnelBarHtml(label, count, customMax)).join("")}
+    </div>
+    ${fieldBreakdownHtml("Custom-order form — which field trips people up", sortedCounts(customFieldErrors))}
+  `;
+}
+
 /* ===== Init ===== */
 
 document.addEventListener("DOMContentLoaded", async () => {
@@ -1839,6 +1977,13 @@ document.addEventListener("DOMContentLoaded", async () => {
     ordersStatusFilter = btn.dataset.status;
     document.querySelectorAll(".orders-filter-btn").forEach((b) => b.classList.toggle("active", b === btn));
     refreshOrderList();
+  });
+  document.getElementById("analyticsRangeFilter").addEventListener("click", (e) => {
+    const btn = e.target.closest(".orders-filter-btn");
+    if (!btn) return;
+    analyticsRangeDays = btn.dataset.range === "all" ? "all" : Number(btn.dataset.range);
+    document.querySelectorAll("#analyticsRangeFilter .orders-filter-btn").forEach((b) => b.classList.toggle("active", b === btn));
+    refreshAnalyticsPanel();
   });
 
   let itemSearchDebounce = null;
