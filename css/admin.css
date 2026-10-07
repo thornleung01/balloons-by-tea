@@ -126,6 +126,39 @@ body.admin-body {
   background: var(--color-accent); color: #fff;
   font-size: 0.7rem; line-height: 18px; text-align: center;
 }
+
+.panel-subtitle { font-size: 0.85rem; color: var(--color-fg-soft); margin-bottom: var(--space-3); }
+
+.library-breadcrumb {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 4px;
+  font-size: 0.85rem; margin-bottom: var(--space-2);
+}
+.library-breadcrumb-item {
+  background: none; border: none; padding: 2px 4px; cursor: pointer;
+  color: var(--color-accent); font: inherit; border-radius: var(--radius-sm);
+}
+.library-breadcrumb-item:hover:not(:disabled) { background: var(--color-accent-tint); }
+.library-breadcrumb-item:disabled { color: var(--color-fg); font-weight: 600; cursor: default; }
+.library-breadcrumb-sep { color: var(--color-fg-faint); }
+
+.library-toolbar { display: flex; gap: var(--space-2); margin-bottom: var(--space-2); }
+
+.library-folder-item {
+  width: 100%; aspect-ratio: 1;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px;
+  border-radius: var(--radius-sm);
+  background: var(--color-bg-alt);
+  border: 1.5px dashed var(--color-border);
+  padding: 4px; cursor: pointer; color: var(--color-fg-soft);
+  transition: border-color 140ms var(--ease), background 140ms var(--ease);
+}
+.library-folder-item:hover { border-color: var(--color-accent); background: var(--color-accent-tint); }
+.library-folder-item span { font-size: 0.65rem; text-align: center; word-break: break-word; line-height: 1.2; max-width: 100%; }
+
+/* The Library tab's grid lives in the normal page flow, not a height-
+   capped modal, so let it grow and the page scroll naturally. */
+#libraryPanel .photo-library-grid { max-height: none; overflow: visible; grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); }
+
 .photo-gallery-item {
   position: relative;
   width: 72px; height: 72px;
@@ -267,6 +300,8 @@ body.admin-body {
   overflow: hidden; flex-shrink: 0; display: flex; align-items: center; justify-content: center;
 }
 .admin-item-thumb img { width: 100%; height: 100%; object-fit: cover; }
+.admin-item-thumb:has(img) { cursor: pointer; }
+.admin-item-thumb:has(img):hover { opacity: 0.85; }
 .admin-item-thumb-count {
   position: absolute; right: 2px; bottom: 2px;
   min-width: 15px; height: 15px; padding: 0 3px;

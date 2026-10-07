@@ -62,6 +62,7 @@
       <button type="button" class="admin-tab active" id="tabProductsBtn" role="tab" aria-selected="true">Products</button>
       <button type="button" class="admin-tab" id="tabOrdersBtn" role="tab" aria-selected="false">Orders <span class="admin-tab-badge" id="ordersBadge" hidden>0</span></button>
       <button type="button" class="admin-tab" id="tabCollectionsBtn" role="tab" aria-selected="false">Collections</button>
+      <button type="button" class="admin-tab" id="tabLibraryBtn" role="tab" aria-selected="false">Library</button>
       <button type="button" class="admin-tab" id="tabNavBtn" role="tab" aria-selected="false">Nav</button>
       <button type="button" class="admin-tab" id="tabFaqBtn" role="tab" aria-selected="false">FAQ</button>
       <button type="button" class="admin-tab" id="tabSettingsBtn" role="tab" aria-selected="false">Settings</button>
@@ -212,6 +213,20 @@
       <div class="admin-card">
         <h2>Current Categories</h2>
         <div id="collectionList"></div>
+      </div>
+    </div>
+
+    <div id="libraryPanel" hidden>
+      <div class="admin-card">
+        <h2>Photo Library</h2>
+        <p class="panel-subtitle">Every photo you've uploaded, organized into folders. Browse here, or pick from it when adding/editing a product.</p>
+        <div class="library-breadcrumb" id="libraryTabBreadcrumb"></div>
+        <div class="library-toolbar">
+          <button type="button" class="btn btn-outline btn-sm" id="libraryNewFolderBtn">New folder</button>
+          <label class="btn btn-outline btn-sm" for="libraryUploadInput">Upload photos</label>
+          <input id="libraryUploadInput" type="file" accept="image/*" multiple hidden/>
+        </div>
+        <div class="photo-library-grid" id="libraryTabGrid"></div>
       </div>
     </div>
 

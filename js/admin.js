@@ -608,14 +608,19 @@ function openPhotoPreview(index) {
   modal.classList.add("open");
 }
 
-/* Single-image preview (hero/logo/category card photo) — same modal,
-   nav arrows auto-hide since previewUrls has only one entry. */
-function openImagePreview(url) {
-  previewUrls = [url];
-  previewIndex = 0;
+/* Opens the shared lightbox on an arbitrary set of URLs — nav arrows
+   auto-hide via renderPhotoPreviewFrame() whenever there's only one. */
+function openImagePreviewSet(urls, index) {
+  previewUrls = urls;
+  previewIndex = index || 0;
   const modal = ensurePhotoPreviewModal();
   renderPhotoPreviewFrame();
   modal.classList.add("open");
+}
+
+/* Single-image preview (hero/logo/category card photo). */
+function openImagePreview(url) {
+  openImagePreviewSet([url], 0);
 }
 
 function closePhotoPreview() {
@@ -635,35 +640,107 @@ function wireClickablePhotoPreview(containerId) {
   });
 }
 
-/* ===== Photo library picker =====
+/* Same idea as wireClickablePhotoPreview(), but for a list container
+   (#itemList/#collectionList) whose rows are rebuilt wholesale on every
+   render — one delegated listener on the stable container outlives every
+   re-render, instead of needing to be rebound per row each time. Each
+   row's .admin-item-thumb opens the shared lightbox; getPreviewSet(id)
+   resolves that row's own id to {urls, index}. */
+function wireClickableThumbList(containerId, getPreviewSet) {
+  const container = document.getElementById(containerId);
+  if (!container) return;
+  container.addEventListener("click", (e) => {
+    const thumb = e.target.closest(".admin-item-thumb");
+    if (!thumb || !thumb.querySelector("img")) return;
+    const row = thumb.closest("[data-id]");
+    if (!row) return;
+    const set = getPreviewSet(row.dataset.id);
+    if (set && set.urls.length) openImagePreviewSet(set.urls, set.index || 0);
+  });
+}
+
+/* ===== Photo library (folder-aware) =====
    Every photo ever uploaded through the item form already lives in the
    "product-photos" Storage bucket indefinitely (nothing deletes the
    underlying file when a product is edited/deleted, only the DB row's
    reference to it) — so the bucket is already a de facto reusable photo
-   library, just with no browsing UI. This adds one: pick from anything
-   already uploaded instead of re-uploading the same photo for a second
-   product. Picked photos become ordinary {type:"url", value:url}
+   library. This gives it real browsing: folders (Storage path prefixes —
+   there's no separate "create folder" API, so a folder is materialized
+   by uploading an empty <folder>/.keep placeholder into it, same trick
+   the bucket itself already relies on implicitly) plus two front ends
+   that share the same listing/rendering code:
+     - a picker MODAL, opened from the item form, for choosing (possibly
+       multiple) existing photos to attach to the product being edited
+     - a full Library TAB, for browsing/organizing/uploading independent
+       of any one product
+   Photos picked via the modal become ordinary {type:"url", value:url}
    entries in currentPhotoEntries — the exact same shape startEdit()
    already produces for a product's existing photos — so handleSaveItem()
    needs no changes at all to support them. */
-let photoLibraryCache = null;
-let photoLibrarySelected = new Set();
 
-async function loadPhotoLibrary(force) {
-  if (photoLibraryCache && !force) return photoLibraryCache;
+async function listLibraryPath(path) {
   const client = getSupabaseClient();
   const { data, error } = await client.storage
     .from("product-photos")
-    .list("", { limit: 200, sortBy: { column: "created_at", order: "desc" } });
-  if (error) { photoLibraryCache = []; return photoLibraryCache; }
-  photoLibraryCache = (data || [])
-    .filter((f) => f.name && f.id) // Storage lists a placeholder folder entry with no id — skip it
-    .map((f) => ({
-      name: f.name,
-      url: client.storage.from("product-photos").getPublicUrl(f.name).data.publicUrl
-    }));
-  return photoLibraryCache;
+    .list(path || "", { limit: 500, sortBy: { column: "name", order: "asc" } });
+  if (error) return { folders: [], files: [] };
+  const folders = [];
+  const files = [];
+  (data || []).forEach((entry) => {
+    if (!entry.name || entry.name === ".keep") return;
+    if (entry.id === null) {
+      folders.push(entry.name);
+    } else {
+      const fullPath = path ? `${path}/${entry.name}` : entry.name;
+      files.push({ name: entry.name, path: fullPath, url: client.storage.from("product-photos").getPublicUrl(fullPath).data.publicUrl });
+    }
+  });
+  return { folders, files };
 }
+
+function libraryBreadcrumbSegments(path) {
+  const segments = [{ label: "Library", path: "" }];
+  if (!path) return segments;
+  let acc = "";
+  path.split("/").filter(Boolean).forEach((part) => {
+    acc = acc ? `${acc}/${part}` : part;
+    segments.push({ label: part, path: acc });
+  });
+  return segments;
+}
+
+function libraryBreadcrumbHtml(path, navAttr) {
+  const segs = libraryBreadcrumbSegments(path);
+  return segs.map((seg, i) => `
+    <button type="button" class="library-breadcrumb-item" ${navAttr}="${escapeHtml(seg.path)}" ${i === segs.length - 1 ? "disabled" : ""}>${escapeHtml(seg.label)}</button>
+  `).join(`<span class="library-breadcrumb-sep">/</span>`);
+}
+
+async function createFolderAt(basePath, rawName) {
+  const name = String(rawName || "").trim().replace(/[\/\\]+/g, "-").replace(/[^a-zA-Z0-9 _-]/g, "").trim();
+  if (!name) return { error: "Enter a folder name." };
+  const path = basePath ? `${basePath}/${name}/.keep` : `${name}/.keep`;
+  const client = getSupabaseClient();
+  const { error } = await client.storage.from("product-photos").upload(path, new Blob([""]), { upsert: false });
+  if (error) return { error: /exists/i.test(error.message) ? "A folder with that name already exists here." : error.message };
+  return { error: null };
+}
+
+async function uploadFilesToLibrary(basePath, files) {
+  const client = getSupabaseClient();
+  for (const file of files) {
+    const safeName = file.name.replace(/[^a-zA-Z0-9.-]/g, "_");
+    const path = basePath ? `${basePath}/${Date.now()}-${safeName}` : `${Date.now()}-${safeName}`;
+    const { error } = await client.storage.from("product-photos").upload(path, file, { upsert: true });
+    if (error) return { error: error.message };
+  }
+  return { error: null };
+}
+
+/* ----- Picker modal (used from the item form) ----- */
+let pickerPath = "";
+let pickerEntries = { folders: [], files: [] };
+let photoLibrarySelected = new Set();
 
 function ensurePhotoLibraryModal() {
   let modal = document.getElementById("photoLibraryModal");
@@ -683,9 +760,14 @@ function ensurePhotoLibraryModal() {
         <button type="button" class="icon-btn" data-close-library aria-label="Close">&times;</button>
       </div>
       <div class="modal-body">
+        <div class="library-breadcrumb" id="pickerBreadcrumb"></div>
+        <div class="library-toolbar">
+          <button type="button" class="btn btn-outline btn-sm" id="pickerNewFolderBtn">New folder</button>
+          <label class="btn btn-outline btn-sm" for="pickerUploadInput">Upload here</label>
+          <input id="pickerUploadInput" type="file" accept="image/*" multiple hidden/>
+        </div>
         <div class="photo-library-grid" id="photoLibraryGrid"></div>
         <div class="modal-actions">
-          <button type="button" class="btn btn-outline btn-sm" id="photoLibraryRefreshBtn">Refresh</button>
           <button type="button" class="btn btn-primary" id="photoLibraryAddBtn" disabled>Add selected</button>
         </div>
       </div>
@@ -694,26 +776,63 @@ function ensurePhotoLibraryModal() {
   document.body.appendChild(modal);
 
   modal.querySelectorAll("[data-close-library]").forEach((el) => el.addEventListener("click", closePhotoLibrary));
-  modal.querySelector("#photoLibraryRefreshBtn").addEventListener("click", async () => {
-    await loadPhotoLibrary(true);
-    renderPhotoLibraryGrid();
-  });
   modal.querySelector("#photoLibraryAddBtn").addEventListener("click", addSelectedLibraryPhotos);
+  modal.querySelector("#pickerNewFolderBtn").addEventListener("click", async () => {
+    const name = prompt("New folder name:");
+    if (!name) return;
+    const { error } = await createFolderAt(pickerPath, name);
+    if (error) { alert(error); return; }
+    await navigatePickerTo(pickerPath);
+  });
+  modal.querySelector("#pickerUploadInput").addEventListener("change", async (e) => {
+    const files = Array.from(e.target.files || []);
+    e.target.value = "";
+    if (!files.length) return;
+    const { error } = await uploadFilesToLibrary(pickerPath, files);
+    if (error) { alert("Upload failed: " + error); return; }
+    await navigatePickerTo(pickerPath);
+  });
+  modal.querySelector("#pickerBreadcrumb").addEventListener("click", (e) => {
+    const btn = e.target.closest("[data-picker-nav]");
+    if (btn) navigatePickerTo(btn.dataset.pickerNav);
+  });
   return modal;
+}
+
+async function navigatePickerTo(path) {
+  pickerPath = path || "";
+  const grid = document.getElementById("photoLibraryGrid");
+  grid.innerHTML = `<p class="empty-note">Loading...</p>`;
+  pickerEntries = await listLibraryPath(pickerPath);
+  renderPhotoLibraryGrid();
 }
 
 function renderPhotoLibraryGrid() {
   const grid = document.getElementById("photoLibraryGrid");
+  const breadcrumb = document.getElementById("pickerBreadcrumb");
   if (!grid) return;
-  const items = photoLibraryCache || [];
-  if (!items.length) {
-    grid.innerHTML = `<p class="empty-note">No photos uploaded yet — add some via the upload dropzone first.</p>`;
+  if (breadcrumb) breadcrumb.innerHTML = libraryBreadcrumbHtml(pickerPath, "data-picker-nav");
+
+  const { folders, files } = pickerEntries;
+  if (!folders.length && !files.length) {
+    grid.innerHTML = `<p class="empty-note">Nothing here yet — upload a photo or create a folder.</p>`;
   } else {
-    grid.innerHTML = items.map((item) => `
-      <button type="button" class="photo-library-item ${photoLibrarySelected.has(item.url) ? "selected" : ""}" data-url="${escapeHtml(item.url)}" aria-label="${escapeHtml(item.name)}">
-        <img src="${escapeHtml(item.url)}" alt=""/>
+    grid.innerHTML = folders.map((name) => `
+      <button type="button" class="library-folder-item" data-open-folder="${escapeHtml(name)}" aria-label="Open folder ${escapeHtml(name)}">
+        <svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M3 7a1 1 0 0 1 1-1h5l2 2h9a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1Z" stroke-linejoin="round"/></svg>
+        <span>${escapeHtml(name)}</span>
+      </button>
+    `).join("") + files.map((f) => `
+      <button type="button" class="photo-library-item ${photoLibrarySelected.has(f.url) ? "selected" : ""}" data-url="${escapeHtml(f.url)}" aria-label="${escapeHtml(f.name)}">
+        <img src="${escapeHtml(f.url)}" alt=""/>
       </button>
     `).join("");
+    grid.querySelectorAll("[data-open-folder]").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const next = pickerPath ? `${pickerPath}/${btn.dataset.openFolder}` : btn.dataset.openFolder;
+        navigatePickerTo(next);
+      });
+    });
     grid.querySelectorAll(".photo-library-item").forEach((btn) => {
       btn.addEventListener("click", () => {
         const url = btn.dataset.url;
@@ -739,9 +858,7 @@ async function openPhotoLibrary() {
   const modal = ensurePhotoLibraryModal();
   photoLibrarySelected.clear();
   modal.classList.add("open");
-  document.getElementById("photoLibraryGrid").innerHTML = `<p class="empty-note">Loading...</p>`;
-  await loadPhotoLibrary(false);
-  renderPhotoLibraryGrid();
+  await navigatePickerTo("");
 }
 
 function closePhotoLibrary() {
@@ -757,6 +874,56 @@ function addSelectedLibraryPhotos() {
   });
   renderPhotoGallery();
   closePhotoLibrary();
+}
+
+/* ----- Library tab (independent browsing/organizing) ----- */
+let libraryTabPath = "";
+let libraryTabEntries = { folders: [], files: [] };
+
+async function refreshLibraryPanel() {
+  await navigateLibraryTab(libraryTabPath);
+}
+
+async function navigateLibraryTab(path) {
+  libraryTabPath = path || "";
+  const grid = document.getElementById("libraryTabGrid");
+  if (!grid) return;
+  grid.innerHTML = `<p class="empty-note">Loading...</p>`;
+  libraryTabEntries = await listLibraryPath(libraryTabPath);
+  renderLibraryTabGrid();
+}
+
+function renderLibraryTabGrid() {
+  const grid = document.getElementById("libraryTabGrid");
+  const breadcrumb = document.getElementById("libraryTabBreadcrumb");
+  if (!grid) return;
+  if (breadcrumb) breadcrumb.innerHTML = libraryBreadcrumbHtml(libraryTabPath, "data-library-nav");
+
+  const { folders, files } = libraryTabEntries;
+  if (!folders.length && !files.length) {
+    grid.innerHTML = `<p class="empty-note">Nothing here yet — upload a photo or create a folder.</p>`;
+    return;
+  }
+  grid.innerHTML = folders.map((name) => `
+    <button type="button" class="library-folder-item" data-open-folder="${escapeHtml(name)}" aria-label="Open folder ${escapeHtml(name)}">
+      <svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M3 7a1 1 0 0 1 1-1h5l2 2h9a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1Z" stroke-linejoin="round"/></svg>
+      <span>${escapeHtml(name)}</span>
+    </button>
+  `).join("") + files.map((f) => `
+    <button type="button" class="photo-library-item" data-url="${escapeHtml(f.url)}" aria-label="${escapeHtml(f.name)}">
+      <img src="${escapeHtml(f.url)}" alt=""/>
+    </button>
+  `).join("");
+
+  grid.querySelectorAll("[data-open-folder]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const next = libraryTabPath ? `${libraryTabPath}/${btn.dataset.openFolder}` : btn.dataset.openFolder;
+      navigateLibraryTab(next);
+    });
+  });
+  grid.querySelectorAll(".photo-library-item").forEach((btn) => {
+    btn.addEventListener("click", () => openImagePreviewSet([btn.dataset.url], 0));
+  });
 }
 
 async function handleSaveItem(e) {
@@ -844,6 +1011,7 @@ const TABS = {
   products: { btnId: "tabProductsBtn", panelId: "productsPanel", onEnter: renderProductList },
   orders: { btnId: "tabOrdersBtn", panelId: "ordersPanel", onEnter: refreshOrderList },
   collections: { btnId: "tabCollectionsBtn", panelId: "collectionsPanel", onEnter: refreshCollectionList },
+  library: { btnId: "tabLibraryBtn", panelId: "libraryPanel", onEnter: refreshLibraryPanel },
   nav: { btnId: "tabNavBtn", panelId: "navPanel", onEnter: refreshNavList },
   faq: { btnId: "tabFaqBtn", panelId: "faqPanel", onEnter: refreshFaqList },
   settings: { btnId: "tabSettingsBtn", panelId: "settingsPanel", onEnter: loadSettingsIntoForm }
@@ -1617,6 +1785,35 @@ document.addEventListener("DOMContentLoaded", async () => {
   wireClickablePhotoPreview("collectionPhotoPreview");
   wireClickablePhotoPreview("heroPhotoPreview");
   wireClickablePhotoPreview("logoPhotoPreview");
+  wireClickableThumbList("itemList", (id) => {
+    const item = productsCache.find((d) => String(d.id) === String(id));
+    if (!item) return null;
+    const urls = Array.isArray(item.images) && item.images.length ? item.images : (item.image_url ? [item.image_url] : []);
+    return { urls, index: 0 };
+  });
+  wireClickableThumbList("collectionList", (id) => {
+    const c = collectionsCache.find((d) => String(d.id) === String(id));
+    return { urls: c && c.card_image_url ? [c.card_image_url] : [], index: 0 };
+  });
+  document.getElementById("libraryTabBreadcrumb").addEventListener("click", (e) => {
+    const btn = e.target.closest("[data-library-nav]");
+    if (btn) navigateLibraryTab(btn.dataset.libraryNav);
+  });
+  document.getElementById("libraryNewFolderBtn").addEventListener("click", async () => {
+    const name = prompt("New folder name:");
+    if (!name) return;
+    const { error } = await createFolderAt(libraryTabPath, name);
+    if (error) { alert(error); return; }
+    await navigateLibraryTab(libraryTabPath);
+  });
+  document.getElementById("libraryUploadInput").addEventListener("change", async (e) => {
+    const files = Array.from(e.target.files || []);
+    e.target.value = "";
+    if (!files.length) return;
+    const { error } = await uploadFilesToLibrary(libraryTabPath, files);
+    if (error) { alert("Upload failed: " + error); return; }
+    await navigateLibraryTab(libraryTabPath);
+  });
 
   document.getElementById("navForm").addEventListener("submit", handleSaveNav);
   document.getElementById("cancelNavEditBtn").addEventListener("click", resetNavForm);
