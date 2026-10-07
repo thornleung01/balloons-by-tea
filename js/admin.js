@@ -716,6 +716,138 @@ function libraryBreadcrumbHtml(path, navAttr) {
   `).join(`<span class="library-breadcrumb-sep">/</span>`);
 }
 
+async function deleteLibraryFile(path) {
+  const client = getSupabaseClient();
+  const { error } = await client.storage.from("product-photos").remove([path]);
+  return error ? error.message : null;
+}
+
+async function deleteLibraryFolder(path) {
+  // No recursive delete — refuse rather than silently nuking contents.
+  // The admin can move/delete what's inside first, same as any ordinary
+  // file manager would require.
+  const { folders, files } = await listLibraryPath(path);
+  if (folders.length || files.length) return "That folder isn't empty — move or delete what's inside it first.";
+  const client = getSupabaseClient();
+  const { error } = await client.storage.from("product-photos").remove([`${path}/.keep`]);
+  return error ? error.message : null;
+}
+
+async function moveLibraryFile(fromPath, toFolder) {
+  const filename = fromPath.split("/").pop();
+  const toPath = toFolder ? `${toFolder}/${filename}` : filename;
+  if (toPath === fromPath) return null;
+  const client = getSupabaseClient();
+  const { error } = await client.storage.from("product-photos").move(fromPath, toPath);
+  return error ? error.message : null;
+}
+
+/* Builds the folders+files markup shared by the Library tab and the item-
+   form picker modal. selectedUrls is null outside picker mode (the tab
+   has no multi-select — clicking a photo there opens the lightbox). */
+function libraryGridHtml(path, entries, selectedUrls) {
+  const { folders, files } = entries;
+  const upTile = path ? `
+    <div class="library-folder-item library-up-item" data-nav-up>
+      <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M12 19V5M5 12l7-7 7 7" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      <span>Up one level</span>
+    </div>
+  ` : "";
+  const folderHtml = folders.map((name) => `
+    <div class="library-folder-item" data-open-folder="${escapeHtml(name)}">
+      <button type="button" class="library-item-delete" data-delete-folder="${escapeHtml(name)}" aria-label="Delete folder ${escapeHtml(name)}">&times;</button>
+      <svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M3 7a1 1 0 0 1 1-1h5l2 2h9a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1Z" stroke-linejoin="round"/></svg>
+      <span>${escapeHtml(name)}</span>
+    </div>
+  `).join("");
+  const fileHtml = files.map((f) => `
+    <div class="photo-library-item ${selectedUrls && selectedUrls.has(f.url) ? "selected" : ""}" data-url="${escapeHtml(f.url)}" data-path="${escapeHtml(f.path)}" draggable="true">
+      <img src="${escapeHtml(f.url)}" alt="${escapeHtml(f.name)}"/>
+      <button type="button" class="library-item-delete" data-delete-file="${escapeHtml(f.path)}" aria-label="Delete photo">&times;</button>
+    </div>
+  `).join("");
+  if (!upTile && !folderHtml && !fileHtml) return `<p class="empty-note">Nothing here yet — upload a photo or create a folder.</p>`;
+  return upTile + folderHtml + fileHtml;
+}
+
+/* Wires click/delete/drag-drop behavior onto a freshly-rendered library
+   grid. Drag a photo onto a folder tile (or the "up one level" tile) to
+   move it there via Storage's own move() — no re-upload needed. */
+function wireLibraryGrid(gridEl, { navigate, onFileClick, afterMutate, getPath }) {
+  gridEl.querySelectorAll("[data-open-folder]").forEach((el) => {
+    el.addEventListener("click", (e) => {
+      if (e.target.closest(".library-item-delete")) return;
+      const base = getPath();
+      navigate(base ? `${base}/${el.dataset.openFolder}` : el.dataset.openFolder);
+    });
+  });
+  const upTile = gridEl.querySelector("[data-nav-up]");
+  if (upTile) {
+    upTile.addEventListener("click", () => {
+      const parts = getPath().split("/");
+      parts.pop();
+      navigate(parts.join("/"));
+    });
+  }
+  gridEl.querySelectorAll(".photo-library-item").forEach((el) => {
+    el.addEventListener("click", (e) => {
+      if (e.target.closest(".library-item-delete")) return;
+      onFileClick(el.dataset.url, el.dataset.path);
+    });
+  });
+  gridEl.querySelectorAll("[data-delete-file]").forEach((btn) => {
+    btn.addEventListener("click", async (e) => {
+      e.stopPropagation();
+      if (!confirm("Delete this photo? This can't be undone.")) return;
+      const error = await deleteLibraryFile(btn.dataset.deleteFile);
+      if (error) { alert("Couldn't delete: " + error); return; }
+      afterMutate();
+    });
+  });
+  gridEl.querySelectorAll("[data-delete-folder]").forEach((btn) => {
+    btn.addEventListener("click", async (e) => {
+      e.stopPropagation();
+      const base = getPath();
+      const folderPath = base ? `${base}/${btn.dataset.deleteFolder}` : btn.dataset.deleteFolder;
+      if (!confirm(`Delete the "${btn.dataset.deleteFolder}" folder?`)) return;
+      const error = await deleteLibraryFolder(folderPath);
+      if (error) { alert(error); return; }
+      afterMutate();
+    });
+  });
+
+  gridEl.querySelectorAll(".photo-library-item").forEach((el) => {
+    el.addEventListener("dragstart", (e) => {
+      e.dataTransfer.setData("text/plain", el.dataset.path);
+      e.dataTransfer.effectAllowed = "move";
+      el.classList.add("dragging");
+    });
+    el.addEventListener("dragend", () => el.classList.remove("dragging"));
+  });
+  gridEl.querySelectorAll("[data-open-folder], [data-nav-up]").forEach((el) => {
+    el.addEventListener("dragover", (e) => { e.preventDefault(); el.classList.add("drop-target-active"); });
+    el.addEventListener("dragleave", () => el.classList.remove("drop-target-active"));
+    el.addEventListener("drop", async (e) => {
+      e.preventDefault();
+      el.classList.remove("drop-target-active");
+      const fromPath = e.dataTransfer.getData("text/plain");
+      if (!fromPath) return;
+      const base = getPath();
+      let toFolder;
+      if (el.dataset.openFolder) {
+        toFolder = base ? `${base}/${el.dataset.openFolder}` : el.dataset.openFolder;
+      } else {
+        const parts = base.split("/");
+        parts.pop();
+        toFolder = parts.join("/");
+      }
+      const error = await moveLibraryFile(fromPath, toFolder);
+      if (error) { alert("Couldn't move: " + error); return; }
+      afterMutate();
+    });
+  });
+}
+
 async function createFolderAt(basePath, rawName) {
   const name = String(rawName || "").trim().replace(/[\/\\]+/g, "-").replace(/[^a-zA-Z0-9 _-]/g, "").trim();
   if (!name) return { error: "Enter a folder name." };
@@ -812,37 +944,17 @@ function renderPhotoLibraryGrid() {
   const breadcrumb = document.getElementById("pickerBreadcrumb");
   if (!grid) return;
   if (breadcrumb) breadcrumb.innerHTML = libraryBreadcrumbHtml(pickerPath, "data-picker-nav");
-
-  const { folders, files } = pickerEntries;
-  if (!folders.length && !files.length) {
-    grid.innerHTML = `<p class="empty-note">Nothing here yet — upload a photo or create a folder.</p>`;
-  } else {
-    grid.innerHTML = folders.map((name) => `
-      <button type="button" class="library-folder-item" data-open-folder="${escapeHtml(name)}" aria-label="Open folder ${escapeHtml(name)}">
-        <svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M3 7a1 1 0 0 1 1-1h5l2 2h9a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1Z" stroke-linejoin="round"/></svg>
-        <span>${escapeHtml(name)}</span>
-      </button>
-    `).join("") + files.map((f) => `
-      <button type="button" class="photo-library-item ${photoLibrarySelected.has(f.url) ? "selected" : ""}" data-url="${escapeHtml(f.url)}" aria-label="${escapeHtml(f.name)}">
-        <img src="${escapeHtml(f.url)}" alt=""/>
-      </button>
-    `).join("");
-    grid.querySelectorAll("[data-open-folder]").forEach((btn) => {
-      btn.addEventListener("click", () => {
-        const next = pickerPath ? `${pickerPath}/${btn.dataset.openFolder}` : btn.dataset.openFolder;
-        navigatePickerTo(next);
-      });
-    });
-    grid.querySelectorAll(".photo-library-item").forEach((btn) => {
-      btn.addEventListener("click", () => {
-        const url = btn.dataset.url;
-        if (photoLibrarySelected.has(url)) photoLibrarySelected.delete(url);
-        else photoLibrarySelected.add(url);
-        btn.classList.toggle("selected");
-        updatePhotoLibraryAddBtn();
-      });
-    });
-  }
+  grid.innerHTML = libraryGridHtml(pickerPath, pickerEntries, photoLibrarySelected);
+  wireLibraryGrid(grid, {
+    navigate: navigatePickerTo,
+    getPath: () => pickerPath,
+    afterMutate: () => navigatePickerTo(pickerPath),
+    onFileClick: (url) => {
+      if (photoLibrarySelected.has(url)) photoLibrarySelected.delete(url);
+      else photoLibrarySelected.add(url);
+      renderPhotoLibraryGrid();
+    }
+  });
   updatePhotoLibraryAddBtn();
 }
 
@@ -898,31 +1010,12 @@ function renderLibraryTabGrid() {
   const breadcrumb = document.getElementById("libraryTabBreadcrumb");
   if (!grid) return;
   if (breadcrumb) breadcrumb.innerHTML = libraryBreadcrumbHtml(libraryTabPath, "data-library-nav");
-
-  const { folders, files } = libraryTabEntries;
-  if (!folders.length && !files.length) {
-    grid.innerHTML = `<p class="empty-note">Nothing here yet — upload a photo or create a folder.</p>`;
-    return;
-  }
-  grid.innerHTML = folders.map((name) => `
-    <button type="button" class="library-folder-item" data-open-folder="${escapeHtml(name)}" aria-label="Open folder ${escapeHtml(name)}">
-      <svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M3 7a1 1 0 0 1 1-1h5l2 2h9a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1Z" stroke-linejoin="round"/></svg>
-      <span>${escapeHtml(name)}</span>
-    </button>
-  `).join("") + files.map((f) => `
-    <button type="button" class="photo-library-item" data-url="${escapeHtml(f.url)}" aria-label="${escapeHtml(f.name)}">
-      <img src="${escapeHtml(f.url)}" alt=""/>
-    </button>
-  `).join("");
-
-  grid.querySelectorAll("[data-open-folder]").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      const next = libraryTabPath ? `${libraryTabPath}/${btn.dataset.openFolder}` : btn.dataset.openFolder;
-      navigateLibraryTab(next);
-    });
-  });
-  grid.querySelectorAll(".photo-library-item").forEach((btn) => {
-    btn.addEventListener("click", () => openImagePreviewSet([btn.dataset.url], 0));
+  grid.innerHTML = libraryGridHtml(libraryTabPath, libraryTabEntries, null);
+  wireLibraryGrid(grid, {
+    navigate: navigateLibraryTab,
+    getPath: () => libraryTabPath,
+    afterMutate: () => navigateLibraryTab(libraryTabPath),
+    onFileClick: (url) => openImagePreviewSet([url], 0)
   });
 }
 

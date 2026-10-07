@@ -144,6 +144,7 @@ body.admin-body {
 .library-toolbar { display: flex; gap: var(--space-2); margin-bottom: var(--space-2); }
 
 .library-folder-item {
+  position: relative;
   width: 100%; aspect-ratio: 1;
   display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px;
   border-radius: var(--radius-sm);
@@ -154,6 +155,32 @@ body.admin-body {
 }
 .library-folder-item:hover { border-color: var(--color-accent); background: var(--color-accent-tint); }
 .library-folder-item span { font-size: 0.65rem; text-align: center; word-break: break-word; line-height: 1.2; max-width: 100%; }
+.library-up-item { border-style: solid; background: transparent; }
+
+/* Drop target while dragging a photo over a folder (or the up-tile) —
+   reuses the same visual language as the product-folder drag-drop in the
+   Products tab, for consistency. */
+.library-folder-item.drop-target-active {
+  background: var(--color-accent-tint);
+  outline: 1.5px dashed var(--color-accent);
+  outline-offset: 3px;
+}
+
+/* Small delete "x" overlaid on every photo/folder tile — matches the
+   existing .photo-gallery-remove treatment used in the item form's own
+   photo gallery, so the "delete a photo" affordance looks the same
+   everywhere in the admin panel. */
+.library-item-delete {
+  position: absolute; top: 3px; right: 3px; z-index: 1;
+  width: 18px; height: 18px; border-radius: 50%;
+  background: rgba(74, 48, 40, 0.75); color: #fff;
+  border: none; font-size: 0.75rem; line-height: 1;
+  display: flex; align-items: center; justify-content: center;
+  cursor: pointer; padding: 0;
+}
+.library-item-delete:hover { background: rgba(74, 48, 40, 0.95); }
+
+.photo-library-item.dragging { opacity: 0.4; cursor: grabbing; }
 
 /* The Library tab's grid lives in the normal page flow, not a height-
    capped modal, so let it grow and the page scroll naturally. */

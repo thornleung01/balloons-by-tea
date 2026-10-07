@@ -393,7 +393,7 @@ async function loadHistoryList() {
     .limit(30);
 
   if (error) {
-    listEl.innerHTML = `<p class="edit-history-empty">Couldn't load history: ${error.message}</p>`;
+    listEl.innerHTML = `<p class="edit-history-empty">Couldn't load history: ${escapeHtml(error.message)}</p>`;
     return;
   }
   if (!data || !data.length) {
@@ -870,7 +870,7 @@ function toggleThemePanel() {
     <div class="edit-theme-swatches">
       ${THEME_COLOR_FIELDS.map((f) => `
         <label class="edit-theme-field">
-          <input type="color" data-theme-key="${f.key}" value="${pendingThemeColors[f.key] || settings[f.key] || f.fallback}"/>
+          <input type="color" data-theme-key="${f.key}" value="${escapeHtml(pendingThemeColors[f.key] || settings[f.key] || f.fallback)}"/>
           <span>${f.label}</span>
         </label>
       `).join("")}
