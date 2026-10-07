@@ -80,6 +80,16 @@ function buildEditModeToggle() {
   document.body.appendChild(layersBtn);
   layersBtn.addEventListener("click", () => toggleLayersPanel());
 
+  const shortcutsBtn = document.createElement("button");
+  shortcutsBtn.type = "button";
+  shortcutsBtn.id = "editShortcutsToggle";
+  shortcutsBtn.className = "edit-mode-toggle edit-shortcuts-toggle";
+  shortcutsBtn.title = "Keyboard shortcuts";
+  shortcutsBtn.hidden = true;
+  shortcutsBtn.innerHTML = `<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M9 9a3 3 0 1 1 5 2.2c-.9.8-1.5 1.3-1.5 2.8" stroke-linecap="round" stroke-linejoin="round"/><circle cx="12.5" cy="17.5" r="1" fill="currentColor" stroke="none"/></svg>`;
+  document.body.appendChild(shortcutsBtn);
+  shortcutsBtn.addEventListener("click", () => toggleShortcutsPanel());
+
   // Shown as soon as the pencil toggle exists (i.e. as soon as we know
   // this is an admin session) rather than gated behind edit mode being
   // on — there was previously no way back to admin.html from a public
@@ -111,6 +121,7 @@ function setEditMode(on) {
   document.getElementById("editThemeToggle").hidden = !on;
   document.getElementById("editPreviewToggle").hidden = !on;
   document.getElementById("editLayersToggle").hidden = !on;
+  document.getElementById("editShortcutsToggle").hidden = !on;
 
   if (on) {
     revealHiddenForEditing();
@@ -123,6 +134,7 @@ function setEditMode(on) {
     closeHistoryPanel();
     closeThemePanel();
     closeLayersPanel();
+    closeShortcutsPanel();
     // Preview mode is edit-mode-only chrome, same as the panels above —
     // leaving it on across an edit-mode exit would strand the body class
     // and the toggle's "active" visual with no way back to turn it off
@@ -159,6 +171,7 @@ function togglePreviewMode() {
     closeHistoryPanel();
     closeThemePanel();
     closeLayersPanel();
+    closeShortcutsPanel();
   } else {
     // Nothing above ever mutated selectedKeys/pendingOverrides, so this
     // just rebuilds the same chrome that was there before — restoring it
@@ -350,6 +363,7 @@ async function toggleHistoryPanel() {
   if (existing) { closeHistoryPanel(); return; }
   closeThemePanel(); // same corner, avoid the two overlapping
   closeLayersPanel();
+  closeShortcutsPanel();
 
   const panel = document.createElement("div");
   panel.id = "editHistoryPanel";
@@ -855,6 +869,7 @@ function toggleThemePanel() {
   if (existing) { closeThemePanel(); return; }
   closeHistoryPanel(); // same corner, avoid the two overlapping
   closeLayersPanel();
+  closeShortcutsPanel();
 
   const settings = window.SITE_SETTINGS || {};
   const panel = document.createElement("div");
@@ -957,6 +972,7 @@ function toggleLayersPanel() {
   if (existing) { closeLayersPanel(); return; }
   closeHistoryPanel();
   closeThemePanel();
+  closeShortcutsPanel();
 
   const els = Array.from(document.querySelectorAll("[data-edit-key]")).filter((el) => el.dataset.editKey);
 
@@ -999,6 +1015,88 @@ function toggleLayersPanel() {
       if (el) el.scrollIntoView({ behavior: "smooth", block: "center" });
     });
   });
+}
+
+/* ===== Keyboard shortcuts reference panel =====
+   Pure documentation, read-only — lists exactly the shortcuts wired up in
+   the single keydown listener near the bottom of this file (undo/redo,
+   duplicate, clear selection, remove selected products, nudge/resize) plus
+   the two keys that only apply while mid inline-text-edit (Enter/Escape in
+   startTextEdit's own keydown handler, not the module-level listener).
+   Kept as a static data array next to the panel builder so the list is
+   easy to keep in sync by hand if a shortcut is ever added/changed —
+   there's no way to introspect the listener's conditions at runtime. */
+const EDIT_SHORTCUT_GROUPS = [
+  {
+    title: "History",
+    items: [
+      { keys: ["Ctrl+Z"], desc: "Undo the last staged change (a property edit, a staged product removal, or a duplicate)." },
+      { keys: ["Ctrl+Shift+Z", "Ctrl+Y"], desc: "Redo the last change that was just undone." }
+    ]
+  },
+  {
+    title: "Selection & editing",
+    items: [
+      { keys: ["Esc"], desc: "Clear the current selection. Only does anything while 1+ elements are selected." },
+      { keys: ["Delete", "Backspace"], desc: "Remove the selected product card(s) from the site (staged until you click Save). Only affects selected elements that are product cards — any other selected element type is left untouched." },
+      { keys: ["Ctrl+D"], desc: "Duplicate the selected element. Only works when exactly one text or icon/decorative (\"block\") element is selected and it isn't locked — sections and product cards can't be duplicated this way." }
+    ]
+  },
+  {
+    title: "Moving & resizing",
+    items: [
+      { keys: ["↑", "→"], desc: "Nudge every selected, unlocked element slightly bigger." },
+      { keys: ["↓", "←"], desc: "Nudge every selected, unlocked element slightly smaller. Product cards and block elements resize via scale, text elements via font size, and sections via the space below them." }
+    ]
+  },
+  {
+    title: "While editing text",
+    items: [
+      { keys: ["Enter"], desc: "Save the wording change and exit text editing." },
+      { keys: ["Esc"], desc: "Cancel the wording change and restore the original text. (Only while actively editing a double-clicked text element — unrelated to the Esc above that clears a selection.)" }
+    ]
+  }
+];
+
+function closeShortcutsPanel() {
+  const panel = document.getElementById("editShortcutsPanel");
+  if (panel) panel.remove();
+}
+
+function toggleShortcutsPanel() {
+  const existing = document.getElementById("editShortcutsPanel");
+  if (existing) { closeShortcutsPanel(); return; }
+  closeHistoryPanel();
+  closeThemePanel();
+  closeLayersPanel();
+
+  const panel = document.createElement("div");
+  panel.id = "editShortcutsPanel";
+  panel.className = "edit-history-panel edit-shortcuts-panel";
+  panel.innerHTML = `
+    <div class="edit-history-head">
+      <strong>Keyboard shortcuts</strong>
+      <button type="button" class="edit-icon-btn" id="editShortcutsClose" aria-label="Close">
+        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 5l14 14M19 5L5 19" stroke-linecap="round"/></svg>
+      </button>
+    </div>
+    <div class="edit-shortcuts-list">
+      <p class="edit-shortcuts-note">Work only while edit mode is on and focus isn't in a text field. On Mac, use ⌘ wherever Ctrl is shown.</p>
+      ${EDIT_SHORTCUT_GROUPS.map((group) => `
+        <div class="edit-shortcuts-group">
+          <div class="edit-shortcuts-group-title">${escapeHtml(group.title)}</div>
+          ${group.items.map((item) => `
+            <div class="edit-shortcuts-row">
+              <span class="edit-shortcuts-keys">${item.keys.map((k) => `<kbd class="edit-kbd">${escapeHtml(k)}</kbd>`).join('<span class="edit-shortcuts-or">or</span>')}</span>
+              <span class="edit-shortcuts-desc">${escapeHtml(item.desc)}</span>
+            </div>
+          `).join("")}
+        </div>
+      `).join("")}
+    </div>
+  `;
+  document.body.appendChild(panel);
+  document.getElementById("editShortcutsClose").addEventListener("click", closeShortcutsPanel);
 }
 
 /* ===== Inline text editing (text elements only) =====
