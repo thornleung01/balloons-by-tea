@@ -128,6 +128,23 @@ let itemSortMode = "collection";
 // file is already compared (String(d.id) === btn.dataset.id) — avoids a
 // number/string mismatch between Supabase's bigint ids and DOM dataset values.
 let selectedProductIds = new Set();
+// Which category folders are collapsed in the "By Category" product view.
+// Keyed by collection slug (plus the "__uncategorized__" sentinel for the
+// catch-all group). Pure client-side UI state — intentionally never synced
+// to Supabase, so it resets on reload — but kept in a module-level Set
+// (not local to renderProductList) so it survives the re-renders that a
+// search keystroke or a drag-drop move triggers.
+let collapsedCollectionGroups = new Set();
+// Product id currently being dragged between category folders in the "By
+// Category" view. Deliberately a separate variable from wireUpRowReorder's
+// draggedRowIndex below — that one reorders rows within a single list,
+// this one moves a row between different list containers, and the two
+// features run over the same page at the same time.
+let draggedProductId = null;
+// Guards against firing a second recategorize write while one is still in
+// flight (e.g. a fast double-drop), mirroring the disable-while-saving
+// pattern used elsewhere in this file (handleToggleActive, bulkSetActive).
+let isReassigningCollection = false;
 
 async function refreshItemList() {
   const client = getSupabaseClient();
@@ -179,12 +196,6 @@ function renderProductList() {
   else if (itemSortMode === "price-desc") items = items.slice().sort((a, b) => b.price - a.price);
   else if (itemSortMode === "newest") items = items.slice().sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
 
-  if (!items.length) {
-    listEl.innerHTML = `<p class="empty-note">No items match. Try a different search or category.</p>`;
-    syncBulkSelectionUI([]);
-    return;
-  }
-
   const renderRow = (item) => `
     <div class="admin-item-row ${item.active === false ? "inactive" : ""}" data-id="${item.id}">
       <input type="checkbox" class="admin-item-select" data-select-id="${item.id}" aria-label="Select ${escapeHtml(item.name)}" ${selectedProductIds.has(String(item.id)) ? "checked" : ""}/>
@@ -210,14 +221,66 @@ function renderProductList() {
       if (!bySlug[item.collection]) bySlug[item.collection] = [];
       bySlug[item.collection].push(item);
     });
-    listEl.innerHTML = Object.keys(bySlug).map((slug) => `
-      <div class="collection-group">
-        <h3>${escapeHtml(collectionTitle(slug))}</h3>
-        ${bySlug[slug].map(renderRow).join("")}
-      </div>
-    `).join("");
+    const knownSlugs = new Set(collectionsCache.map((c) => c.slug));
+    const searching = query.length > 0;
+    // With the search box empty and no category filter applied, render a
+    // folder for every category — even ones with zero items right now —
+    // so they stay around as valid drag-drop targets. While actively
+    // searching, only show folders that actually matched something, so a
+    // long list of empty folders doesn't bury the results. A category
+    // filter (itemFilterSlug) already narrows `items` to one slug, so
+    // showing the rest as empty folders would just contradict the filter.
+    const showEmptyFolders = itemFilterSlug === "all" && !searching;
+
+    const renderGroup = (slug, title, groupItems, isDropTarget) => {
+      const collapsed = collapsedCollectionGroups.has(slug);
+      return `
+        <div class="collection-group" ${isDropTarget ? `data-drop-slug="${escapeHtml(slug)}"` : ""}>
+          <button type="button" class="collection-group-toggle" data-group-toggle="${escapeHtml(slug)}" aria-expanded="${collapsed ? "false" : "true"}">
+            <svg class="collection-group-chevron ${collapsed ? "is-collapsed" : ""}" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>
+            <h3>${escapeHtml(title)}</h3>
+            <span class="collection-group-count">${groupItems.length}</span>
+          </button>
+          <div class="collection-group-rows ${collapsed ? "is-collapsed" : ""}">
+            ${groupItems.length ? groupItems.map(renderRow).join("") : `<p class="collection-group-empty">No items${isDropTarget ? " — drag one here" : ""}.</p>`}
+          </div>
+        </div>
+      `;
+    };
+
+    let groupsHtml = collectionsCache
+      .filter((c) => showEmptyFolders || (bySlug[c.slug] && bySlug[c.slug].length))
+      .map((c) => renderGroup(c.slug, collectionTitle(c.slug), bySlug[c.slug] || [], true))
+      .join("");
+
+    // Safety net: a product whose `collection` doesn't match any known
+    // slug (e.g. a category that was since renamed/deleted) would
+    // otherwise silently vanish from the list. Not a valid drop target —
+    // there's no slug here to assign — just somewhere for it to show up.
+    const uncategorizedItems = items.filter((item) => !knownSlugs.has(item.collection));
+    if (uncategorizedItems.length) {
+      groupsHtml += renderGroup("__uncategorized__", "Uncategorized", uncategorizedItems, false);
+    }
+
+    if (!groupsHtml) {
+      listEl.innerHTML = `<p class="empty-note">No items match. Try a different search or category.</p>`;
+      syncBulkSelectionUI([]);
+      return;
+    }
+
+    listEl.innerHTML = groupsHtml;
   } else {
+    if (!items.length) {
+      listEl.innerHTML = `<p class="empty-note">No items match. Try a different search or category.</p>`;
+      syncBulkSelectionUI([]);
+      return;
+    }
     listEl.innerHTML = items.map(renderRow).join("");
+  }
+
+  if (itemSortMode === "collection") {
+    wireUpCollectionGroupToggles(listEl);
+    wireUpCollectionGroupDrag(listEl);
   }
 
   listEl.querySelectorAll(".edit-btn").forEach((btn) => {
@@ -240,6 +303,91 @@ function renderProductList() {
     });
   });
   syncBulkSelectionUI(items);
+}
+
+/* Disclosure toggle for each category folder header in the "By Category"
+   product view. Collapsed/expanded state is tracked in
+   collapsedCollectionGroups so it's still correct next time
+   renderProductList() rebuilds the list (search keystroke, filter change,
+   a drag-drop move) — but the actual DOM update here is done directly
+   (no re-render) so the click feels instant. */
+function wireUpCollectionGroupToggles(listEl) {
+  listEl.querySelectorAll(".collection-group-toggle").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const key = btn.dataset.groupToggle;
+      const nowCollapsed = !collapsedCollectionGroups.has(key);
+      if (nowCollapsed) collapsedCollectionGroups.add(key);
+      else collapsedCollectionGroups.delete(key);
+
+      const group = btn.closest(".collection-group");
+      group.querySelector(".collection-group-rows").classList.toggle("is-collapsed", nowCollapsed);
+      btn.querySelector(".collection-group-chevron").classList.toggle("is-collapsed", nowCollapsed);
+      btn.setAttribute("aria-expanded", String(!nowCollapsed));
+    });
+  });
+}
+
+/* Drag-and-drop re-categorizing in the "By Category" product view: drag a
+   product row onto a *different* category's whole folder to move it
+   there. This is a different kind of drag than wireUpRowReorder() above
+   (which reorders rows within one list in place) — here a row moves
+   between separate group containers — so it tracks its own
+   draggedProductId instead of reusing wireUpRowReorder's draggedRowIndex.
+   Drop targets are the .collection-group containers themselves (not the
+   individual rows), and collapsing a folder only hides its
+   .collection-group-rows — the group container, with its listeners, stays
+   in the DOM — so a collapsed folder keeps accepting drops. */
+function wireUpCollectionGroupDrag(listEl) {
+  listEl.querySelectorAll(".admin-item-row").forEach((row) => {
+    row.setAttribute("draggable", "true");
+    row.addEventListener("dragstart", (e) => {
+      draggedProductId = row.dataset.id;
+      row.classList.add("dragging");
+      if (e.dataTransfer) e.dataTransfer.effectAllowed = "move";
+    });
+    row.addEventListener("dragend", () => {
+      row.classList.remove("dragging");
+      draggedProductId = null;
+    });
+  });
+
+  listEl.querySelectorAll(".collection-group[data-drop-slug]").forEach((group) => {
+    group.addEventListener("dragover", (e) => {
+      if (draggedProductId === null) return;
+      e.preventDefault();
+      group.classList.add("drop-target-active");
+    });
+    group.addEventListener("dragleave", (e) => {
+      if (group.contains(e.relatedTarget)) return;
+      group.classList.remove("drop-target-active");
+    });
+    group.addEventListener("drop", (e) => {
+      e.preventDefault();
+      group.classList.remove("drop-target-active");
+      const id = draggedProductId;
+      draggedProductId = null;
+      if (id === null) return;
+      const targetSlug = group.dataset.dropSlug;
+      const item = productsCache.find((p) => String(p.id) === String(id));
+      // Dropping back onto the folder a product is already in is a no-op
+      // — no point writing the same value back to Supabase.
+      if (!item || item.collection === targetSlug) return;
+      moveProductToCollection(id, targetSlug);
+    });
+  });
+}
+
+async function moveProductToCollection(id, newSlug) {
+  if (isReassigningCollection) return;
+  isReassigningCollection = true;
+  const client = getSupabaseClient();
+  const { error } = await client.from("products").update({ collection: newSlug }).eq("id", id);
+  isReassigningCollection = false;
+  if (error) {
+    alert("Couldn't move item: " + error.message);
+    return;
+  }
+  await refreshItemList();
 }
 
 /* Keeps the "select all" checkbox and the bulk action bar in sync with
@@ -540,7 +688,12 @@ async function handleDelete(id, allItems) {
 /* ===== Tabs ===== */
 
 const TABS = {
-  products: { btnId: "tabProductsBtn", panelId: "productsPanel" },
+  // onEnter re-renders (not re-fetches) the product list so that
+  // switching back here after adding/renaming a category on the
+  // Categories tab immediately reflects the current collectionsCache —
+  // otherwise the "By Category" view's folders would only pick up a
+  // just-added category after a full page reload.
+  products: { btnId: "tabProductsBtn", panelId: "productsPanel", onEnter: renderProductList },
   orders: { btnId: "tabOrdersBtn", panelId: "ordersPanel", onEnter: refreshOrderList },
   collections: { btnId: "tabCollectionsBtn", panelId: "collectionsPanel", onEnter: refreshCollectionList },
   nav: { btnId: "tabNavBtn", panelId: "navPanel", onEnter: refreshNavList },

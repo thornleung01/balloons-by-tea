@@ -169,7 +169,33 @@ body.admin-body {
 .form-status.success { color: var(--color-success); }
 
 .collection-group { margin-bottom: var(--space-4); }
-.collection-group h3 { font-size: 1rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--color-fg-faint); font-family: var(--font-body); font-weight: 600; margin-bottom: var(--space-2); }
+.collection-group h3 { font-size: 1rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--color-fg-faint); font-family: var(--font-body); font-weight: 600; margin: 0; }
+.collection-group.drop-target-active {
+  background: var(--color-accent-tint);
+  outline: 1.5px dashed var(--color-accent);
+  outline-offset: 6px;
+  border-radius: var(--radius-sm);
+}
+.collection-group-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  background: none;
+  border: none;
+  padding: 0;
+  margin-bottom: var(--space-2);
+  cursor: pointer;
+  text-align: left;
+}
+.collection-group-toggle h3 { flex: 1; }
+.collection-group-chevron { flex-shrink: 0; color: var(--color-fg-faint); transition: transform 160ms var(--ease); }
+.collection-group-chevron.is-collapsed { transform: rotate(-90deg); }
+.collection-group-count { font-size: 0.78rem; font-weight: 600; color: var(--color-fg-faint); flex-shrink: 0; }
+.collection-group-rows.is-collapsed { display: none; }
+.collection-group-empty { font-size: 0.82rem; color: var(--color-fg-faint); font-style: italic; padding: var(--space-2) 0; }
+.admin-item-row.dragging { opacity: 0.4; cursor: grabbing; }
+.admin-item-row[draggable="true"] { cursor: grab; }
 
 .admin-item-row {
   display: flex;
