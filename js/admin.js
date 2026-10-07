@@ -60,6 +60,20 @@ function collectionTitle(slug) {
   return (window.COLLECTIONS && window.COLLECTIONS[slug] && window.COLLECTIONS[slug].title) || slug;
 }
 
+/* Admin-relative equivalent of js/site-content.js's collectionHref() —
+   that file isn't loaded here, so the slug -> href logic is duplicated.
+   admin.html sits at the repo root alongside every public page, so these
+   plain relative paths (no leading segment) resolve the same way they do
+   from site-content.js. Returns null when the product's collection slug
+   doesn't match anything in collectionsCache (e.g. a renamed/deleted
+   category) — callers should skip the "View" link in that case rather
+   than link somewhere wrong. */
+function collectionHrefForAdmin(slug) {
+  const c = collectionsCache.find((c) => c.slug === slug);
+  if (!c) return null;
+  return c.is_legacy ? `${c.slug}.html` : `category.html?slug=${encodeURIComponent(c.slug)}`;
+}
+
 function show(el) { el.hidden = false; }
 function hide(el) { el.hidden = true; }
 
@@ -196,7 +210,9 @@ function renderProductList() {
   else if (itemSortMode === "price-desc") items = items.slice().sort((a, b) => b.price - a.price);
   else if (itemSortMode === "newest") items = items.slice().sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
 
-  const renderRow = (item) => `
+  const renderRow = (item) => {
+    const viewHref = collectionHrefForAdmin(item.collection);
+    return `
     <div class="admin-item-row ${item.active === false ? "inactive" : ""}" data-id="${item.id}">
       <input type="checkbox" class="admin-item-select" data-select-id="${item.id}" aria-label="Select ${escapeHtml(item.name)}" ${selectedProductIds.has(String(item.id)) ? "checked" : ""}/>
       <div class="admin-item-thumb">${item.image_url ? `<img src="${escapeHtml(item.image_url)}" alt=""/>` : ""}${Array.isArray(item.images) && item.images.length > 1 ? `<span class="admin-item-thumb-count">${item.images.length}</span>` : ""}</div>
@@ -210,10 +226,13 @@ function renderProductList() {
           <span class="toggle-slider"></span>
         </label>
         <button type="button" class="edit-btn" data-id="${item.id}">Edit</button>
+        <button type="button" class="duplicate-btn" data-id="${item.id}">Duplicate</button>
         <button type="button" class="danger delete-btn" data-id="${item.id}">Delete</button>
+        ${viewHref ? `<a class="view-link" href="${escapeHtml(viewHref)}" target="_blank" rel="noopener">View</a>` : ""}
       </div>
     </div>
   `;
+  };
 
   if (itemSortMode === "collection") {
     const bySlug = {};
@@ -291,6 +310,9 @@ function renderProductList() {
   });
   listEl.querySelectorAll(".delete-btn").forEach((btn) => {
     btn.addEventListener("click", () => handleDelete(btn.dataset.id, productsCache));
+  });
+  listEl.querySelectorAll(".duplicate-btn").forEach((btn) => {
+    btn.addEventListener("click", () => handleDuplicateProduct(btn.dataset.id));
   });
   listEl.querySelectorAll(".active-toggle").forEach((toggle) => {
     toggle.addEventListener("change", () => handleToggleActive(toggle.dataset.id, toggle.checked, toggle));
@@ -1090,6 +1112,34 @@ async function handleDelete(id, allItems) {
     return;
   }
   if (currentEditId === id) resetForm();
+  await refreshItemList();
+}
+
+/* Duplicates a product row as a brand-new product (a fresh DB-generated
+   id, never the original's). The copy starts inactive (active: false)
+   rather than mirroring the original's active state — the admin almost
+   certainly wants to tweak the duplicate (name, price, photos) before it
+   goes live next to the one it was copied from, not have two identical
+   listings visible to shoppers the instant "Duplicate" is clicked. */
+async function handleDuplicateProduct(id) {
+  const item = productsCache.find((d) => String(d.id) === String(id));
+  if (!item) return;
+  const client = getSupabaseClient();
+  const payload = {
+    collection: item.collection,
+    name: `${item.name} (Copy)`,
+    price: item.price,
+    description: item.description,
+    style: item.style,
+    active: false,
+    images: item.images,
+    image_url: item.image_url
+  };
+  const { error } = await client.from("products").insert(payload);
+  if (error) {
+    alert("Couldn't duplicate: " + error.message);
+    return;
+  }
   await refreshItemList();
 }
 
