@@ -780,6 +780,7 @@ function toggleFontPopover(el, key) {
       el.style.fontFamily = choice.value || "";
       queueOverride(key, "font-family", choice.value);
       popover.remove();
+      renderSelectionToolbar(); // so "Reset to default" appears once this font change lands
     });
   });
 }
@@ -1092,6 +1093,97 @@ function singleSelection() {
   return { key, el, type: elementEditType(el), locked: effectiveValue(key, "locked") === "true" };
 }
 
+/* ===== Reset to default =====
+   Every property an element can be overridden on, EXCEPT "locked" — reset
+   is a styling/content undo, not a lock toggle, and the button is only
+   ever shown on an already-unlocked element anyway (same gating as most
+   per-element buttons), so "locked" never belongs in this list. Checked
+   via effectiveValue() (pending-over-saved, same as everywhere else) so
+   the button shows/hides correctly whether the override is still staged
+   or already committed to Supabase. */
+const RESETTABLE_PROPERTIES = ["translate-x", "translate-y", "scale", "font-size", "font-family", "text-color", "bg-color", "padding-bottom", "text", "hidden", "order"];
+
+function hasResettableOverride(key) {
+  return RESETTABLE_PROPERTIES.some((property) => effectiveValue(key, property) != null);
+}
+
+/* Unlike discardPendingChanges() (which only ever needs to fall back to
+   the last SAVED value, because a discard by definition can't touch
+   anything already committed), this has to be able to wipe out a saved
+   override too. Queuing `null` is exactly what already means "clear this
+   on save" to commitPendingChanges() — queueOverride(key, property, null)
+   — so no new staging shape is needed; a saved row goes through
+   clearLayoutOverride() the same way discarding an unsaved "hidden"/
+   "locked" toggle already does on commit. */
+function resetElementToDefault(key, el) {
+  RESETTABLE_PROPERTIES.forEach((property) => {
+    if (effectiveValue(key, property) == null) return;
+    queueOverride(key, property, null);
+  });
+  // Visually land on the true default right away, same idea as
+  // resetElementStyle()'s callers elsewhere, but reverting to "no
+  // override at all" rather than "whatever was last saved" — every
+  // RESETTABLE_PROPERTIES entry was just cleared above, so effectiveValue
+  // for each of them is now null and these calls resolve to the element's
+  // natural, un-overridden state.
+  resetElementStyle(el, "font-size", null);
+  resetElementStyle(el, "font-family", null);
+  resetElementStyle(el, "text-color", null);
+  resetElementStyle(el, "bg-color", null);
+  resetElementStyle(el, "padding-bottom", null);
+  resetElementStyle(el, "order", null);
+  resetElementStyle(el, "text", null);
+  recomputeTransform(el, key); // re-derives from the now-cleared translate-x/translate-y/scale
+  el.classList.remove("edit-is-hidden");
+  el.style.display = "";
+  renderEditHandles();
+  renderSelectionToolbar();
+}
+
+/* ===== Copy / paste style =====
+   Position (translate-x/translate-y/scale) is deliberately excluded —
+   that's spatial, not a "look", and pasting it onto an unrelated element
+   elsewhere on the page would almost never make sense. font-size/
+   font-family are only ever meaningful on "text" elements (same gating
+   renderSelectionToolbar already uses for the font button), so they're
+   only captured from, and only ever applied to, a text-type element;
+   color is universal (every type gets a swatch) but the PROPERTY NAME it
+   lives under depends on the target's type, hence routing every read/
+   write through colorPropertyFor() rather than copying "text-color" or
+   "bg-color" verbatim. */
+let copiedStyle = null;
+
+function copyStyleFrom(key, el, type) {
+  const colorProp = colorPropertyFor(type);
+  const color = effectiveValue(key, colorProp) || rgbToHex(getComputedStyle(el)[type === "text" ? "color" : "backgroundColor"]);
+  copiedStyle = { key, type, color };
+  if (type === "text") {
+    copiedStyle.fontSize = effectiveValue(key, "font-size") || (parseFloat(getComputedStyle(el).fontSize) || 16) + "px";
+    copiedStyle.fontFamily = effectiveValue(key, "font-family") || null; // null = "Default" font, a real, pasteable choice
+  }
+  // Re-render so a differently-selected element can immediately show its
+  // new "paste style" button — this element's own bar doesn't change
+  // (paste never targets the element it was just copied from).
+  renderSelectionToolbar();
+}
+
+function pasteStyleTo(key, el, type) {
+  if (!copiedStyle) return;
+  const colorProp = colorPropertyFor(type);
+  if (type === "text") el.style.color = copiedStyle.color;
+  else el.style.backgroundColor = copiedStyle.color;
+  queueOverride(key, colorProp, copiedStyle.color);
+
+  if (type === "text" && copiedStyle.type === "text") {
+    el.style.fontSize = copiedStyle.fontSize;
+    queueOverride(key, "font-size", copiedStyle.fontSize);
+    el.style.fontFamily = copiedStyle.fontFamily || "";
+    queueOverride(key, "font-family", copiedStyle.fontFamily);
+  }
+  renderEditHandles();
+  renderSelectionToolbar();
+}
+
 function renderSelectionToolbar() {
   let bar = document.getElementById("editSelectionBar");
   if (!selectedKeys.size) {
@@ -1115,6 +1207,8 @@ function renderSelectionToolbar() {
     const el = document.querySelector(`[data-edit-key="${CSS.escape(k)}"]`);
     return el && elementEditType(el) === "section";
   });
+  const canReset = single && !single.locked && hasResettableOverride(single.key);
+  const canPaste = single && !single.locked && copiedStyle && copiedStyle.key !== single.key;
 
   bar.innerHTML = `
     <span class="edit-selection-count">${selectedKeys.size} selected</span>
@@ -1126,6 +1220,9 @@ function renderSelectionToolbar() {
     ${single && single.type === "text" ? `<button type="button" class="edit-icon-btn font-btn" id="selectionFontBtn" title="Change font" aria-label="Change font">Aa</button>` : ""}
     ${single && !single.locked ? `<input type="color" class="edit-selection-color" id="selectionColorInput" title="${single.type === "text" ? "Change text color" : "Change background color"}" value="${effectiveValue(single.key, colorPropertyFor(single.type)) || rgbToHex(getComputedStyle(single.el)[single.type === "text" ? "color" : "backgroundColor"])}"/>` : ""}
     ${single && single.type === "section" && !single.locked ? `<button type="button" class="edit-icon-btn" id="selectionHideBtn" title="Hide this section" aria-label="Hide section"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12s3.5-7 9-7 9 7 9 7-3.5 7-9 7-9-7-9-7Z"/><circle cx="12" cy="12" r="2.5"/></svg></button>` : ""}
+    ${single ? `<button type="button" class="edit-icon-btn" id="selectionCopyStyleBtn" title="Copy style" aria-label="Copy style"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><rect x="8" y="8" width="12" height="12" rx="1.5"/><path d="M16 8V5.5A1.5 1.5 0 0 0 14.5 4H5.5A1.5 1.5 0 0 0 4 5.5v9A1.5 1.5 0 0 0 5.5 16H8" stroke-linecap="round" stroke-linejoin="round"/></svg></button>` : ""}
+    ${canPaste ? `<button type="button" class="edit-icon-btn" id="selectionPasteStyleBtn" title="Paste style" aria-label="Paste style"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><rect x="6" y="4" width="12" height="17" rx="1.5"/><path d="M9 4V3a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v1" stroke-linecap="round" stroke-linejoin="round"/><path d="M9 12h6M9 16h6" stroke-linecap="round"/></svg></button>` : ""}
+    ${canReset ? `<button type="button" class="edit-icon-btn" id="selectionResetBtn" title="Reset to default" aria-label="Reset to default"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 1 0 3-6.7" stroke-linecap="round"/><path d="M3 4v4.5h4.5" stroke-linecap="round" stroke-linejoin="round"/></svg></button>` : ""}
     ${!hasSection ? `<span class="edit-selection-move" id="selectionMoveHandle" title="Drag to reposition all selected">
       <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v18M3 12h18M7 7l-4 5 4 5M17 7l4 5-4 5M7 7l5-4 5 4M7 17l5 4 5-4" stroke-linecap="round" stroke-linejoin="round"/></svg>
     </span>` : ""}
@@ -1177,6 +1274,15 @@ function renderSelectionToolbar() {
         else single.el.style.backgroundColor = colorInput.value;
         queueOverride(single.key, property, colorInput.value);
       });
+      // "change" (fires once, when the native picker closes) rather than
+      // "input" (fires continuously while dragging inside it) — rebuilding
+      // the toolbar's innerHTML mid-drag would detach this very <input>
+      // and kill the native color picker popup it owns. Deferring the
+      // re-render to "change" is what lets "Reset to default" pick up the
+      // new color without disrupting the live picker.
+      colorInput.addEventListener("change", () => {
+        renderSelectionToolbar();
+      });
     }
     const hideBtn = document.getElementById("selectionHideBtn");
     if (hideBtn) hideBtn.addEventListener("click", () => toggleHidden(single.el, single.key));
@@ -1184,6 +1290,21 @@ function renderSelectionToolbar() {
     if (selectRowBtn) selectRowBtn.addEventListener("click", () => {
       suppressNextBackgroundClick = true;
       selectRow(single.el);
+    });
+    const copyStyleBtn = document.getElementById("selectionCopyStyleBtn");
+    if (copyStyleBtn) copyStyleBtn.addEventListener("click", () => {
+      suppressNextBackgroundClick = true;
+      copyStyleFrom(single.key, single.el, single.type);
+    });
+    const pasteStyleBtn = document.getElementById("selectionPasteStyleBtn");
+    if (pasteStyleBtn) pasteStyleBtn.addEventListener("click", () => {
+      suppressNextBackgroundClick = true;
+      pasteStyleTo(single.key, single.el, single.type);
+    });
+    const resetBtn = document.getElementById("selectionResetBtn");
+    if (resetBtn) resetBtn.addEventListener("click", () => {
+      suppressNextBackgroundClick = true;
+      resetElementToDefault(single.key, single.el);
     });
   }
 }
@@ -1236,6 +1357,10 @@ function wireGroupResizeHandle(handle) {
       if (entry.type === "text") queueOverride(key, "font-size", entry.value + "px");
       else queueOverride(key, "scale", String(entry.value));
     });
+    // The gesture (not each in-flight pointermove tick) is the right time
+    // to refresh the toolbar — e.g. so "Reset to default" shows up the
+    // moment this resize is the selected element's first-ever override.
+    renderSelectionToolbar();
   }
   handle.addEventListener("pointerdown", (e) => {
     e.preventDefault();
@@ -1399,6 +1524,10 @@ function wireGroupMoveHandle(handle) {
       queueOverride(key, "translate-x", liveTranslates[key].x ? liveTranslates[key].x + "px" : null);
       queueOverride(key, "translate-y", liveTranslates[key].y ? liveTranslates[key].y + "px" : null);
     });
+    // Same reasoning as wireGroupResizeHandle's onUp: refresh once the
+    // drag ends, not on every pointermove tick, so "Reset to default"
+    // reflects the move that just landed.
+    renderSelectionToolbar();
   }
   handle.addEventListener("pointerdown", (e) => {
     e.preventDefault();
@@ -1429,6 +1558,7 @@ function toggleHidden(el, key) {
     queueOverride(key, "hidden", "true");
     el.classList.add("edit-is-hidden");
   }
+  renderSelectionToolbar(); // so "Reset to default" reflects the hidden/shown change
 }
 
 /* ===== Keyboard shortcuts (Esc / Delete / arrows / Ctrl+Z) =====
@@ -1556,6 +1686,7 @@ function nudgeSelected(arrowKey) {
       queueOverride(key, "padding-bottom", next + "px");
     }
   });
+  renderSelectionToolbar(); // so "Reset to default" reflects the nudge that just landed
 }
 
 function undoLastChange() {
@@ -1700,6 +1831,7 @@ function wireSectionDivider(el, key, handle) {
     suppressNextBackgroundClick = true;
     const finalPadding = parseFloat(el.style.paddingBottom) || 0;
     queueOverride(key, "padding-bottom", finalPadding + "px");
+    renderSelectionToolbar(); // so "Reset to default" appears once this spacing change lands
   }
   handle.addEventListener("pointerdown", (e) => {
     e.preventDefault();
