@@ -280,6 +280,47 @@ create policy "Authenticated can write layout history"
   to authenticated
   with check (true);
 
+-- Analytics events — lightweight funnel/friction tracking (page views,
+-- cart/checkout funnel steps, form validation errors, abandonment).
+-- Anyone (including logged-out visitors) can INSERT an event, since
+-- that's how the public site records its own behavior; nobody but a
+-- logged-in admin can read or delete them. Append-only from the public
+-- side (no update policy), same spirit as layout_overrides_history.
+
+create table if not exists analytics_events (
+  id bigint generated always as identity primary key,
+  session_id text not null,
+  event_name text not null,
+  page text not null default '',
+  metadata jsonb not null default '{}',
+  created_at timestamptz not null default now()
+);
+
+alter table analytics_events enable row level security;
+
+drop policy if exists "Anyone can log an analytics event" on analytics_events;
+create policy "Anyone can log an analytics event"
+  on analytics_events for insert
+  to anon, authenticated
+  with check (true);
+
+drop policy if exists "Authenticated can read analytics events" on analytics_events;
+create policy "Authenticated can read analytics events"
+  on analytics_events for select
+  to authenticated
+  using (true);
+
+drop policy if exists "Authenticated can delete analytics events" on analytics_events;
+create policy "Authenticated can delete analytics events"
+  on analytics_events for delete
+  to authenticated
+  using (true);
+
+create index if not exists analytics_events_name_time_idx
+  on analytics_events (event_name, created_at desc);
+create index if not exists analytics_events_session_idx
+  on analytics_events (session_id);
+
 -- Storage bucket for site images (logo, hero image, collection card photos)
 insert into storage.buckets (id, name, public)
   values ('site-images', 'site-images', true)

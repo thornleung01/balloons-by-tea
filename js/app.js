@@ -468,6 +468,7 @@ function addToCart(product) {
   }
   saveCart(cart);
   renderCartDrawer();
+  trackEvent("add_to_cart", { productId: product.id, name: product.name, collection: product.collection });
 }
 
 function setQty(id, qty) {
@@ -614,7 +615,7 @@ function initCartUI() {
     }
   }
 
-  if (openBtn) openBtn.addEventListener("click", () => { renderCartDrawer(); openCart(); });
+  if (openBtn) openBtn.addEventListener("click", () => { renderCartDrawer(); openCart(); trackEvent("cart_opened"); });
   if (closeBtn) closeBtn.addEventListener("click", closeCart);
   if (scrim) scrim.addEventListener("click", () => {
     closeCart();
@@ -626,6 +627,7 @@ function initCartUI() {
       return;
     }
     openCheckoutModal();
+    trackEvent("checkout_started", { cartItemCount: getCart().length, cartTotal: cartTotal(getCart()) });
   });
 
   document.addEventListener("keydown", (e) => {
@@ -671,6 +673,7 @@ const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
    only if every rule passed. */
 function runFieldValidation(form, rules, errorIdPrefix) {
   let valid = true;
+  const formName = errorIdPrefix === "co-error-" ? "custom_order" : "checkout";
   rules.forEach(([field, test, message]) => {
     const input = form[field];
     const errorEl = document.getElementById(`${errorIdPrefix}${field}`);
@@ -679,6 +682,7 @@ function runFieldValidation(form, rules, errorIdPrefix) {
       if (errorEl) errorEl.textContent = message;
       input.setAttribute("aria-invalid", "true");
       valid = false;
+      trackEvent(`${formName}_field_error`, { field });
     } else {
       if (errorEl) errorEl.textContent = "";
       input.removeAttribute("aria-invalid");
@@ -769,7 +773,12 @@ function closeCheckoutModal() {
   if (onFormStep && checkoutFormHasInput()) {
     const confirmed = window.confirm("Discard your order details? What you've entered so far will be lost.");
     if (!confirmed) return;
-    document.getElementById("checkoutForm").reset();
+    const form = document.getElementById("checkoutForm");
+    const filledFields = Array.from(form.elements)
+      .filter((el) => (el.tagName === "INPUT" || el.tagName === "TEXTAREA") && el.value.trim() !== "")
+      .map((el) => el.name || el.id);
+    trackEvent("checkout_abandoned", { filledFields });
+    form.reset();
   }
   modal.classList.remove("open");
   const drawer = document.getElementById("cartDrawer");
@@ -860,12 +869,14 @@ function initCheckoutForm() {
       await submitOrder(payload);
       const ref = "AUR-" + Date.now().toString().slice(-6);
       document.getElementById("orderRef").textContent = ref;
+      trackEvent("checkout_submitted", { cartTotal: payload.total });
       saveCart([]);
       renderCartDrawer();
       showCheckoutStep("success");
       form.reset();
     } catch (err) {
       console.error("Order submission failed", err);
+      trackEvent("checkout_failed", { message: String(err && err.message || err) });
       const errorEl = document.getElementById("checkoutFormError");
       if (errorEl) errorEl.textContent = "Something went wrong sending your order. Please check your connection and try again, or reach us directly.";
     } finally {
@@ -966,6 +977,10 @@ function initCustomOrderForm() {
   if (!form) return;
   const submitBtn = document.getElementById("customOrderSubmitBtn");
 
+  // No modal-open moment to hang "started" on here (unlike checkout) —
+  // use the form's first real interaction instead, fired once.
+  form.addEventListener("focusin", () => trackEvent("custom_order_started"), { once: true });
+
   function checkedValues(name) {
     return Array.from(form.querySelectorAll(`input[name="${name}"]:checked`)).map((el) => el.value);
   }
@@ -1031,11 +1046,13 @@ function initCustomOrderForm() {
       await submitOrder(payload);
       const ref = "AUR-" + Date.now().toString().slice(-6);
       document.getElementById("customOrderRef").textContent = ref;
+      trackEvent("custom_order_submitted");
       document.getElementById("customOrderFormWrap").hidden = true;
       document.getElementById("customOrderSuccess").hidden = false;
       form.reset();
     } catch (err) {
       console.error("Custom order submission failed", err);
+      trackEvent("custom_order_failed", { message: String(err && err.message || err) });
       const errorEl = document.getElementById("customOrderFormError");
       if (errorEl) errorEl.textContent = "Something went wrong sending your request. Please check your connection and try again, or message us on WhatsApp instead.";
     } finally {
