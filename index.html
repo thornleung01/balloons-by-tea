@@ -39,7 +39,7 @@
 </nav>
 
 <header class="hero-photo" data-edit-key="hero">
-  <img class="hero-photo-img" src="images/hero-mascot.png" alt=""/>
+  <img class="hero-photo-img" src="images/hero-mascot.png" alt="" data-edit-key="hero-mascot-img" data-edit-type="block"/>
   <div class="hero-photo-scrim" aria-hidden="true"></div>
   <div class="hero-decor" aria-hidden="true">
     <svg class="hero-decor-item hero-decor-1" viewBox="0 0 24 24" width="22" height="22"><path d="M12 2l1.9 5.9H20l-5 3.6 1.9 5.9L12 13.8l-5 3.6 1.9-5.9-5-3.6h6.1z" fill="var(--soft-yellow)"/></svg>
@@ -64,7 +64,7 @@
   <div class="container">
     <div class="section-head align-left">
       <div class="word-badge collections-badge">
-        <h2>Shop Our Collections</h2>
+        <h2 data-edit-key="collections-heading" data-edit-type="text">Shop Our Collections</h2>
       </div>
     </div>
     <div class="shop-grid">
@@ -100,7 +100,7 @@
   <div class="container">
     <div class="section-head align-left">
       <div class="word-badge best-sellers-badge">
-        <h2>Best Sellers</h2>
+        <h2 data-edit-key="best-sellers-heading" data-edit-type="text">Best Sellers</h2>
       </div>
     </div>
   </div>
@@ -110,7 +110,7 @@
   <div class="container">
     <div class="product-grid" id="bestSellersGrid"></div>
     <div style="text-align:center;margin-top:var(--space-4);">
-      <a href="all-products.html" class="btn btn-outline">Show All Products</a>
+      <a href="all-products.html" class="btn btn-outline" data-edit-key="best-sellers-cta" data-edit-type="block">Show All Products</a>
     </div>
   </div>
 </section>
@@ -119,7 +119,7 @@
   <div class="container">
     <div class="section-head">
       <div class="word-badge reviews-badge">
-        <h2>What Customers Are Saying</h2>
+        <h2 data-edit-key="reviews-heading" data-edit-type="text">What Customers Are Saying</h2>
       </div>
     </div>
     <div class="review-carousel">
@@ -143,11 +143,11 @@
     <div class="footer-grid">
       <div>
         <div class="brand footer-brand" style="margin-bottom:12px;">
-          <img src="images/logo.png" alt="Balloons by Tea" class="brand-logo footer-logo"/>
+          <img src="images/logo.png" alt="Balloons by Tea" class="brand-logo footer-logo" data-edit-key="footer-logo" data-edit-type="block"/>
         </div>
       </div>
       <div>
-        <h4>Categories</h4>
+        <h4 data-edit-key="footer-heading-categories" data-edit-type="text">Categories</h4>
         <ul class="footer-links" id="footerCategoriesList">
           <li><a href="all-products.html">All Products</a></li>
           <li><a href="anniversary.html">Anniversary</a></li>
@@ -157,17 +157,17 @@
         </ul>
       </div>
       <div>
-        <h4>Get in touch</h4>
+        <h4 data-edit-key="footer-heading-contact" data-edit-type="text">Get in touch</h4>
         <ul class="footer-links">
           <li><a href="about.html">About</a></li>
           <li><a href="faq.html">FAQ</a></li>
-          <li><a href="https://wa.me/10000000000" target="_blank" rel="noopener">WhatsApp</a></li>
-          <li><a href="mailto:hello@auraballoonco.com">hello@auraballoonco.com</a></li>
-          <li><a href="tel:+10000000000">+1 (000) 000-0000</a></li>
+          <li><a href="https://wa.me/10000000000" target="_blank" rel="noopener" data-edit-key="footer-contact-whatsapp" data-edit-type="text">WhatsApp</a></li>
+          <li><a href="mailto:hello@auraballoonco.com" data-edit-key="footer-contact-email" data-edit-type="text">hello@auraballoonco.com</a></li>
+          <li><a href="tel:+10000000000" data-edit-key="footer-contact-phone" data-edit-type="text">+1 (000) 000-0000</a></li>
         </ul>
       </div>
       <div>
-        <h4>Follow Us</h4>
+        <h4 data-edit-key="footer-heading-follow" data-edit-type="text">Follow Us</h4>
         <ul class="footer-links">
           <li><a href="https://instagram.com/balloonsbytea" target="_blank" rel="noopener">Instagram</a></li>
           <li><a href="https://www.xiaohongshu.com/user/profile/balloonsbytea" target="_blank" rel="noopener">RedNote</a></li>
@@ -272,7 +272,7 @@
   </div>
 </div>
 
-<a class="whatsapp-float" href="https://wa.me/10000000000" target="_blank" rel="noopener" aria-label="Message us on WhatsApp">
+<a class="whatsapp-float" href="https://wa.me/10000000000" target="_blank" rel="noopener" aria-label="Message us on WhatsApp" data-edit-key="whatsapp-float-btn" data-edit-type="block">
   <svg viewBox="0 0 24 24" fill="white" aria-hidden="true"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.095 3.2 5.076 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347z"/><path d="M12.004 2.004C6.486 2.004 2 6.49 2 12.008c0 1.985.517 3.916 1.502 5.61L2 22l4.5-1.478a9.96 9.96 0 0 0 5.504 1.616h.004c5.518 0 10.004-4.486 10.004-10.004C22 6.49 17.522 2.004 12.004 2.004zm0 18.19h-.003a8.26 8.26 0 0 1-4.21-1.15l-.302-.18-3.117.994.98-3.218-.197-.313a8.26 8.26 0 0 1-1.267-4.33c0-4.55 3.708-8.258 8.26-8.258a8.2 8.2 0 0 1 5.845 2.423 8.2 8.2 0 0 1 2.42 5.84c0 4.55-3.708 8.192-8.41 8.192z"/></svg>
 </a>
 
