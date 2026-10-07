@@ -141,12 +141,15 @@ function collectionHref(c) {
 function renderShopGrid() {
   const grid = document.querySelector(".shop-grid");
   if (!grid || !window.SITE_COLLECTIONS || !window.SITE_COLLECTIONS.length) return;
+  // Keyed by slug (the table's natural unique key, already used elsewhere
+  // in this codebase) so a saved per-card override stays attached to the
+  // right collection — same reasoning as renderFaqItems()'s id-keying.
   grid.innerHTML = window.SITE_COLLECTIONS.map((c) => `
     <article class="shop-card">
-      <a class="shop-card-media" href="${escapeHtml(collectionHref(c))}">
+      <a class="shop-card-media" href="${escapeHtml(collectionHref(c))}" data-edit-key="shop-card-img:${escapeHtml(c.slug)}" data-edit-type="block">
         <img src="${escapeHtml(c.card_image_url || NO_PHOTO_IMAGE)}" alt="${escapeHtml(c.title)} collection"/>
       </a>
-      <h3><a href="${escapeHtml(collectionHref(c))}">${escapeHtml(c.title)}</a></h3>
+      <h3><a href="${escapeHtml(collectionHref(c))}" data-edit-key="shop-card-title:${escapeHtml(c.slug)}" data-edit-type="text">${escapeHtml(c.title)}</a></h3>
     </article>
   `).join("");
 }
@@ -191,11 +194,15 @@ function renderCategoryFilterAndTitle() {
 function renderFaqItems() {
   const list = document.querySelector(".faq-list");
   if (!list || !window.SITE_FAQ_ITEMS || !window.SITE_FAQ_ITEMS.length) return;
+  // Keyed by the FAQ row's own id (not array index) so a saved per-item
+  // layout_overrides row (color/retext) stays attached to the right
+  // question even if items get reordered later — same convention as
+  // renderNav()'s nav-item:${item.id} keys.
   list.innerHTML = window.SITE_FAQ_ITEMS.map((item) => {
     const paragraphs = String(item.answer || "").split(/\n\n+/).map((p) => `<p>${escapeHtml(p)}</p>`).join("");
     return `<details class="faq-item" ${item.is_open_default ? "open" : ""}>
-      <summary>${escapeHtml(item.question)}</summary>
-      <div class="faq-answer">${paragraphs}</div>
+      <summary data-edit-key="faq-q:${item.id}" data-edit-type="text">${escapeHtml(item.question)}</summary>
+      <div class="faq-answer" data-edit-key="faq-a:${item.id}" data-edit-type="text">${paragraphs}</div>
     </details>`;
   }).join("");
 }

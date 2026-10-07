@@ -468,6 +468,7 @@ button {
   position: absolute;
   inset: 0;
   z-index: -1;
+  pointer-events: none;
   background: linear-gradient(
     100deg,
     var(--color-bg) 0%,
@@ -1854,6 +1855,19 @@ body.edit-mode-active [data-edit-key] { cursor: pointer; }
 #editAlignGuides { position: fixed; inset: 0; pointer-events: none; z-index: 60; }
 .edit-align-guide-h { position: fixed; left: 0; right: 0; border-top: 1.5px dashed #ff3b3b; }
 .edit-align-guide-v { position: fixed; top: 0; bottom: 0; border-left: 1.5px dashed #ff3b3b; }
+
+/* Figma-style rubber-band drag-select box (see the marquee listeners in
+   edit-mode.js). Hidden until a drag actually starts moving. */
+#editMarqueeBox {
+  position: fixed;
+  display: none;
+  background: rgba(255, 107, 107, 0.12);
+  border: 1.5px solid #ff6b6b;
+  z-index: 59;
+  pointer-events: none;
+}
+#editMarqueeBox.active { display: block; }
+.edit-marquee-hover { outline: 2px dashed #ff6b6b; outline-offset: 2px; }
 
 .edit-divider-handle {
   position: absolute;

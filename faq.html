@@ -173,7 +173,7 @@
 
 <aside class="cart-drawer" id="cartDrawer" aria-label="Shopping cart">
   <div class="drawer-head">
-    <h2>Your Cart</h2>
+    <h2 data-edit-key="cart-heading" data-edit-type="text">Your Cart</h2>
     <button class="icon-btn" id="closeCart" aria-label="Close cart">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" width="20" height="20" aria-hidden="true"><path d="M5 5l14 14M19 5L5 19" stroke-linecap="round"/></svg>
     </button>
@@ -181,11 +181,11 @@
   <div class="drawer-items" id="cartItems"></div>
   <div class="drawer-footer">
     <div class="drawer-subtotal">
-      <span>Subtotal</span>
+      <span data-edit-key="cart-subtotal-label" data-edit-type="text">Subtotal</span>
       <strong id="cartSubtotal">$0</strong>
     </div>
-    <button class="btn btn-primary btn-block" id="checkoutBtn">Checkout</button>
-    <p style="font-size:0.75rem;color:var(--color-fg-faint);text-align:center;margin-top:8px;margin-bottom:0;">Final pricing confirmed when we reach out.</p>
+    <button class="btn btn-primary btn-block" id="checkoutBtn" data-edit-key="cart-checkout-btn" data-edit-type="block">Checkout</button>
+    <p style="font-size:0.75rem;color:var(--color-fg-faint);text-align:center;margin-top:8px;margin-bottom:0;" data-edit-key="cart-disclaimer" data-edit-type="text">Final pricing confirmed when we reach out.</p>
   </div>
 </aside>
 

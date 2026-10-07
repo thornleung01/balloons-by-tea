@@ -161,6 +161,102 @@ document.addEventListener("dblclick", (e) => {
   startTextEdit(el, key);
 }, true);
 
+/* ===== Marquee (drag-to-select) =====
+   Shift-click already adds one element at a time to selectedKeys; this
+   adds the other half of "grab more than one with the mouse" — a
+   Figma-style rubber-band box. Pointerdown on empty canvas (not on an
+   editable element or any edit-mode chrome) starts tracking; a small
+   movement threshold keeps a plain background click (which the listener
+   above already uses to clear selection) from being swallowed as a
+   zero-size drag. On release, every [data-edit-key] element whose rect
+   intersects the box becomes the selection — unioned with whatever was
+   already selected if shift was held when the drag started, replacing it
+   otherwise. */
+const MARQUEE_THRESHOLD = 4;
+let marqueeStart = null;
+let marqueeMoved = false;
+let marqueeBaseSelection = null;
+
+function ensureMarqueeBox() {
+  let box = document.getElementById("editMarqueeBox");
+  if (!box) {
+    box = document.createElement("div");
+    box.id = "editMarqueeBox";
+    document.body.appendChild(box);
+  }
+  return box;
+}
+
+function rectsIntersect(a, b) {
+  return a.left < b.right && a.right > b.left && a.top < b.bottom && a.bottom > b.top;
+}
+
+function marqueeRectFrom(e) {
+  const x1 = Math.min(marqueeStart.x, e.clientX);
+  const y1 = Math.min(marqueeStart.y, e.clientY);
+  const x2 = Math.max(marqueeStart.x, e.clientX);
+  const y2 = Math.max(marqueeStart.y, e.clientY);
+  return { left: x1, top: y1, right: x2, bottom: y2, width: x2 - x1, height: y2 - y1 };
+}
+
+function onMarqueeMove(e) {
+  if (!marqueeStart) return;
+  if (!marqueeMoved) {
+    const dx = Math.abs(e.clientX - marqueeStart.x);
+    const dy = Math.abs(e.clientY - marqueeStart.y);
+    if (Math.hypot(dx, dy) < MARQUEE_THRESHOLD) return;
+    marqueeMoved = true;
+  }
+
+  const rect = marqueeRectFrom(e);
+  const box = ensureMarqueeBox();
+  box.style.left = `${rect.left}px`;
+  box.style.top = `${rect.top}px`;
+  box.style.width = `${rect.width}px`;
+  box.style.height = `${rect.height}px`;
+  box.classList.add("active");
+
+  document.querySelectorAll("[data-edit-key]").forEach((el) => {
+    if (el.offsetParent === null) { el.classList.remove("edit-marquee-hover"); return; }
+    el.classList.toggle("edit-marquee-hover", rectsIntersect(rect, el.getBoundingClientRect()));
+  });
+}
+
+function onMarqueeUp(e) {
+  document.removeEventListener("pointermove", onMarqueeMove);
+  const box = document.getElementById("editMarqueeBox");
+
+  if (marqueeMoved) {
+    const rect = marqueeRectFrom(e);
+    const hitKeys = marqueeBaseSelection || [];
+    selectedKeys.clear();
+    hitKeys.forEach((k) => selectedKeys.add(k));
+    document.querySelectorAll("[data-edit-key]").forEach((el) => {
+      el.classList.remove("edit-marquee-hover");
+      if (el.offsetParent === null) return;
+      if (rectsIntersect(rect, el.getBoundingClientRect())) selectedKeys.add(el.dataset.editKey);
+    });
+    renderEditHandles();
+    renderSelectionToolbar();
+    suppressNextBackgroundClick = true;
+  }
+
+  if (box) box.classList.remove("active");
+  marqueeStart = null;
+  marqueeMoved = false;
+  marqueeBaseSelection = null;
+}
+
+document.addEventListener("pointerdown", (e) => {
+  if (!editModeActive || e.button !== 0) return;
+  if (e.target.closest("[data-edit-key], .edit-selection-bar, .edit-history-panel, .edit-mode-toggle, .edit-divider-handle, .edit-font-popover, input, textarea, select, button, a, [contenteditable='true']")) return;
+  marqueeStart = { x: e.clientX, y: e.clientY };
+  marqueeMoved = false;
+  marqueeBaseSelection = e.shiftKey ? Array.from(selectedKeys) : null;
+  document.addEventListener("pointermove", onMarqueeMove);
+  document.addEventListener("pointerup", onMarqueeUp, { once: true });
+});
+
 /* ===== Change history / revert ===== */
 
 async function toggleHistoryPanel() {
@@ -308,6 +404,11 @@ function elementEditType(el) {
   // and resizable (scale) like a product card, but don't get the
   // section-only hide/divider controls or the text-only font/wording ones.
   if (el.dataset.editType === "block") return "block";
+  // Any other wording site-wide (FAQ questions/answers, card captions,
+  // footer labels, etc.) opts into the same retext/font/color controls
+  // H1s and the hero subtext get, via data-edit-type="text" in markup,
+  // instead of only ever being inferred from a hardcoded tag/class check.
+  if (el.dataset.editType === "text") return "text";
   if (el.classList.contains("product-card")) return "product";
   if (el.tagName === "H1" || el.classList.contains("hero-sub")) return "text";
   return "section";

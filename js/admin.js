@@ -402,6 +402,7 @@ function renderPhotoGallery() {
 /* ===== Photo preview modal — reuses the public site's lightbox CSS
    classes (loaded via css/styles.css) without needing js/app.js, which
    wires up unrelated cart/checkout/nav behavior admin.html doesn't want. */
+let previewUrls = [];
 let previewIndex = 0;
 
 function ensurePhotoPreviewModal() {
@@ -439,21 +440,32 @@ function ensurePhotoPreviewModal() {
 function renderPhotoPreviewFrame() {
   const modal = document.getElementById("adminPhotoPreview");
   if (!modal) return;
-  modal.querySelector(".lightbox-img").src = photoEntryPreviewUrl(currentPhotoEntries[previewIndex]);
-  const multi = currentPhotoEntries.length > 1;
+  modal.querySelector(".lightbox-img").src = previewUrls[previewIndex];
+  const multi = previewUrls.length > 1;
   modal.querySelector(".lightbox-prev").hidden = !multi;
   modal.querySelector(".lightbox-next").hidden = !multi;
 }
 
 function stepPhotoPreview(delta) {
-  if (currentPhotoEntries.length < 2) return;
-  previewIndex = (previewIndex + delta + currentPhotoEntries.length) % currentPhotoEntries.length;
+  if (previewUrls.length < 2) return;
+  previewIndex = (previewIndex + delta + previewUrls.length) % previewUrls.length;
   renderPhotoPreviewFrame();
 }
 
 function openPhotoPreview(index) {
-  const modal = ensurePhotoPreviewModal();
+  previewUrls = currentPhotoEntries.map(photoEntryPreviewUrl);
   previewIndex = index;
+  const modal = ensurePhotoPreviewModal();
+  renderPhotoPreviewFrame();
+  modal.classList.add("open");
+}
+
+/* Single-image preview (hero/logo/category card photo) — same modal,
+   nav arrows auto-hide since previewUrls has only one entry. */
+function openImagePreview(url) {
+  previewUrls = [url];
+  previewIndex = 0;
+  const modal = ensurePhotoPreviewModal();
   renderPhotoPreviewFrame();
   modal.classList.add("open");
 }
@@ -461,6 +473,142 @@ function openPhotoPreview(index) {
 function closePhotoPreview() {
   const modal = document.getElementById("adminPhotoPreview");
   if (modal) modal.classList.remove("open");
+}
+
+/* Wires a static .photo-preview container (its innerHTML is replaced
+   on every render, so delegation beats re-binding per-render) to open
+   the lightbox when it currently holds an <img>. */
+function wireClickablePhotoPreview(containerId) {
+  const container = document.getElementById(containerId);
+  if (!container) return;
+  container.addEventListener("click", () => {
+    const img = container.querySelector("img");
+    if (img) openImagePreview(img.src);
+  });
+}
+
+/* ===== Photo library picker =====
+   Every photo ever uploaded through the item form already lives in the
+   "product-photos" Storage bucket indefinitely (nothing deletes the
+   underlying file when a product is edited/deleted, only the DB row's
+   reference to it) — so the bucket is already a de facto reusable photo
+   library, just with no browsing UI. This adds one: pick from anything
+   already uploaded instead of re-uploading the same photo for a second
+   product. Picked photos become ordinary {type:"url", value:url}
+   entries in currentPhotoEntries — the exact same shape startEdit()
+   already produces for a product's existing photos — so handleSaveItem()
+   needs no changes at all to support them. */
+let photoLibraryCache = null;
+let photoLibrarySelected = new Set();
+
+async function loadPhotoLibrary(force) {
+  if (photoLibraryCache && !force) return photoLibraryCache;
+  const client = getSupabaseClient();
+  const { data, error } = await client.storage
+    .from("product-photos")
+    .list("", { limit: 200, sortBy: { column: "created_at", order: "desc" } });
+  if (error) { photoLibraryCache = []; return photoLibraryCache; }
+  photoLibraryCache = (data || [])
+    .filter((f) => f.name && f.id) // Storage lists a placeholder folder entry with no id — skip it
+    .map((f) => ({
+      name: f.name,
+      url: client.storage.from("product-photos").getPublicUrl(f.name).data.publicUrl
+    }));
+  return photoLibraryCache;
+}
+
+function ensurePhotoLibraryModal() {
+  let modal = document.getElementById("photoLibraryModal");
+  if (modal) return modal;
+
+  modal = document.createElement("div");
+  modal.className = "modal";
+  modal.id = "photoLibraryModal";
+  modal.innerHTML = `
+    <div class="modal-scrim" data-close-library></div>
+    <div class="modal-panel photo-library-panel">
+      <div class="modal-head">
+        <div>
+          <h2>Choose from library</h2>
+          <p>Every photo you've uploaded before. Pick as many as you want to add to this item.</p>
+        </div>
+        <button type="button" class="icon-btn" data-close-library aria-label="Close">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="photo-library-grid" id="photoLibraryGrid"></div>
+        <div class="modal-actions">
+          <button type="button" class="btn btn-outline btn-sm" id="photoLibraryRefreshBtn">Refresh</button>
+          <button type="button" class="btn btn-primary" id="photoLibraryAddBtn" disabled>Add selected</button>
+        </div>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(modal);
+
+  modal.querySelectorAll("[data-close-library]").forEach((el) => el.addEventListener("click", closePhotoLibrary));
+  modal.querySelector("#photoLibraryRefreshBtn").addEventListener("click", async () => {
+    await loadPhotoLibrary(true);
+    renderPhotoLibraryGrid();
+  });
+  modal.querySelector("#photoLibraryAddBtn").addEventListener("click", addSelectedLibraryPhotos);
+  return modal;
+}
+
+function renderPhotoLibraryGrid() {
+  const grid = document.getElementById("photoLibraryGrid");
+  if (!grid) return;
+  const items = photoLibraryCache || [];
+  if (!items.length) {
+    grid.innerHTML = `<p class="empty-note">No photos uploaded yet — add some via the upload dropzone first.</p>`;
+  } else {
+    grid.innerHTML = items.map((item) => `
+      <button type="button" class="photo-library-item ${photoLibrarySelected.has(item.url) ? "selected" : ""}" data-url="${escapeHtml(item.url)}" aria-label="${escapeHtml(item.name)}">
+        <img src="${escapeHtml(item.url)}" alt=""/>
+      </button>
+    `).join("");
+    grid.querySelectorAll(".photo-library-item").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const url = btn.dataset.url;
+        if (photoLibrarySelected.has(url)) photoLibrarySelected.delete(url);
+        else photoLibrarySelected.add(url);
+        btn.classList.toggle("selected");
+        updatePhotoLibraryAddBtn();
+      });
+    });
+  }
+  updatePhotoLibraryAddBtn();
+}
+
+function updatePhotoLibraryAddBtn() {
+  const btn = document.getElementById("photoLibraryAddBtn");
+  if (!btn) return;
+  const count = photoLibrarySelected.size;
+  btn.disabled = count === 0;
+  btn.textContent = count > 0 ? `Add selected (${count})` : "Add selected";
+}
+
+async function openPhotoLibrary() {
+  const modal = ensurePhotoLibraryModal();
+  photoLibrarySelected.clear();
+  modal.classList.add("open");
+  document.getElementById("photoLibraryGrid").innerHTML = `<p class="empty-note">Loading...</p>`;
+  await loadPhotoLibrary(false);
+  renderPhotoLibraryGrid();
+}
+
+function closePhotoLibrary() {
+  const modal = document.getElementById("photoLibraryModal");
+  if (modal) modal.classList.remove("open");
+}
+
+function addSelectedLibraryPhotos() {
+  const existingUrls = new Set(currentPhotoEntries.filter((e) => e.type === "url").map((e) => e.value));
+  photoLibrarySelected.forEach((url) => {
+    if (existingUrls.has(url)) return; // already in this item's gallery, don't duplicate
+    currentPhotoEntries.push({ type: "url", value: url });
+  });
+  renderPhotoGallery();
+  closePhotoLibrary();
 }
 
 async function handleSaveItem(e) {
@@ -1267,6 +1415,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   document.getElementById("itemForm").addEventListener("submit", handleSaveItem);
   document.getElementById("f-photo").addEventListener("change", handlePhotoChange);
   document.getElementById("cancelEditBtn").addEventListener("click", resetForm);
+  document.getElementById("openPhotoLibraryBtn").addEventListener("click", openPhotoLibrary);
   Object.keys(TABS).forEach((key) => {
     document.getElementById(TABS[key].btnId).addEventListener("click", () => switchTab(key));
   });
@@ -1312,6 +1461,9 @@ document.addEventListener("DOMContentLoaded", async () => {
   document.getElementById("collectionForm").addEventListener("submit", handleSaveCollection);
   document.getElementById("c-photo").addEventListener("change", handleCollectionPhotoChange);
   document.getElementById("cancelCollectionEditBtn").addEventListener("click", resetCollectionForm);
+  wireClickablePhotoPreview("collectionPhotoPreview");
+  wireClickablePhotoPreview("heroPhotoPreview");
+  wireClickablePhotoPreview("logoPhotoPreview");
 
   document.getElementById("navForm").addEventListener("submit", handleSaveNav);
   document.getElementById("cancelNavEditBtn").addEventListener("click", resetNavForm);

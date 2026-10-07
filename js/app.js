@@ -517,9 +517,9 @@ function renderCartDrawer() {
   if (cart.length === 0) {
     list.innerHTML = `
       <div class="cart-empty">
-        <img src="images/cart-empty-icon.png" alt="" aria-hidden="true"/>
-        <p>Your cart is empty.</p>
-        <p style="font-size:0.85rem;">Browse a collection and add a few favorites.</p>
+        <img src="images/cart-empty-icon.png" alt="" aria-hidden="true" data-edit-key="cart-empty-icon" data-edit-type="block"/>
+        <p data-edit-key="cart-empty-heading" data-edit-type="text">Your cart is empty.</p>
+        <p style="font-size:0.85rem;" data-edit-key="cart-empty-subtext" data-edit-type="text">Browse a collection and add a few favorites.</p>
       </div>`;
   } else {
     list.innerHTML = cart.map((line) => `
