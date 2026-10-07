@@ -1600,6 +1600,7 @@ button {
 .edit-theme-toggle { left: 194px; width: 44px; height: 44px; bottom: 26px; }
 .edit-preview-toggle { left: 250px; width: 44px; height: 44px; bottom: 26px; }
 .edit-layers-toggle { left: 306px; width: 44px; height: 44px; bottom: 26px; }
+.edit-shortcuts-toggle { left: 362px; width: 44px; height: 44px; bottom: 26px; }
 
 .edit-history-panel {
   position: fixed;
@@ -1710,6 +1711,40 @@ button {
   padding: 3px 8px;
   white-space: nowrap;
 }
+
+.edit-shortcuts-list { overflow-y: auto; max-height: 60vh; padding: var(--space-2) var(--space-3) var(--space-3); }
+.edit-shortcuts-note { font-size: 0.78rem; color: var(--color-fg-faint); margin: 0 0 var(--space-2); }
+.edit-shortcuts-group + .edit-shortcuts-group { margin-top: var(--space-3); }
+.edit-shortcuts-group-title {
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--color-fg-soft);
+  margin-bottom: 6px;
+}
+.edit-shortcuts-row {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  padding: 7px 0;
+  border-bottom: 1px solid var(--color-border);
+}
+.edit-shortcuts-row:last-child { border-bottom: none; }
+.edit-shortcuts-keys { flex-shrink: 0; display: flex; align-items: center; gap: 4px; min-width: 96px; }
+.edit-shortcuts-or { font-size: 0.72rem; color: var(--color-fg-faint); }
+.edit-kbd {
+  font-family: var(--font-body);
+  font-size: 0.74rem;
+  font-weight: 700;
+  color: var(--color-fg);
+  background: var(--color-bg-alt);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  padding: 2px 7px;
+  white-space: nowrap;
+}
+.edit-shortcuts-desc { font-size: 0.82rem; color: var(--color-fg-soft); line-height: 1.4; }
 
 body.edit-mode-active [data-edit-key] {
   position: relative;
