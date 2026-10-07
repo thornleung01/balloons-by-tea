@@ -174,6 +174,20 @@
           <button type="button" class="orders-filter-btn" data-status="contacted">Contacted</button>
           <button type="button" class="orders-filter-btn" data-status="fulfilled">Fulfilled</button>
         </div>
+        <button type="button" class="orders-export-btn" id="exportOrdersCsvBtn">Export CSV</button>
+      </div>
+      <div class="bulk-select-row">
+        <label class="bulk-select-all">
+          <input type="checkbox" id="orderSelectAll"/>
+          <span>Select all</span>
+        </label>
+        <div class="bulk-action-bar" id="orderBulkActionBar" hidden>
+          <span id="orderBulkSelectedCount">0 selected</span>
+          <button type="button" id="orderBulkContactedBtn">Mark Contacted</button>
+          <button type="button" id="orderBulkFulfilledBtn">Mark Fulfilled</button>
+          <button type="button" class="danger" id="orderBulkDeleteBtn">Delete</button>
+          <button type="button" id="orderBulkClearBtn">Clear</button>
+        </div>
       </div>
       <div id="orderList"></div>
     </div>

@@ -420,6 +420,20 @@ body.admin-body {
 }
 .orders-filter-btn:hover { border-color: var(--color-accent); }
 .orders-filter-btn.active { background: var(--color-accent); border-color: var(--color-accent); color: #fff; }
+.orders-export-btn {
+  font-size: 0.78rem; font-weight: 600; padding: 6px 12px; border-radius: var(--radius-pill);
+  border: 1px solid var(--color-border); color: var(--color-fg-soft);
+  background: var(--color-surface-solid);
+}
+.orders-export-btn:hover { border-color: var(--color-accent); color: var(--color-fg); }
+
+.order-row-title { display: flex; align-items: center; gap: 6px; }
+.order-select {
+  flex-shrink: 0;
+  width: 17px; height: 17px;
+  cursor: pointer;
+  accent-color: var(--color-accent);
+}
 
 .order-row {
   border: 1px solid var(--color-border);

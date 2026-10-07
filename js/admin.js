@@ -1710,6 +1710,16 @@ async function handleSaveSettings(e) {
 
 let ordersStatusFilter = "all";
 const ORDER_STATUSES = ["new", "contacted", "fulfilled"];
+// Separate from selectedProductIds (Products tab) so the two bulk-selection
+// features never collide — each tab's checkboxes/bulk bar only ever touch
+// their own Set. IDs as strings, matching every other data-id comparison
+// in this file.
+let selectedOrderIds = new Set();
+// The most recently rendered (status-filtered) order list, kept so
+// "select all" and the CSV export can act on exactly what's on screen
+// without re-fetching — mirrors how renderProductList() scopes "select
+// all" to its own visible/filtered `items` array.
+let ordersVisibleCache = [];
 
 function orderKindLabel(kind) {
   return kind === "custom" ? "Custom order" : "Checkout";
@@ -1744,10 +1754,21 @@ async function refreshOrderList() {
     hide(badge);
   }
 
+  // Drop any selected ids that no longer exist at all (e.g. deleted by
+  // another admin tab/session) so stale ids don't silently pile up in the
+  // Set. Checked against the full fetch, not the status-filtered list, so
+  // a selection made under one filter is still intact after switching to
+  // another filter and back — selection is deliberately NOT cleared just
+  // because refreshOrderList() re-ran (it re-runs on every filter click).
+  const allIds = new Set((data || []).map((o) => String(o.id)));
+  [...selectedOrderIds].forEach((id) => { if (!allIds.has(id)) selectedOrderIds.delete(id); });
+
   const filtered = (data || []).filter((o) => ordersStatusFilter === "all" || (o.status || "new") === ordersStatusFilter);
+  ordersVisibleCache = filtered;
 
   if (!filtered.length) {
     listEl.innerHTML = `<p class="empty-note">No orders ${ordersStatusFilter === "all" ? "yet" : "with this status"}.</p>`;
+    syncOrderBulkSelectionUI([]);
     return;
   }
 
@@ -1756,7 +1777,8 @@ async function refreshOrderList() {
     return `
     <div class="order-row status-${escapeHtml(status)}" data-id="${order.id}">
       <div class="order-row-head">
-        <div>
+        <div class="order-row-title">
+          <input type="checkbox" class="order-select" data-select-id="${order.id}" aria-label="Select order from ${escapeHtml(order.name || "customer")}" ${selectedOrderIds.has(String(order.id)) ? "checked" : ""}/>
           <span class="status-dot" aria-hidden="true"></span>
           <span class="order-kind-tag">${escapeHtml(orderKindLabel(order.kind))}</span>
           <strong>${escapeHtml(order.name || "(no name)")}</strong>
@@ -1788,6 +1810,14 @@ async function refreshOrderList() {
   listEl.querySelectorAll(".delete-order-btn").forEach((btn) => {
     btn.addEventListener("click", () => handleDeleteOrder(btn.dataset.id));
   });
+  listEl.querySelectorAll(".order-select").forEach((box) => {
+    box.addEventListener("change", () => {
+      if (box.checked) selectedOrderIds.add(box.dataset.selectId);
+      else selectedOrderIds.delete(box.dataset.selectId);
+      syncOrderBulkSelectionUI(filtered);
+    });
+  });
+  syncOrderBulkSelectionUI(filtered);
 }
 
 async function handleOrderStatusChange(id, status) {
@@ -1809,6 +1839,123 @@ async function handleDeleteOrder(id) {
     return;
   }
   await refreshOrderList();
+}
+
+/* Keeps the orders "select all" checkbox and bulk action bar in sync with
+   selectedOrderIds — same job as syncBulkSelectionUI() does for Products,
+   kept as a separate function (and separate Set) so neither tab's bulk
+   selection can leak into the other's. Takes the currently visible
+   (status-filtered) orders so "select all" only ever covers what's on
+   screen. */
+function syncOrderBulkSelectionUI(visibleOrders) {
+  const selectAllBox = document.getElementById("orderSelectAll");
+  if (selectAllBox) {
+    const visibleIds = visibleOrders.map((o) => String(o.id));
+    const selectedVisibleCount = visibleIds.filter((id) => selectedOrderIds.has(id)).length;
+    selectAllBox.checked = visibleIds.length > 0 && selectedVisibleCount === visibleIds.length;
+    selectAllBox.indeterminate = selectedVisibleCount > 0 && selectedVisibleCount < visibleIds.length;
+  }
+
+  const bar = document.getElementById("orderBulkActionBar");
+  const count = selectedOrderIds.size;
+  bar.hidden = count === 0;
+  if (count > 0) {
+    document.getElementById("orderBulkSelectedCount").textContent = `${count} selected`;
+  }
+}
+
+function clearOrderSelection() {
+  selectedOrderIds.clear();
+  document.querySelectorAll("#orderList .order-select").forEach((box) => { box.checked = false; });
+  syncOrderBulkSelectionUI(ordersVisibleCache);
+}
+
+async function bulkUpdateOrderStatus(status) {
+  const ids = [...selectedOrderIds];
+  if (!ids.length) return;
+  const client = getSupabaseClient();
+  const bar = document.getElementById("orderBulkActionBar");
+  bar.querySelectorAll("button").forEach((b) => { b.disabled = true; });
+  const { error } = await client.from("orders").update({ status }).in("id", ids);
+  bar.querySelectorAll("button").forEach((b) => { b.disabled = false; });
+  if (error) {
+    alert("Couldn't update: " + error.message);
+    return;
+  }
+  selectedOrderIds.clear();
+  await refreshOrderList();
+}
+
+async function bulkDeleteOrders() {
+  const ids = [...selectedOrderIds];
+  if (!ids.length) return;
+  const label = ids.length === 1 ? "this order" : `these ${ids.length} orders`;
+  if (!confirm(`Delete ${label}? This can't be undone.`)) return;
+  const client = getSupabaseClient();
+  const bar = document.getElementById("orderBulkActionBar");
+  bar.querySelectorAll("button").forEach((b) => { b.disabled = true; });
+  const { error } = await client.from("orders").delete().in("id", ids);
+  bar.querySelectorAll("button").forEach((b) => { b.disabled = false; });
+  if (error) {
+    alert("Couldn't delete: " + error.message);
+    return;
+  }
+  selectedOrderIds.clear();
+  await refreshOrderList();
+}
+
+/* CSV field escaping per RFC 4180: wrap in double quotes (and double up
+   any internal quotes) whenever the value contains a comma, quote, or
+   newline — otherwise a customer name/note/address containing a comma
+   would silently split into extra columns. */
+function csvEscapeField(value) {
+  const str = value === null || value === undefined ? "" : String(value);
+  if (/[",\r\n]/.test(str)) {
+    return `"${str.replace(/"/g, '""')}"`;
+  }
+  return str;
+}
+
+/* Exports whatever is currently visible in #orderList — i.e. respects the
+   active ordersStatusFilter, using the same ordersVisibleCache that
+   drives "select all" — as a downloadable CSV. No bulk-selection
+   dependency: exports every filtered/visible row regardless of checkbox
+   state, which is the minimum useful behavior (e.g. "export all New
+   orders" with nothing selected). */
+function exportOrdersCsv() {
+  const rows = ordersVisibleCache;
+  if (!rows.length) {
+    alert("No orders to export for the current filter.");
+    return;
+  }
+
+  const header = ["Date", "Kind", "Name", "Phone", "Email", "Address", "Event Date", "Total", "Status", "Summary", "Notes"];
+  const lines = [header.map(csvEscapeField).join(",")];
+  rows.forEach((order) => {
+    lines.push([
+      order.created_at || "",
+      orderKindLabel(order.kind),
+      order.name || "",
+      order.phone || "",
+      order.email || "",
+      order.address || "",
+      order.event_date || "",
+      order.total || "",
+      order.status || "new",
+      order.summary || "",
+      order.notes || ""
+    ].map(csvEscapeField).join(","));
+  });
+
+  const blob = new Blob([lines.join("\r\n")], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `orders-export-${new Date().toISOString().slice(0, 10)}.csv`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
 }
 
 /* ===== Analytics =====
@@ -1978,6 +2125,22 @@ document.addEventListener("DOMContentLoaded", async () => {
     document.querySelectorAll(".orders-filter-btn").forEach((b) => b.classList.toggle("active", b === btn));
     refreshOrderList();
   });
+  document.getElementById("exportOrdersCsvBtn").addEventListener("click", exportOrdersCsv);
+  document.getElementById("orderSelectAll").addEventListener("change", (e) => {
+    // Only the currently visible (status-filtered) rows, not every order
+    // in the table — matches what the checkbox's indeterminate state
+    // reflects, same scoping as Products' itemSelectAll handler.
+    document.querySelectorAll("#orderList .order-select").forEach((box) => {
+      box.checked = e.target.checked;
+      if (e.target.checked) selectedOrderIds.add(box.dataset.selectId);
+      else selectedOrderIds.delete(box.dataset.selectId);
+    });
+    syncOrderBulkSelectionUI(ordersVisibleCache);
+  });
+  document.getElementById("orderBulkContactedBtn").addEventListener("click", () => bulkUpdateOrderStatus("contacted"));
+  document.getElementById("orderBulkFulfilledBtn").addEventListener("click", () => bulkUpdateOrderStatus("fulfilled"));
+  document.getElementById("orderBulkDeleteBtn").addEventListener("click", bulkDeleteOrders);
+  document.getElementById("orderBulkClearBtn").addEventListener("click", clearOrderSelection);
   document.getElementById("analyticsRangeFilter").addEventListener("click", (e) => {
     const btn = e.target.closest(".orders-filter-btn");
     if (!btn) return;
