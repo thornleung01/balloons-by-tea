@@ -2074,6 +2074,60 @@ function fieldBreakdownHtml(title, counts) {
   `;
 }
 
+/* Leaderboard of which products get added to cart the most — a raw row
+   count per product (NOT deduped by session, unlike the funnel steps
+   above), since every add is a separate signal of interest. Grouped by
+   metadata.productId, falling back to metadata.name as the key for any
+   row missing a productId so one malformed row can't blow up the whole
+   aggregation. The display name/collection for a product comes from the
+   most-recent-by-created_at row seen for that key, since a product's
+   name could change over time and only the event metadata (not live
+   catalog data) is available here. */
+function topProductsHtml(events) {
+  const addToCartEvents = events.filter((e) => e.event_name === "add_to_cart");
+  if (!addToCartEvents.length) {
+    return `<div class="analytics-card"><h3>Most added to cart</h3><p class="empty-note">No data in this range.</p></div>`;
+  }
+
+  const products = {}; // key -> { count, name, collection, lastSeenIso }
+  addToCartEvents.forEach((e) => {
+    const meta = e.metadata || {};
+    const hasProductId = meta.productId !== undefined && meta.productId !== null && meta.productId !== "";
+    const key = hasProductId ? String(meta.productId) : (meta.name || "Unknown product");
+    const createdAt = e.created_at || "";
+    if (!products[key]) {
+      products[key] = { count: 0, name: meta.name, collection: meta.collection, lastSeenIso: createdAt };
+    }
+    products[key].count += 1;
+    if (createdAt >= (products[key].lastSeenIso || "")) {
+      products[key].lastSeenIso = createdAt;
+      products[key].name = meta.name;
+      products[key].collection = meta.collection;
+    }
+  });
+
+  const sorted = Object.values(products).sort((a, b) => b.count - a.count);
+  const max = sorted[0].count;
+  const top = sorted.slice(0, 8);
+  const extraCount = sorted.length - top.length;
+
+  const rows = top
+    .map((p) => {
+      const name = p.name || "Unknown product";
+      const label = p.collection ? `${name} (${p.collection})` : name;
+      return funnelBarHtml(label, p.count, max);
+    })
+    .join("");
+
+  return `
+    <div class="analytics-card">
+      <h3>Most added to cart</h3>
+      ${rows}
+      ${extraCount > 0 ? `<p class="analytics-note">+${extraCount} more product${extraCount === 1 ? "" : "s"} added to cart in this range.</p>` : ""}
+    </div>
+  `;
+}
+
 function renderAnalyticsPanel(events) {
   const content = document.getElementById("analyticsContent");
   if (!events.length) {
@@ -2124,6 +2178,7 @@ function renderAnalyticsPanel(events) {
   const sortedCounts = (obj) => Object.entries(obj).sort((a, b) => b[1] - a[1]);
 
   content.innerHTML = `
+    ${topProductsHtml(events)}
     <div class="analytics-card">
       <h3>Checkout funnel</h3>
       ${mainCounts.map(([label, count]) => funnelBarHtml(label, count, mainMax)).join("")}
