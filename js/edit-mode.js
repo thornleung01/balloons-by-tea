@@ -318,12 +318,29 @@ function onMarqueeUp(e) {
 
 document.addEventListener("pointerdown", (e) => {
   if (!editModeActive || e.button !== 0) return;
-  if (e.target.closest("[data-edit-key], .edit-selection-bar, .edit-history-panel, .edit-mode-toggle, .edit-divider-handle, .edit-font-popover, input, textarea, select, button, a, [contenteditable='true']")) return;
+  // Only edit-mode chrome and genuine form/interactive controls block a
+  // marquee from starting — NOT [data-edit-key] itself. Now that nearly
+  // every element on the page carries that attribute (sections, text,
+  // images, buttons), excluding it entirely would mean a marquee could
+  // almost never start. Starting the gesture on top of a tagged element
+  // is safe: the MARQUEE_THRESHOLD check in onMarqueeMove means a plain
+  // click (no real movement) still falls through to the normal click-
+  // to-select listener untouched, and only an actual drag turns it into
+  // a marquee.
+  if (e.target.closest(".edit-selection-bar, .edit-history-panel, .edit-mode-toggle, .edit-divider-handle, .edit-font-popover, input, textarea, select, button, a, [contenteditable='true']")) return;
   marqueeStart = { x: e.clientX, y: e.clientY };
   marqueeMoved = false;
   marqueeBaseSelection = e.shiftKey ? Array.from(selectedKeys) : null;
   document.addEventListener("pointermove", onMarqueeMove);
   document.addEventListener("pointerup", onMarqueeUp, { once: true });
+});
+
+// Starting a marquee drag on top of an <img> would otherwise trigger the
+// browser's native "drag this image out" ghost instead of (or alongside)
+// the pointermove-based marquee tracking above — suppress it specifically
+// while a marquee might be in progress, never outside edit mode.
+document.addEventListener("dragstart", (e) => {
+  if (editModeActive && marqueeStart) e.preventDefault();
 });
 
 /* ===== Change history / revert ===== */
