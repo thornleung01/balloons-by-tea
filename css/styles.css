@@ -1598,6 +1598,8 @@ button {
 .edit-history-toggle { left: 82px; width: 44px; height: 44px; bottom: 26px; }
 .edit-admin-link { left: 138px; width: 44px; height: 44px; bottom: 26px; }
 .edit-theme-toggle { left: 194px; width: 44px; height: 44px; bottom: 26px; }
+.edit-preview-toggle { left: 250px; width: 44px; height: 44px; bottom: 26px; }
+.edit-layers-toggle { left: 306px; width: 44px; height: 44px; bottom: 26px; }
 
 .edit-history-panel {
   position: fixed;
@@ -1674,6 +1676,41 @@ button {
 }
 .edit-history-revert-btn:hover { border-color: var(--color-accent); color: var(--color-accent); }
 
+.edit-layers-list { overflow-y: auto; padding: var(--space-2) var(--space-3); max-height: 50vh; }
+.edit-layers-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  padding: 9px 4px;
+  border-bottom: 1px solid var(--color-border);
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+}
+.edit-layers-row:last-child { border-bottom: none; }
+.edit-layers-row:hover { background: var(--color-accent-tint); }
+.edit-layers-label {
+  font-size: 0.86rem;
+  color: var(--color-fg);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+.edit-layers-tags { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
+.edit-layers-lock { color: var(--color-fg-faint); flex-shrink: 0; }
+.edit-layers-type {
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--color-fg-soft);
+  background: var(--color-bg-alt);
+  border-radius: var(--radius-pill);
+  padding: 3px 8px;
+  white-space: nowrap;
+}
+
 body.edit-mode-active [data-edit-key] {
   position: relative;
   outline: 1.5px dashed transparent;
@@ -1707,6 +1744,37 @@ body.edit-mode-active [data-edit-key].edit-text-active {
   cursor: text;
 }
 body.edit-mode-active [data-edit-key] { cursor: pointer; }
+
+/* Preview mode: a pure visual toggle layered on top of edit-mode-active
+   (it never turns edit-mode-active off) that hides every bit of editing
+   chrome so the admin sees exactly what a visitor would see, with
+   whatever's staged in pendingOverrides still applied underneath — that
+   content isn't touched by anything here, only the chrome around it.
+   #editPreviewToggle is excluded via ID specificity (beats the class
+   selector below regardless of source order) so there's always a way to
+   turn preview back off. */
+body.edit-preview-active .edit-selection-bar,
+body.edit-preview-active .edit-save-bar,
+body.edit-preview-active .edit-history-panel,
+body.edit-preview-active .edit-font-popover,
+body.edit-preview-active .edit-divider-handle,
+body.edit-preview-active .edit-pending-dot,
+body.edit-preview-active #editAlignGuides,
+body.edit-preview-active .edit-mode-toggle {
+  display: none !important;
+}
+body.edit-preview-active #editPreviewToggle {
+  display: flex !important;
+}
+body.edit-preview-active [data-edit-key] {
+  outline: none !important;
+  cursor: default !important;
+}
+/* In edit mode a "hidden" element stays visible but dimmed (so it can be
+   found and unhidden again) — but a real visitor never sees it at all, so
+   preview mode, which exists specifically to show what a visitor would
+   see, switches it to actually hidden instead of just dimmed. */
+body.edit-preview-active [data-edit-key].edit-is-hidden { display: none !important; }
 
 .edit-selection-bar {
   position: fixed;
