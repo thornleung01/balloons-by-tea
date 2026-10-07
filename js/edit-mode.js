@@ -535,6 +535,22 @@ let pendingProductRemovals = new Set();
 // element rather than a single batch entry, so undoing it back out takes
 // one Ctrl+Z per element — more presses, but each one is correct on its own.
 let undoStack = [];
+// Mirror of undoStack, consumed by Ctrl+Shift+Z/Ctrl+Y. Every entry
+// undoLastChange() pops gets pushed here instead of discarded, and every
+// entry redoLastChange() pops gets pushed back onto undoStack — same LIFO
+// shape on both sides, so redo-then-undo always lands back where redo
+// started. Any brand-new staged action (not undo/redo replaying history)
+// clears this, since replaying forward through an action that's since
+// been superseded by something else wouldn't make sense.
+let redoStack = [];
+// Keys that exist ONLY as an unsaved duplicate — i.e. the DOM node itself
+// was created at runtime by duplicateSelectedElement() and has no backing
+// row in LAYOUT_OVERRIDES yet. discardPendingChanges() can't "revert" such
+// a key to its last-saved value the way it does for every other pending
+// override (there is no last-saved value, there's no saved element at
+// all) — it has to tear the cloned node out of the DOM instead. Cleared
+// once the key is actually saved (commitPendingChanges) or discarded.
+let pendingNewKeys = new Set();
 
 function effectiveValue(key, property) {
   if (pendingOverrides[key] && property in pendingOverrides[key]) return pendingOverrides[key][property];
@@ -583,7 +599,11 @@ function updatePendingDot(key) {
 function queueOverride(key, property, value) {
   const hadPendingEntry = !!(pendingOverrides[key] && property in pendingOverrides[key]);
   const previous = hadPendingEntry ? pendingOverrides[key][property] : undefined;
-  undoStack.push({ type: "override", key, property, hadPendingEntry, previous });
+  // `value` is carried on the entry too (not just `previous`) so
+  // redoLastChange() can reapply this exact change forward without having
+  // to re-derive what it originally set — see redoLastChange() below.
+  undoStack.push({ type: "override", key, property, hadPendingEntry, previous, value });
+  redoStack = []; // a fresh action invalidates whatever redo branch existed
 
   if (!pendingOverrides[key]) pendingOverrides[key] = {};
   pendingOverrides[key][property] = value; // null means "clear this override on save"
@@ -633,7 +653,9 @@ async function commitPendingChanges() {
     }
     pendingOverrides = {};
     pendingProductRemovals.clear();
+    pendingNewKeys.clear(); // now backed by real saved rows, like any other key
     undoStack = [];
+    redoStack = [];
     renderEditHandles();
     renderSaveBar();
     if (document.getElementById("editHistoryPanel")) await loadHistoryList();
@@ -662,6 +684,17 @@ function discardPendingChanges() {
       resetElementStyle(el, property, savedValue);
     });
   });
+  // Keys that only ever existed as a staged duplicate have no saved row to
+  // revert to — resetElementStyle above already ran for them with
+  // savedValue === undefined (harmless), but the cloned node itself still
+  // needs to be torn back out of the DOM, or it keeps sitting there
+  // looking like a real element even though nothing was ever saved.
+  pendingNewKeys.forEach((key) => {
+    selectedKeys.delete(key);
+    const el = document.querySelector(`[data-edit-key="${CSS.escape(key)}"]`);
+    if (el) el.remove();
+  });
+  pendingNewKeys.clear();
   pendingProductRemovals.forEach((productId) => {
     const el = document.querySelector(`[data-edit-key="product:${productId}"]`);
     if (el) el.classList.remove("edit-is-hidden");
@@ -669,10 +702,12 @@ function discardPendingChanges() {
   pendingOverrides = {};
   pendingProductRemovals.clear();
   undoStack = [];
+  redoStack = [];
   discardThemeColors();
   revealHiddenForEditing();
   renderEditHandles();
   renderSaveBar();
+  renderSelectionToolbar();
 }
 
 function selectRow(el) {
@@ -1409,12 +1444,89 @@ function removeSelectedProducts() {
   productKeys.forEach((key) => {
     const productId = key.slice("product:".length);
     undoStack.push({ type: "product-removal", productId });
+    redoStack = []; // a fresh action invalidates whatever redo branch existed
     pendingProductRemovals.add(productId);
     const el = document.querySelector(`[data-edit-key="${CSS.escape(key)}"]`);
     if (el) el.classList.add("edit-is-hidden");
     updatePendingDot(key);
   });
   renderSaveBar();
+}
+
+/* Ctrl+D — clone the single selected text/block element as a sibling,
+   carry over its current look (every pending/saved override), nudge it
+   so it's not sitting exactly on top of the original, and select it.
+   Sections and product cards are deliberately NOT supported here: a
+   section has page-wide spacing/divider semantics a second copy would
+   conflict with, and a product card's "real" source of truth is the
+   products table (app.js renders one per active row) — duplicating the
+   DOM node wouldn't create a second real product, just a confusing fake.
+   Staged as ONE atomic undo/redo entry (type "duplicate") rather than one
+   queueOverride() call per copied property: this action both creates a
+   DOM node and stages data, and those two facts have to undo/redo
+   together as a single unit — spreading them across many separate
+   "override" entries would let a partial undo leave an empty, invisible
+   clone stranded in the DOM with no pending state and no save/discard
+   path back to removing it. (removeSelectedProducts() above follows the
+   same already-established pattern: its own dedicated undo entry type,
+   not queueOverride, because "stage a removal" isn't a single-property
+   change either.) */
+function duplicateSelectedElement() {
+  const single = singleSelection();
+  if (!single || single.locked) return;
+  const { key, el, type } = single;
+  if (type !== "text" && type !== "block") return; // section/product: skip, see above
+
+  const clone = el.cloneNode(true);
+  clone.classList.remove("edit-selected", "edit-is-locked", "edit-is-hidden", "edit-text-active");
+  clone.querySelectorAll(":scope > .edit-pending-dot, .edit-divider-handle, .edit-font-popover").forEach((n) => n.remove());
+  delete clone.dataset.originalText;
+
+  // short, collision-proof suffix — same "prefix:id" shape as the other
+  // dynamically-keyed elements in the codebase (product:<id>, nav-item:<id>)
+  const newKey = `${key}:dup-${Date.now().toString(36)}${Math.floor(Math.random() * 46656).toString(36)}`;
+  clone.dataset.editKey = newKey;
+  el.insertAdjacentElement("afterend", clone);
+
+  // Carry over the original's current look (pending overrides win over
+  // saved ones, same precedence effectiveValue() always uses) — everything
+  // except locked/hidden, which a fresh duplicate should never inherit.
+  const propertyNames = new Set([
+    ...Object.keys(pendingOverrides[key] || {}),
+    ...Object.keys(LAYOUT_OVERRIDES[key] || {})
+  ]);
+  propertyNames.delete("locked");
+  propertyNames.delete("hidden");
+  const overrides = {};
+  propertyNames.forEach((property) => {
+    const value = effectiveValue(key, property);
+    if (value != null) overrides[property] = value;
+  });
+
+  // Offset from the ORIGINAL's current position, not from 0, so duplicating
+  // an already-moved element still lands visibly beside it rather than
+  // back at the un-moved default spot.
+  const baseX = parseFloat(effectiveValue(key, "translate-x")) || 0;
+  const baseY = parseFloat(effectiveValue(key, "translate-y")) || 0;
+  overrides["translate-x"] = (baseX + 24) + "px";
+  overrides["translate-y"] = (baseY + 24) + "px";
+
+  pendingOverrides[newKey] = {};
+  Object.keys(overrides).forEach((property) => {
+    pendingOverrides[newKey][property] = overrides[property];
+    resetElementStyle(clone, property, overrides[property]);
+  });
+  pendingNewKeys.add(newKey);
+
+  undoStack.push({ type: "duplicate", key: newKey, originalKey: key, overrides, el: clone });
+  redoStack = []; // a fresh action invalidates whatever redo branch existed
+
+  updatePendingDot(newKey);
+  renderSaveBar();
+
+  selectedKeys = new Set([newKey]);
+  renderEditHandles();
+  renderSelectionToolbar();
 }
 
 /* Keyboard equivalent of dragging a resize/divider handle — arrow keys
@@ -1467,11 +1579,66 @@ function undoLastChange() {
     const el = document.querySelector(`[data-edit-key="product:${last.productId}"]`);
     if (el) el.classList.remove("edit-is-hidden");
     updatePendingDot("product:" + last.productId);
+  } else if (last.type === "duplicate") {
+    delete pendingOverrides[last.key];
+    pendingNewKeys.delete(last.key);
+    selectedKeys.delete(last.key);
+    if (last.el && last.el.parentNode) last.el.remove();
+    updatePendingDot(last.key);
   }
+
+  // Pushed onto redoStack (not discarded) so Ctrl+Shift+Z/Ctrl+Y can
+  // replay this exact entry forward — see redoLastChange() below.
+  redoStack.push(last);
 
   revealHiddenForEditing();
   renderEditHandles();
   renderSaveBar();
+  renderSelectionToolbar();
+}
+
+/* Mirror of undoLastChange(): pops the most recently undone entry and
+   reapplies it forward. Reaches directly into pendingOverrides/the DOM
+   the same way undo does, instead of going through queueOverride() or
+   re-pushing to undoStack via the normal staging helpers — both of those
+   would misread this as a brand-new user action and immediately wipe the
+   very redoStack this function is reading from. Pushing the entry onto
+   undoStack directly (once, here) is what keeps undo/redo symmetric: a
+   Ctrl+Z right after this Ctrl+Shift+Z undoes exactly the thing that was
+   just redone, no more and no less. */
+function redoLastChange() {
+  const next = redoStack.pop();
+  if (!next) return;
+
+  if (next.type === "override") {
+    if (!pendingOverrides[next.key]) pendingOverrides[next.key] = {};
+    pendingOverrides[next.key][next.property] = next.value;
+    const el = document.querySelector(`[data-edit-key="${CSS.escape(next.key)}"]`);
+    if (el && next.property !== "locked" && next.property !== "hidden") {
+      resetElementStyle(el, next.property, effectiveValue(next.key, next.property));
+    }
+    updatePendingDot(next.key);
+  } else if (next.type === "product-removal") {
+    pendingProductRemovals.add(next.productId);
+    const el = document.querySelector(`[data-edit-key="product:${next.productId}"]`);
+    if (el) el.classList.add("edit-is-hidden");
+    updatePendingDot("product:" + next.productId);
+  } else if (next.type === "duplicate") {
+    const anchorEl = document.querySelector(`[data-edit-key="${CSS.escape(next.originalKey)}"]`);
+    if (anchorEl) anchorEl.insertAdjacentElement("afterend", next.el);
+    else document.body.appendChild(next.el);
+    pendingOverrides[next.key] = Object.assign({}, next.overrides);
+    pendingNewKeys.add(next.key);
+    Object.keys(next.overrides).forEach((property) => resetElementStyle(next.el, property, next.overrides[property]));
+    updatePendingDot(next.key);
+  }
+
+  undoStack.push(next);
+
+  revealHiddenForEditing();
+  renderEditHandles();
+  renderSaveBar();
+  renderSelectionToolbar();
 }
 
 document.addEventListener("keydown", (e) => {
@@ -1488,6 +1655,15 @@ document.addEventListener("keydown", (e) => {
   if ((e.key === "z" || e.key === "Z") && (e.ctrlKey || e.metaKey) && !e.shiftKey) {
     e.preventDefault();
     undoLastChange();
+  } else if (
+    (e.key === "y" || e.key === "Y") && (e.ctrlKey || e.metaKey) ||
+    (e.key === "z" || e.key === "Z") && (e.ctrlKey || e.metaKey) && e.shiftKey
+  ) {
+    e.preventDefault();
+    redoLastChange();
+  } else if ((e.key === "d" || e.key === "D") && (e.ctrlKey || e.metaKey)) {
+    e.preventDefault(); // Ctrl+D is also the browser's "bookmark this page" shortcut
+    duplicateSelectedElement();
   } else if (e.key === "Escape" && selectedKeys.size) {
     e.preventDefault();
     clearSelection();
