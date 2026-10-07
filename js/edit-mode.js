@@ -59,6 +59,27 @@ function buildEditModeToggle() {
   document.body.appendChild(themeBtn);
   themeBtn.addEventListener("click", () => toggleThemePanel());
 
+  const previewBtn = document.createElement("button");
+  previewBtn.type = "button";
+  previewBtn.id = "editPreviewToggle";
+  previewBtn.className = "edit-mode-toggle edit-preview-toggle";
+  previewBtn.setAttribute("aria-pressed", "false");
+  previewBtn.title = "Preview as a visitor";
+  previewBtn.hidden = true;
+  previewBtn.innerHTML = `<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z" stroke-linecap="round" stroke-linejoin="round"/><circle cx="12" cy="12" r="3"/></svg>`;
+  document.body.appendChild(previewBtn);
+  previewBtn.addEventListener("click", () => togglePreviewMode());
+
+  const layersBtn = document.createElement("button");
+  layersBtn.type = "button";
+  layersBtn.id = "editLayersToggle";
+  layersBtn.className = "edit-mode-toggle edit-layers-toggle";
+  layersBtn.title = "Layers";
+  layersBtn.hidden = true;
+  layersBtn.innerHTML = `<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M12 3 3 8l9 5 9-5-9-5Z" stroke-linecap="round" stroke-linejoin="round"/><path d="M3 12l9 5 9-5" stroke-linecap="round" stroke-linejoin="round"/><path d="M3 16l9 5 9-5" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+  document.body.appendChild(layersBtn);
+  layersBtn.addEventListener("click", () => toggleLayersPanel());
+
   // Shown as soon as the pencil toggle exists (i.e. as soon as we know
   // this is an admin session) rather than gated behind edit mode being
   // on — there was previously no way back to admin.html from a public
@@ -88,6 +109,8 @@ function setEditMode(on) {
   document.body.classList.toggle("edit-mode-active", on);
   document.getElementById("editHistoryToggle").hidden = !on;
   document.getElementById("editThemeToggle").hidden = !on;
+  document.getElementById("editPreviewToggle").hidden = !on;
+  document.getElementById("editLayersToggle").hidden = !on;
 
   if (on) {
     revealHiddenForEditing();
@@ -99,6 +122,49 @@ function setEditMode(on) {
     applyLayoutOverrides();
     closeHistoryPanel();
     closeThemePanel();
+    closeLayersPanel();
+    // Preview mode is edit-mode-only chrome, same as the panels above —
+    // leaving it on across an edit-mode exit would strand the body class
+    // and the toggle's "active" visual with no way back to turn it off
+    // (the eye button itself is about to be hidden on the line above).
+    if (previewModeActive) togglePreviewMode();
+  }
+}
+
+/* ===== Preview mode =====
+   Pure visual toggle: hides every bit of editing chrome (toolbar, resize/
+   move/divider handles, selection outlines, save bar, the other toggle
+   buttons) via the body.edit-preview-active CSS hook in styles.css, so the
+   admin can see exactly what a visitor would see — crucially, WITHOUT
+   touching pendingOverrides/selectedKeys. Staged changes already render
+   through effectiveValue() regardless of this flag, so nothing needs to
+   be reapplied here; this only ever flips a class and re-renders the
+   (still-hidden-by-CSS, but kept in sync) chrome on the way back out. */
+let previewModeActive = false;
+
+function togglePreviewMode() {
+  previewModeActive = !previewModeActive;
+  document.body.classList.toggle("edit-preview-active", previewModeActive);
+
+  const btn = document.getElementById("editPreviewToggle");
+  if (btn) {
+    btn.classList.toggle("active", previewModeActive);
+    btn.setAttribute("aria-pressed", String(previewModeActive));
+    btn.title = previewModeActive ? "Exit preview" : "Preview as a visitor";
+  }
+
+  if (previewModeActive) {
+    closeFontPopover();
+    hideAlignGuides();
+    closeHistoryPanel();
+    closeThemePanel();
+    closeLayersPanel();
+  } else {
+    // Nothing above ever mutated selectedKeys/pendingOverrides, so this
+    // just rebuilds the same chrome that was there before — restoring it
+    // "exactly as it was" for whatever is still selected.
+    renderEditHandles();
+    renderSelectionToolbar();
   }
 }
 
@@ -114,6 +180,7 @@ let suppressNextBackgroundClick = false;
 
 document.addEventListener("click", (e) => {
   if (!editModeActive || !selectedKeys.size) return;
+  if (document.body.classList.contains("edit-preview-active")) return;
   if (suppressNextBackgroundClick) { suppressNextBackgroundClick = false; return; }
   if (e.target.closest("[data-edit-key], .edit-selection-bar, .edit-history-panel, .edit-mode-toggle")) return;
   clearSelection();
@@ -137,6 +204,7 @@ document.addEventListener("click", (e) => {
    correctly wins over the section without needing a separate check. */
 document.addEventListener("click", (e) => {
   if (!editModeActive) return;
+  if (document.body.classList.contains("edit-preview-active")) return;
   const el = e.target.closest("[data-edit-key]");
   if (!el) return;
   const key = el.dataset.editKey;
@@ -150,6 +218,7 @@ document.addEventListener("click", (e) => {
 
 document.addEventListener("dblclick", (e) => {
   if (!editModeActive) return;
+  if (document.body.classList.contains("edit-preview-active")) return;
   const el = e.target.closest("[data-edit-key]");
   if (!el) return;
   const key = el.dataset.editKey;
@@ -167,6 +236,7 @@ async function toggleHistoryPanel() {
   const existing = document.getElementById("editHistoryPanel");
   if (existing) { closeHistoryPanel(); return; }
   closeThemePanel(); // same corner, avoid the two overlapping
+  closeLayersPanel();
 
   const panel = document.createElement("div");
   panel.id = "editHistoryPanel";
@@ -630,6 +700,7 @@ function toggleThemePanel() {
   const existing = document.getElementById("editThemePanel");
   if (existing) { closeThemePanel(); return; }
   closeHistoryPanel(); // same corner, avoid the two overlapping
+  closeLayersPanel();
 
   const settings = window.SITE_SETTINGS || {};
   const panel = document.createElement("div");
@@ -691,6 +762,89 @@ function discardThemeColors() {
   if (!Object.keys(pendingThemeColors).length) return;
   pendingThemeColors = {};
   if (typeof applyThemeColors === "function") applyThemeColors();
+}
+
+/* ===== Layers / outline panel =====
+   Read-only navigation aid: every [data-edit-key] element on the current
+   page, one row each, so an admin can find and select something that's
+   small, off-screen, or buried under other elements without having to
+   hunt for it on the canvas first. Selecting here is deliberately the
+   same two steps as any other selection path — mutate selectedKeys, then
+   call the same render functions toggleSelect()/clearSelection() call —
+   so the on-canvas toolbar that appears afterwards behaves identically to
+   a direct click. No editing happens from this panel itself. */
+function closeLayersPanel() {
+  const panel = document.getElementById("editLayersPanel");
+  if (panel) panel.remove();
+}
+
+// Prefers the element's own visible text (trimmed/collapsed/truncated) as
+// the human-readable label; icon-only elements and other text-free nodes
+// (e.g. a decorative block) fall back to the raw key so the row is never
+// blank.
+function layerRowLabel(el, key) {
+  const text = (el.textContent || "").replace(/\s+/g, " ").trim();
+  if (text) return text.length > 44 ? text.slice(0, 44) + "…" : text;
+  return key;
+}
+
+// escapeHtml() is defined in js/app.js (loaded after this file, but well
+// before any user interaction can reach this code) — reused as-is rather
+// than duplicated here.
+function selectLayerKey(key) {
+  selectedKeys.clear();
+  selectedKeys.add(key);
+  renderEditHandles();
+  renderSelectionToolbar();
+}
+
+function toggleLayersPanel() {
+  const existing = document.getElementById("editLayersPanel");
+  if (existing) { closeLayersPanel(); return; }
+  closeHistoryPanel();
+  closeThemePanel();
+
+  const els = Array.from(document.querySelectorAll("[data-edit-key]")).filter((el) => el.dataset.editKey);
+
+  const panel = document.createElement("div");
+  panel.id = "editLayersPanel";
+  panel.className = "edit-history-panel edit-layers-panel";
+  panel.innerHTML = `
+    <div class="edit-history-head">
+      <strong>Layers</strong>
+      <button type="button" class="edit-icon-btn" id="editLayersClose" aria-label="Close">
+        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 5l14 14M19 5L5 19" stroke-linecap="round"/></svg>
+      </button>
+    </div>
+    <div class="edit-layers-list" id="editLayersList">
+      ${els.length ? els.map((el) => {
+        const key = el.dataset.editKey;
+        const type = elementEditType(el);
+        const locked = effectiveValue(key, "locked") === "true";
+        return `
+          <div class="edit-layers-row" data-layer-key="${escapeHtml(key)}" title="${escapeHtml(key)}">
+            <span class="edit-layers-label">${escapeHtml(layerRowLabel(el, key))}</span>
+            <span class="edit-layers-tags">
+              ${locked ? `<svg class="edit-layers-lock" viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" aria-label="Locked"><rect x="5" y="11" width="14" height="9" rx="1.5"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>` : ""}
+              <span class="edit-layers-type">${escapeHtml(type)}</span>
+            </span>
+          </div>
+        `;
+      }).join("") : `<p class="edit-history-empty">No editable elements on this page.</p>`}
+    </div>
+  `;
+  document.body.appendChild(panel);
+  document.getElementById("editLayersClose").addEventListener("click", closeLayersPanel);
+
+  panel.querySelectorAll("[data-layer-key]").forEach((row) => {
+    row.addEventListener("click", () => {
+      const key = row.dataset.layerKey;
+      const el = document.querySelector(`[data-edit-key="${CSS.escape(key)}"]`);
+      closeLayersPanel();
+      selectLayerKey(key);
+      if (el) el.scrollIntoView({ behavior: "smooth", block: "center" });
+    });
+  });
 }
 
 /* ===== Inline text editing (text elements only) =====
@@ -1221,6 +1375,7 @@ function undoLastChange() {
 
 document.addEventListener("keydown", (e) => {
   if (!editModeActive) return;
+  if (document.body.classList.contains("edit-preview-active")) return;
   const active = document.activeElement;
   const tag = active && active.tagName;
   // isContentEditable catches an in-progress inline text edit (see
