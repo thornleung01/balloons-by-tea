@@ -52,48 +52,48 @@
       <form id="customOrderForm" novalidate>
         <div class="form-grid">
           <div class="field">
-            <label for="co-first-name">First name</label>
+            <label for="co-first-name" data-edit-key="custom-order-label-first-name" data-edit-type="text">First name</label>
             <input id="co-first-name" name="firstName" type="text" required autocomplete="given-name"/>
             <div class="field-error" id="co-error-firstName"></div>
           </div>
           <div class="field">
-            <label for="co-last-name">Last name</label>
+            <label for="co-last-name" data-edit-key="custom-order-label-last-name" data-edit-type="text">Last name</label>
             <input id="co-last-name" name="lastName" type="text" required autocomplete="family-name"/>
             <div class="field-error" id="co-error-lastName"></div>
           </div>
           <div class="field">
-            <label for="co-phone">Phone</label>
+            <label for="co-phone" data-edit-key="custom-order-label-phone" data-edit-type="text">Phone</label>
             <input id="co-phone" name="phone" type="tel" required autocomplete="tel" placeholder="(000) 000-0000"/>
             <div class="field-error" id="co-error-phone"></div>
           </div>
           <div class="field">
-            <label for="co-email">Email</label>
+            <label for="co-email" data-edit-key="custom-order-label-email" data-edit-type="text">Email</label>
             <input id="co-email" name="email" type="email" required autocomplete="email"/>
             <div class="field-error" id="co-error-email"></div>
           </div>
 
-          <h3 class="form-section-heading">Event Information</h3>
+          <h3 class="form-section-heading" data-edit-key="custom-order-event-info-heading" data-edit-type="text">Event Information</h3>
 
           <div class="field">
-            <label for="co-event-date">Event date</label>
+            <label for="co-event-date" data-edit-key="custom-order-label-event-date" data-edit-type="text">Event date</label>
             <input id="co-event-date" name="eventDate" type="date" required/>
             <div class="field-error" id="co-error-eventDate"></div>
           </div>
           <div class="field">
-            <label for="co-event-time">Event time</label>
+            <label for="co-event-time" data-edit-key="custom-order-label-event-time" data-edit-type="text">Event time</label>
             <input id="co-event-time" name="eventTime" type="time" required/>
             <div class="field-error" id="co-error-eventTime"></div>
           </div>
           <div class="field full">
-            <label for="co-recipient">Recipient's name and/or age</label>
+            <label for="co-recipient" data-edit-key="custom-order-label-recipient" data-edit-type="text">Recipient's name and/or age</label>
             <input id="co-recipient" name="recipient" type="text"/>
           </div>
           <div class="field full">
-            <label for="co-occasion">Event's occasion</label>
+            <label for="co-occasion" data-edit-key="custom-order-label-occasion" data-edit-type="text">Event's occasion</label>
             <input id="co-occasion" name="occasion" type="text" placeholder="birthday, wedding, corporate event, etc..."/>
           </div>
           <div class="field full">
-            <label>Preferred service option</label>
+            <label data-edit-key="custom-order-label-service-option" data-edit-type="text">Preferred service option</label>
             <div class="radio-group">
               <label class="radio-option"><input type="radio" name="service" value="pickup" checked/> Pick-up</label>
               <label class="radio-option"><input type="radio" name="service" value="delivery"/> Delivery</label>
@@ -101,7 +101,7 @@
             </div>
           </div>
           <div class="field full">
-            <label for="co-address">Delivery address (if delivery or set-up required)</label>
+            <label for="co-address" data-edit-key="custom-order-label-address" data-edit-type="text">Delivery address (if delivery or set-up required)</label>
             <input id="co-address" name="address" type="text" placeholder="Street address" autocomplete="street-address"/>
           </div>
           <div class="field">
@@ -114,7 +114,7 @@
             <input aria-label="Postal code" name="postal" type="text" placeholder="Postal code" style="max-width:280px;"/>
           </div>
           <div class="field full">
-            <label>Setup area</label>
+            <label data-edit-key="custom-order-label-setup-area" data-edit-type="text">Setup area</label>
             <div class="radio-group">
               <label class="radio-option"><input type="radio" name="setupArea" value="indoor"/> Indoor</label>
               <label class="radio-option"><input type="radio" name="setupArea" value="outdoor"/> Outdoor</label>
@@ -122,7 +122,7 @@
             </div>
           </div>
           <div class="field full">
-            <label>Event venue</label>
+            <label data-edit-key="custom-order-label-venue" data-edit-type="text">Event venue</label>
             <div class="checkbox-group">
               <label class="checkbox-option"><input type="checkbox" name="venue" value="Home"/> Home</label>
               <label class="checkbox-option"><input type="checkbox" name="venue" value="Restaurant"/> Restaurant</label>
@@ -134,10 +134,10 @@
             </div>
           </div>
 
-          <h3 class="form-section-heading">Style and Design</h3>
+          <h3 class="form-section-heading" data-edit-key="custom-order-style-design-heading" data-edit-type="text">Style and Design</h3>
 
           <div class="field full">
-            <label>What type of balloon are you looking for?</label>
+            <label data-edit-key="custom-order-label-balloon-type" data-edit-type="text">What type of balloon are you looking for?</label>
             <div class="checkbox-group">
               <label class="checkbox-option"><input type="checkbox" name="balloonType" value="Helium Bouquet"/> Helium Bouquet</label>
               <label class="checkbox-option"><input type="checkbox" name="balloonType" value="Balloon Flowers"/> Balloon Flowers</label>
@@ -149,29 +149,29 @@
             </div>
           </div>
           <div class="field full">
-            <label for="co-color-scheme">What is the color scheme for this event?</label>
+            <label for="co-color-scheme" data-edit-key="custom-order-label-color-scheme" data-edit-type="text">What is the color scheme for this event?</label>
             <textarea id="co-color-scheme" name="colorScheme"></textarea>
           </div>
           <div class="field full">
-            <label for="co-details">Please describe your vision for the event</label>
+            <label for="co-details" data-edit-key="custom-order-label-details" data-edit-type="text">Please describe your vision for the event</label>
             <textarea id="co-details" name="details" required placeholder="Colors, theme, size, venue, inspiration photos you have in mind..."></textarea>
             <div class="field-error" id="co-error-details"></div>
           </div>
           <div class="field">
-            <label for="co-budget">Budget (optional)</label>
+            <label for="co-budget" data-edit-key="custom-order-label-budget" data-edit-type="text">Budget (optional)</label>
             <input id="co-budget" name="budget" type="text" placeholder="e.g. $200"/>
           </div>
           <div class="field full">
-            <label>Photos of the space, as well as any inspirational images</label>
+            <label data-edit-key="custom-order-label-photos" data-edit-type="text">Photos of the space, as well as any inspirational images</label>
             <div class="upload-dropzone">
-              <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M12 16V4M12 4l-4 4M12 4l4 4" stroke-linecap="round" stroke-linejoin="round"/><path d="M4 16v3a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-3" stroke-linecap="round" stroke-linejoin="round"/></svg>
-              <strong>Photo upload isn't available here yet</strong>
-              <span>Once you submit, send any inspiration or venue photos to us on WhatsApp or email and we'll attach them to your request.</span>
+              <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true" data-edit-key="custom-order-upload-icon" data-edit-type="block"><path d="M12 16V4M12 4l-4 4M12 4l4 4" stroke-linecap="round" stroke-linejoin="round"/><path d="M4 16v3a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-3" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              <strong data-edit-key="custom-order-upload-heading" data-edit-type="text">Photo upload isn't available here yet</strong>
+              <span data-edit-key="custom-order-upload-note" data-edit-type="text">Once you submit, send any inspiration or venue photos to us on WhatsApp or email and we'll attach them to your request.</span>
             </div>
           </div>
         </div>
         <div class="field-error" id="customOrderFormError"></div>
-        <button type="submit" class="btn btn-primary btn-block" id="customOrderSubmitBtn">Send Request</button>
+        <button type="submit" class="btn btn-primary btn-block" id="customOrderSubmitBtn" data-edit-key="custom-order-submit-btn" data-edit-type="block">Send Request</button>
       </form>
     </div>
     <div id="customOrderSuccess" class="success-state" hidden>
