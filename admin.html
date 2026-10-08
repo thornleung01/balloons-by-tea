@@ -65,6 +65,7 @@
       <button type="button" class="admin-tab" id="tabDeliveryBtn" role="tab" aria-selected="false">Delivery</button>
       <button type="button" class="admin-tab" id="tabCollectionsBtn" role="tab" aria-selected="false">Collections</button>
       <button type="button" class="admin-tab" id="tabLibraryBtn" role="tab" aria-selected="false">Library</button>
+      <button type="button" class="admin-tab" id="tabGalleryBtn" role="tab" aria-selected="false">Gallery</button>
       <button type="button" class="admin-tab" id="tabNavBtn" role="tab" aria-selected="false">Nav</button>
       <button type="button" class="admin-tab" id="tabFaqBtn" role="tab" aria-selected="false">FAQ</button>
       <button type="button" class="admin-tab" id="tabSettingsBtn" role="tab" aria-selected="false">Settings</button>
@@ -308,6 +309,11 @@
       </div>
     </div>
 
+    <!-- Past events gallery: rendered by js/admin-gallery.js -->
+    <div id="galleryPanel" hidden>
+      <div class="admin-card" id="galleryAdmin"></div>
+    </div>
+
     <div id="navPanel" class="admin-grid" hidden>
       <div class="admin-card">
         <h2 id="navFormTitle">Add Nav Item</h2>
@@ -469,5 +475,6 @@
 <script src="js/admin-backup.js"></script>
 <script src="js/admin-availability.js"></script>
 <script src="js/admin-delivery-areas.js"></script>
+<script src="js/admin-gallery.js"></script>
 </body>
 </html>

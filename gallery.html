@@ -10,25 +10,25 @@
     })(window, document, "clarity", "script", "yu664v60u1");
 </script>
 <meta name="viewport" content="width=device-width, initial-scale=1"/>
-<title>Custom Order | Balloons by Tea</title>
-<meta name="description" content="Request a custom balloon order: tell us your colors, theme and event details and we'll put together a quote."/>
-<link rel="canonical" href="https://thornleung01.github.io/balloons-by-tea/custom-order.html"/>
+<title>Past Events Gallery | Balloons by Tea</title>
+<meta name="description" content="See real balloon garlands, arches and bouquets from past birthdays, anniversaries and events styled by Balloons by Tea, and order something like it."/>
+<link rel="canonical" href="https://thornleung01.github.io/balloons-by-tea/gallery.html"/>
 <link rel="icon" type="image/png" href="images/logo.png"/>
 <meta property="og:type" content="website"/>
 <meta property="og:site_name" content="Balloons by Tea"/>
-<meta property="og:title" content="Custom Order"/>
-<meta property="og:description" content="Request a custom balloon order: tell us your colors, theme and event details and we'll put together a quote."/>
+<meta property="og:title" content="Past Events Gallery"/>
+<meta property="og:description" content="See real balloon garlands, arches and bouquets from past birthdays, anniversaries and events styled by Balloons by Tea, and order something like it."/>
 <meta property="og:image" content="https://thornleung01.github.io/balloons-by-tea/images/logo.png"/>
-<meta property="og:url" content="https://thornleung01.github.io/balloons-by-tea/custom-order.html"/>
+<meta property="og:url" content="https://thornleung01.github.io/balloons-by-tea/gallery.html"/>
 <meta name="twitter:card" content="summary_large_image"/>
-<meta name="twitter:title" content="Custom Order"/>
-<meta name="twitter:description" content="Request a custom balloon order: tell us your colors, theme and event details and we'll put together a quote."/>
+<meta name="twitter:title" content="Past Events Gallery"/>
+<meta name="twitter:description" content="See real balloon garlands, arches and bouquets from past birthdays, anniversaries and events styled by Balloons by Tea, and order something like it."/>
 <meta name="twitter:image" content="https://thornleung01.github.io/balloons-by-tea/images/logo.png"/>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Playfair+Display:wght@500;600;700&family=Fredoka:wght@400;500;600&family=Nunito:wght@400;500;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="css/styles.css"/>
 </head>
-<body data-page="custom-order">
+<body data-page="gallery">
 
 <nav class="nav" data-edit-key="nav">
   <div class="container nav-row">
@@ -62,152 +62,41 @@
 <header class="collection-hero" data-edit-key="collection-hero">
   <div class="container">
     <div class="word-badge collection-title-badge">
-      <h1 data-edit-key="custom-order-heading">Custom Order</h1>
+      <h1 data-edit-key="gallery-heading">Past Events</h1>
     </div>
   </div>
 </header>
 
-<section class="section custom-order-section" data-edit-key="custom-order-form">
-  <div class="container" style="max-width:640px;">
-    <div id="customOrderFormWrap">
-      <!-- Gallery inspiration card: filled by js/inspiration-prefill.js when the page is opened as custom-order.html?inspiration=<gallery id> (gallery.html "Order something like this"). Stays hidden otherwise. -->
-      <div class="inspiration-card" id="inspirationCard" aria-live="polite" hidden></div>
-      <form id="customOrderForm" novalidate>
-        <div class="form-grid">
-          <div class="field">
-            <label for="co-first-name" data-edit-key="custom-order-label-first-name" data-edit-type="text">First name</label>
-            <input id="co-first-name" name="firstName" type="text" required autocomplete="given-name" aria-describedby="co-error-firstName"/>
-            <div class="field-error" id="co-error-firstName"></div>
-          </div>
-          <div class="field">
-            <label for="co-last-name" data-edit-key="custom-order-label-last-name" data-edit-type="text">Last name</label>
-            <input id="co-last-name" name="lastName" type="text" required autocomplete="family-name" aria-describedby="co-error-lastName"/>
-            <div class="field-error" id="co-error-lastName"></div>
-          </div>
-          <div class="field">
-            <label for="co-phone" data-edit-key="custom-order-label-phone" data-edit-type="text">Phone</label>
-            <input id="co-phone" name="phone" type="tel" required autocomplete="tel" placeholder="(000) 000-0000" aria-describedby="co-error-phone"/>
-            <div class="field-error" id="co-error-phone"></div>
-          </div>
-          <div class="field">
-            <label for="co-email" data-edit-key="custom-order-label-email" data-edit-type="text">Email</label>
-            <input id="co-email" name="email" type="email" required autocomplete="email" aria-describedby="co-error-email"/>
-            <div class="field-error" id="co-error-email"></div>
-          </div>
+<section class="section gallery-section" data-edit-key="gallery-section">
+  <div class="container">
+    <p class="gallery-intro" data-edit-key="gallery-intro" data-edit-type="text">A peek at real celebrations we've styled. See something you love? Tap "Order something like this" and we'll make one for you.</p>
 
-          <h2 class="form-section-heading" data-edit-key="custom-order-event-info-heading" data-edit-type="text">Event Information</h2>
+    <div class="gallery-filters" id="galleryFilters" role="group" aria-label="Filter photos by occasion" hidden></div>
 
-          <div class="field">
-            <label for="co-event-date" data-edit-key="custom-order-label-event-date" data-edit-type="text">Event date</label>
-            <input id="co-event-date" name="eventDate" type="date" required aria-describedby="co-error-eventDate"/>
-            <div class="field-error" id="co-error-eventDate"></div>
-          </div>
-          <div class="field">
-            <label for="co-event-time" data-edit-key="custom-order-label-event-time" data-edit-type="text">Event time</label>
-            <input id="co-event-time" name="eventTime" type="time" required aria-describedby="co-error-eventTime"/>
-            <div class="field-error" id="co-error-eventTime"></div>
-          </div>
-          <div class="field full">
-            <label for="co-recipient" data-edit-key="custom-order-label-recipient" data-edit-type="text">Recipient's name and/or age</label>
-            <input id="co-recipient" name="recipient" type="text"/>
-          </div>
-          <div class="field full">
-            <label for="co-occasion" data-edit-key="custom-order-label-occasion" data-edit-type="text">Event's occasion</label>
-            <input id="co-occasion" name="occasion" type="text" placeholder="birthday, wedding, corporate event, etc..."/>
-          </div>
-          <fieldset class="field full">
-            <legend data-edit-key="custom-order-label-service-option" data-edit-type="text">Preferred service option</legend>
-            <div class="radio-group">
-              <label class="radio-option"><input type="radio" name="service" value="pickup" checked/> Pick-up</label>
-              <label class="radio-option"><input type="radio" name="service" value="delivery"/> Delivery</label>
-              <label class="radio-option"><input type="radio" name="service" value="delivery-setup"/> Delivery and set-up</label>
-            </div>
-          </fieldset>
-          <div class="field full">
-            <label for="co-address" data-edit-key="custom-order-label-address" data-edit-type="text">Delivery address (if delivery or set-up required)</label>
-            <input id="co-address" name="address" type="text" placeholder="Street address" autocomplete="street-address"/>
-          </div>
-          <div class="field">
-            <input aria-label="City" name="city" type="text" placeholder="City"/>
-          </div>
-          <div class="field">
-            <input aria-label="Province" name="province" type="text" placeholder="Province"/>
-          </div>
-          <div class="field full">
-            <input id="co-postal" aria-label="Postal code" name="postal" type="text" placeholder="Postal code" autocomplete="postal-code" autocapitalize="characters" spellcheck="false" maxlength="7" style="max-width:280px;" aria-describedby="co-error-postal co-postal-note"/>
-            <div class="field-error" id="co-error-postal"></div>
-            <p class="field-note delivery-area-note" id="co-postal-note" aria-live="polite"></p>
-          </div>
-          <fieldset class="field full">
-            <legend data-edit-key="custom-order-label-setup-area" data-edit-type="text">Setup area</legend>
-            <div class="radio-group">
-              <label class="radio-option"><input type="radio" name="setupArea" value="indoor"/> Indoor</label>
-              <label class="radio-option"><input type="radio" name="setupArea" value="outdoor"/> Outdoor</label>
-              <label class="radio-option"><input type="radio" name="setupArea" value="other"/> Other</label>
-            </div>
-          </fieldset>
-          <fieldset class="field full">
-            <legend data-edit-key="custom-order-label-venue" data-edit-type="text">Event venue</legend>
-            <div class="checkbox-group">
-              <label class="checkbox-option"><input type="checkbox" name="venue" value="Home"/> Home</label>
-              <label class="checkbox-option"><input type="checkbox" name="venue" value="Restaurant"/> Restaurant</label>
-              <label class="checkbox-option"><input type="checkbox" name="venue" value="Workspace"/> Workspace</label>
-              <label class="checkbox-option"><input type="checkbox" name="venue" value="Event Hall"/> Event Hall</label>
-              <label class="checkbox-option"><input type="checkbox" name="venue" value="School"/> School</label>
-              <label class="checkbox-option"><input type="checkbox" name="venue" value="Indoor Playground"/> Indoor Playground</label>
-              <label class="checkbox-option"><input type="checkbox" name="venue" value="Other"/> Other</label>
-            </div>
-          </fieldset>
-
-          <h2 class="form-section-heading" data-edit-key="custom-order-style-design-heading" data-edit-type="text">Style and Design</h2>
-
-          <fieldset class="field full">
-            <legend data-edit-key="custom-order-label-balloon-type" data-edit-type="text">What type of balloon are you looking for?</legend>
-            <div class="checkbox-group">
-              <label class="checkbox-option"><input type="checkbox" name="balloonType" value="Helium Bouquet"/> Helium Bouquet</label>
-              <label class="checkbox-option"><input type="checkbox" name="balloonType" value="Balloon Flowers"/> Balloon Flowers</label>
-              <label class="checkbox-option"><input type="checkbox" name="balloonType" value="Number Arrangement"/> Number Arrangement</label>
-              <label class="checkbox-option"><input type="checkbox" name="balloonType" value="Balloon Garland"/> Balloon Garland</label>
-              <label class="checkbox-option"><input type="checkbox" name="balloonType" value="Personal Backdrop"/> Personal Backdrop</label>
-              <label class="checkbox-option"><input type="checkbox" name="balloonType" value="Specialty Balloons"/> Specialty Balloons (heart, hot-air balloon, carousel...)</label>
-              <label class="checkbox-option"><input type="checkbox" name="balloonType" value="Other"/> Other</label>
-            </div>
-          </fieldset>
-          <div class="field full">
-            <label for="co-color-scheme" data-edit-key="custom-order-label-color-scheme" data-edit-type="text">What is the color scheme for this event?</label>
-            <textarea id="co-color-scheme" name="colorScheme"></textarea>
-          </div>
-          <div class="field full">
-            <label for="co-details" data-edit-key="custom-order-label-details" data-edit-type="text">Please describe your vision for the event</label>
-            <textarea id="co-details" name="details" required placeholder="Colors, theme, size, venue, inspiration photos you have in mind..." aria-describedby="co-error-details"></textarea>
-            <div class="field-error" id="co-error-details"></div>
-          </div>
-          <div class="field">
-            <label for="co-budget" data-edit-key="custom-order-label-budget" data-edit-type="text">Budget (optional)</label>
-            <input id="co-budget" name="budget" type="text" placeholder="e.g. $200"/>
-          </div>
-          <div class="field full">
-            <label data-edit-key="custom-order-label-photos" data-edit-type="text">Photos of the space, as well as any inspirational images</label>
-            <div class="upload-dropzone">
-              <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true" data-edit-key="custom-order-upload-icon" data-edit-type="block"><path d="M12 16V4M12 4l-4 4M12 4l4 4" stroke-linecap="round" stroke-linejoin="round"/><path d="M4 16v3a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-3" stroke-linecap="round" stroke-linejoin="round"/></svg>
-              <strong data-edit-key="custom-order-upload-heading" data-edit-type="text">Photo upload isn't available here yet</strong>
-              <span data-edit-key="custom-order-upload-note" data-edit-type="text">Once you submit, send any inspiration or venue photos to us on WhatsApp or email and we'll attach them to your request.</span>
-            </div>
-          </div>
-        </div>
-        <div class="field-error" id="customOrderFormError"></div>
-        <button type="submit" class="btn btn-primary btn-block" id="customOrderSubmitBtn" data-edit-key="custom-order-submit-btn" data-edit-type="block">Send Request</button>
-      </form>
-    </div>
-    <div id="customOrderSuccess" class="success-state" hidden>
-      <div class="success-icon">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="32" height="32" aria-hidden="true"><path d="M5 13l4 4L19 7" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    <div class="gallery-wall" id="galleryWall" aria-live="polite" aria-busy="true">
+      <!-- Placeholder tiles while the photos load: same shape as the real
+           tiles, so the page doesn't jump when they arrive. -->
+      <div class="gallery-col">
+        <div class="gallery-tile gallery-tile-skeleton" aria-hidden="true"><div class="gallery-photo" style="aspect-ratio:4 / 5;"></div></div>
+        <div class="gallery-tile gallery-tile-skeleton" aria-hidden="true"><div class="gallery-photo" style="aspect-ratio:1 / 1;"></div></div>
       </div>
-      <h2>Request received!</h2>
-      <p>Thank you! We'll review the details and reach out shortly with a custom quote. Have inspiration or venue photos? Send them to us on WhatsApp or email and we'll attach them to your request.</p>
-      <span class="order-ref" id="customOrderRef"></span>
-      <div class="modal-actions" style="margin-top:24px;justify-content:center;">
-        <a href="index.html" class="btn btn-primary">Back to home</a>
+      <div class="gallery-col">
+        <div class="gallery-tile gallery-tile-skeleton" aria-hidden="true"><div class="gallery-photo" style="aspect-ratio:1 / 1;"></div></div>
+        <div class="gallery-tile gallery-tile-skeleton" aria-hidden="true"><div class="gallery-photo" style="aspect-ratio:4 / 5;"></div></div>
+      </div>
+      <div class="gallery-col">
+        <div class="gallery-tile gallery-tile-skeleton" aria-hidden="true"><div class="gallery-photo" style="aspect-ratio:3 / 4;"></div></div>
+        <div class="gallery-tile gallery-tile-skeleton" aria-hidden="true"><div class="gallery-photo" style="aspect-ratio:5 / 4;"></div></div>
+      </div>
+    </div>
+
+    <div class="gallery-empty" id="galleryEmpty" hidden>
+      <svg viewBox="0 0 48 48" width="56" height="56" aria-hidden="true"><ellipse cx="18" cy="17" rx="9" ry="11" fill="var(--blush)" stroke="var(--brown)" stroke-width="1.6"/><ellipse cx="31" cy="15" rx="9" ry="11" fill="var(--baby-blue)" stroke="var(--brown)" stroke-width="1.6"/><ellipse cx="25" cy="23" rx="9" ry="11" fill="var(--coral)" stroke="var(--brown)" stroke-width="1.6"/><path d="M25 34c-1 4 1 6-1 10M18 28c0 6 3 9 5 16M31 26c1 7-3 11-5 18" fill="none" stroke="var(--brown)" stroke-width="1.2" stroke-linecap="round"/></svg>
+      <h2 data-edit-key="gallery-empty-heading" data-edit-type="text">Photos are on their way</h2>
+      <p data-edit-key="gallery-empty-text" data-edit-type="text">We're putting together pictures from recent celebrations. In the meantime, browse the shop or tell us what you have in mind.</p>
+      <div class="hero-actions">
+        <a href="all-products.html" class="btn btn-primary">Shop Our Collections</a>
+        <a href="custom-order.html" class="btn btn-outline">Start a Custom Order</a>
       </div>
     </div>
   </div>
@@ -365,7 +254,6 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.3/dist/umd/supabase.min.js" integrity="sha384-dl/4LkSyQ4uEucc48NM6VDZLAjLLq9yMzZ5JLXumBq7Ld33XBof73hseOqPhO89+" crossorigin="anonymous"></script>
 <script src="js/supabase-config.js"></script>
 <script src="js/analytics.js"></script>
-<script src="js/inspiration-prefill.js"></script>
 <script src="js/availability.js"></script>
 <script src="js/delivery-area.js"></script>
 <script src="js/supabase-catalog.js"></script>
@@ -373,5 +261,6 @@
 <script src="js/layout-editor.js"></script>
 <script src="js/edit-mode.js"></script>
 <script src="js/app.js"></script>
+<script src="js/gallery.js"></script>
 </body>
 </html>

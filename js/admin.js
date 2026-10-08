@@ -922,6 +922,8 @@ async function walkLibraryTree(path) {
        those is an image URL, so this table can't actually reference a
        photo today. Queried and folded in anyway, defensively, in case
        that ever changes.
+     - gallery_items.image_url (the Gallery tab's photos), skipped when
+       that table hasn't been created yet.
    Note: collection card photos and the settings hero/logo photo are
    actually uploaded to a different bucket entirely ("site-images", see
    uploadSiteImage() below) rather than "product-photos", so in practice
@@ -929,20 +931,32 @@ async function walkLibraryTree(path) {
    scan — but their values are still included here since checking them
    costs nothing and guards against any future change in how they're
    stored. */
+/* Gallery tab (js/admin-gallery.js): gallery_items.image_url is a photo
+   reference too. That table only exists once sql-parts/gallery.sql has been
+   run, so a missing table counts as "no gallery photos" here; any other
+   read error is returned as-is so the callers below still refuse to guess. */
+async function selectGalleryItemsForReferences(client, columns) {
+  const res = await client.from("gallery_items").select(columns);
+  if (res.error && isMissingTableError(res.error, "gallery_items")) return { data: [], error: null };
+  return res;
+}
+
 async function gatherReferencedPhotoUrls() {
   const client = getSupabaseClient();
   const urls = new Set();
   const add = (v) => { if (v && typeof v === "string" && v.trim()) urls.add(v.trim()); };
 
-  const [productsRes, collectionsRes, settingsRes, overridesRes] = await Promise.all([
+  const [productsRes, collectionsRes, settingsRes, overridesRes, galleryRes] = await Promise.all([
     client.from("products").select("image_url,images"),
     client.from("collections").select("card_image_url"),
     client.from("site_settings").select("key,value"),
-    client.from("layout_overrides").select("value")
+    client.from("layout_overrides").select("value"),
+    selectGalleryItemsForReferences(client, "image_url") // Gallery tab
   ]);
 
-  const firstError = productsRes.error || collectionsRes.error || settingsRes.error || overridesRes.error;
+  const firstError = productsRes.error || collectionsRes.error || settingsRes.error || overridesRes.error || galleryRes.error;
   if (firstError) throw new Error(firstError.message);
+  (galleryRes.data || []).forEach((g) => add(g.image_url)); // Gallery tab
 
   (productsRes.data || []).forEach((p) => {
     add(p.image_url);
@@ -998,17 +1012,21 @@ function libraryBreadcrumbHtml(path, navAttr) {
 async function findReferencesForUrl(url) {
   const client = getSupabaseClient();
   const refs = [];
-  const [productsRes, collectionsRes, settingsRes] = await Promise.all([
+  const [productsRes, collectionsRes, settingsRes, galleryRes] = await Promise.all([
     client.from("products").select("id,name,image_url,images"),
     client.from("collections").select("id,title,card_image_url"),
-    client.from("site_settings").select("key,value")
+    client.from("site_settings").select("key,value"),
+    selectGalleryItemsForReferences(client, "id,caption,image_url") // Gallery tab
   ]);
-  const readError = productsRes.error || collectionsRes.error || settingsRes.error;
+  const readError = productsRes.error || collectionsRes.error || settingsRes.error || galleryRes.error;
   if (readError) throw new Error(readError.message);
 
   (productsRes.data || []).forEach((p) => {
     const inImages = Array.isArray(p.images) && p.images.includes(url);
     if (p.image_url === url || inImages) refs.push(`product "${p.name}"`);
+  });
+  (galleryRes.data || []).forEach((g) => {
+    if (g.image_url === url) refs.push(g.caption ? `gallery photo "${g.caption}"` : `gallery photo #${g.id}`);
   });
   (collectionsRes.data || []).forEach((c) => {
     if (c.card_image_url === url) refs.push(`category "${c.title}"`);
@@ -1025,15 +1043,19 @@ async function findReferencesForUrl(url) {
    each performing one checked write. */
 async function planReferenceUpdates(oldUrl, newUrl) {
   const client = getSupabaseClient();
-  const [productsRes, collectionsRes, settingsRes] = await Promise.all([
+  const [productsRes, collectionsRes, settingsRes, galleryRes] = await Promise.all([
     client.from("products").select("id,image_url,images"),
     client.from("collections").select("id,card_image_url"),
-    client.from("site_settings").select("key,value")
+    client.from("site_settings").select("key,value"),
+    selectGalleryItemsForReferences(client, "id,image_url") // Gallery tab
   ]);
-  const readError = productsRes.error || collectionsRes.error || settingsRes.error;
+  const readError = productsRes.error || collectionsRes.error || settingsRes.error || galleryRes.error;
   if (readError) throw new Error(readError.message);
 
   const writes = [];
+  (galleryRes.data || []).forEach((g) => {
+    if (g.image_url === oldUrl) writes.push(() => mustAffect(client.from("gallery_items").update({ image_url: newUrl }).eq("id", g.id)));
+  });
   (productsRes.data || []).forEach((p) => {
     const inImages = Array.isArray(p.images) && p.images.includes(oldUrl);
     if (p.image_url !== oldUrl && !inImages) return;
@@ -1371,8 +1393,17 @@ function updatePhotoLibraryAddBtn() {
   btn.textContent = count > 0 ? `Add selected (${count})` : "Add selected";
 }
 
-async function openPhotoLibrary() {
+/* Gallery tab (js/admin-gallery.js) reuses this picker: it passes
+   { onAdd(urls), subtitle }. The item form's button passes the click event
+   instead, which has no onAdd, so it keeps the original behavior. */
+let photoLibraryAddHandler = null;
+const PHOTO_LIBRARY_DEFAULT_SUBTITLE = "Every photo you've uploaded before. Pick as many as you want to add to this item.";
+
+async function openPhotoLibrary(options) {
   const modal = ensurePhotoLibraryModal();
+  photoLibraryAddHandler = options && typeof options.onAdd === "function" ? options.onAdd : null;
+  const subtitle = modal.querySelector(".modal-head p");
+  if (subtitle) subtitle.textContent = (photoLibraryAddHandler && options.subtitle) || PHOTO_LIBRARY_DEFAULT_SUBTITLE;
   photoLibrarySelected.clear();
   modal.classList.add("open");
   await navigatePickerTo("");
@@ -1384,6 +1415,14 @@ function closePhotoLibrary() {
 }
 
 function addSelectedLibraryPhotos() {
+  if (photoLibraryAddHandler) { // opened from the Gallery tab
+    const handler = photoLibraryAddHandler;
+    const urls = Array.from(photoLibrarySelected);
+    photoLibraryAddHandler = null;
+    closePhotoLibrary();
+    handler(urls);
+    return;
+  }
   const existingUrls = new Set(currentPhotoEntries.filter((e) => e.type === "url").map((e) => e.value));
   photoLibrarySelected.forEach((url) => {
     if (existingUrls.has(url)) return; // already in this item's gallery, don't duplicate
@@ -1671,6 +1710,8 @@ const TABS = {
   } },
   collections: { btnId: "tabCollectionsBtn", panelId: "collectionsPanel", onEnter: refreshCollectionList },
   library: { btnId: "tabLibraryBtn", panelId: "libraryPanel", onEnter: refreshLibraryPanel },
+  // Past events gallery — lives in js/admin-gallery.js.
+  gallery: { btnId: "tabGalleryBtn", panelId: "galleryPanel", onEnter: () => window.refreshGalleryAdmin() },
   nav: { btnId: "tabNavBtn", panelId: "navPanel", onEnter: refreshNavList },
   faq: { btnId: "tabFaqBtn", panelId: "faqPanel", onEnter: refreshFaqList },
   settings: { btnId: "tabSettingsBtn", panelId: "settingsPanel", onEnter: loadSettingsIntoForm }
@@ -1840,10 +1881,12 @@ function handleCollectionPhotoChange(e) {
   reader.readAsDataURL(file);
 }
 
-async function uploadSiteImage(client, file, compressOptions) {
+/* `folder` is optional (the Gallery tab passes "gallery"); without it the
+   file goes in the bucket root as before. */
+async function uploadSiteImage(client, file, compressOptions, folder) {
   const compressed = await compressImageFile(file, compressOptions);
   const safeName = compressed.name.replace(/[^a-zA-Z0-9.-]/g, "_");
-  const path = `${Date.now()}-${safeName}`;
+  const path = `${folder ? folder + "/" : ""}${Date.now()}-${safeName}`;
   const { error } = await client.storage.from("site-images").upload(path, compressed, { upsert: true });
   if (error) throw new Error("Image upload failed: " + error.message);
   const { data: pub } = client.storage.from("site-images").getPublicUrl(path);

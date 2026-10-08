@@ -29,6 +29,10 @@
     <priority>0.7</priority>
   </url>
   <url>
+    <loc>https://thornleung01.github.io/balloons-by-tea/gallery.html</loc>
+    <priority>0.7</priority>
+  </url>
+  <url>
     <loc>https://thornleung01.github.io/balloons-by-tea/about.html</loc>
     <priority>0.6</priority>
   </url>

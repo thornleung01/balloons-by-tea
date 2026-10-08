@@ -2183,3 +2183,223 @@ body.edit-preview-active [data-edit-key].edit-is-hidden { display: none !importa
 .delivery-area-note { color: var(--color-fg); }
 .delivery-area-note.is-ok { color: #2F7A4E; font-weight: 600; }
 .delivery-area-note a { color: inherit; text-decoration: underline; text-underline-offset: 2px; }
+
+/* ===== Gallery (gallery.html, js/gallery.js) ===== */
+.gallery-section { padding-top: var(--space-4); }
+.gallery-intro {
+  max-width: 560px;
+  margin: 0 auto var(--space-3);
+  text-align: center;
+}
+
+/* Occasion chips — same pill + coral/brown "selected" pairing as the
+   pagination buttons (.page-btn.active) for AA contrast. */
+.gallery-filters {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: var(--space-1);
+  margin-bottom: var(--space-4);
+}
+.gallery-chip {
+  min-height: 40px;
+  padding: 0 18px;
+  border: 1.5px solid var(--color-border-input);
+  border-radius: var(--radius-pill);
+  background: var(--color-surface-solid);
+  color: var(--color-fg);
+  font-family: var(--font-body);
+  font-size: 0.92rem;
+  font-weight: 600;
+  transition: background-color 150ms var(--ease), border-color 150ms var(--ease);
+}
+.gallery-chip:hover { border-color: var(--color-accent); }
+.gallery-chip[aria-pressed="true"] {
+  background: var(--color-accent);
+  border-color: var(--color-accent);
+  color: var(--brown);
+}
+
+/* The wall: js/gallery.js fills N flex columns (3 desktop, 2 below
+   960px) shortest-first. Every tile's photo box has a fixed aspect-ratio
+   set inline, so nothing moves while lazy images load. */
+.gallery-wall {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+}
+.gallery-col {
+  flex: 1 1 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+.gallery-tile {
+  margin: 0;
+  background: var(--color-surface-solid);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  box-shadow: var(--shadow-soft);
+  transition: box-shadow 280ms var(--ease), border-color 280ms var(--ease);
+}
+.gallery-tile:hover { border-color: var(--color-accent-soft); box-shadow: var(--shadow-lift); }
+.gallery-photo {
+  position: relative;
+  display: block;
+  width: 100%;
+  padding: 0;
+  overflow: hidden;
+  background: var(--color-bg-alt);
+  -webkit-tap-highlight-color: transparent;
+}
+.gallery-photo img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transition: transform 300ms var(--ease);
+}
+.gallery-photo:hover img { transform: scale(1.04); }
+.gallery-photo:focus-visible { outline: 2px solid var(--color-accent); outline-offset: -2px; }
+.gallery-photo.is-broken img { visibility: hidden; }
+.gallery-zoom-hint {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  transition: opacity 200ms var(--ease);
+  pointer-events: none;
+}
+.gallery-zoom-hint svg {
+  width: 36px;
+  height: 36px;
+  padding: 8px;
+  border-radius: 50%;
+  background: rgba(74, 48, 40, 0.55);
+  color: #fff;
+  box-sizing: content-box;
+}
+.gallery-photo:hover .gallery-zoom-hint,
+.gallery-photo:focus-visible .gallery-zoom-hint { opacity: 1; }
+
+.gallery-meta {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  padding: 14px 16px 16px;
+}
+.gallery-occasion {
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--color-fg-soft);
+  background: var(--color-bg-alt);
+  border-radius: var(--radius-pill);
+  padding: 2px 10px;
+}
+.gallery-caption {
+  margin: 0;
+  font-size: 0.95rem;
+  line-height: 1.45;
+  color: var(--color-fg);
+  overflow-wrap: anywhere;
+}
+.gallery-order-link {
+  font-weight: 700;
+  font-size: 0.9rem;
+  color: var(--brown);
+  text-decoration: underline;
+  text-decoration-color: var(--color-accent);
+  text-decoration-thickness: 2px;
+  text-underline-offset: 4px;
+  padding: 4px 0;
+}
+.gallery-order-link:hover { color: var(--color-accent-hover); }
+
+/* Loading placeholders (static markup in gallery.html). */
+.gallery-tile-skeleton { box-shadow: none; }
+.gallery-tile-skeleton .gallery-photo {
+  background: linear-gradient(100deg, var(--color-bg-alt) 40%, #FFFBF3 50%, var(--color-bg-alt) 60%) var(--color-bg-alt);
+  background-size: 200% 100%;
+  animation: gallery-shimmer 1.4s linear infinite;
+}
+@keyframes gallery-shimmer { to { background-position: -200% 0; } }
+
+.gallery-empty {
+  max-width: 520px;
+  margin: 0 auto;
+  padding: var(--space-5) var(--space-3);
+  text-align: center;
+  background: var(--color-surface-solid);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-soft);
+}
+.gallery-empty svg { margin: 0 auto var(--space-2); }
+.gallery-empty h2 { font-size: 1.35rem; }
+.gallery-empty .hero-actions { margin-top: var(--space-3); }
+
+@media (max-width: 959px) {
+  .gallery-wall > .gallery-col:nth-child(3):has(.gallery-tile-skeleton) { display: none; }
+}
+@media (max-width: 560px) {
+  .gallery-wall, .gallery-col { gap: 12px; }
+  .gallery-meta { padding: 10px 12px 12px; gap: 4px; }
+  .gallery-caption { font-size: 0.85rem; }
+  .gallery-order-link { font-size: 0.82rem; line-height: 1.5; text-wrap: balance; }
+  .gallery-occasion { font-size: 0.66rem; padding: 2px 8px; }
+  .gallery-empty { padding: var(--space-4) var(--space-2); }
+  .gallery-empty .hero-actions .btn { width: 100%; }
+}
+
+/* "Your inspiration" card on custom-order.html (js/inspiration-prefill.js) */
+.inspiration-card {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-bottom: var(--space-3);
+  padding: 12px;
+  background: var(--color-bg-alt);
+  border: 1.5px dashed var(--color-accent-soft);
+  border-radius: var(--radius-md);
+}
+.inspiration-thumb {
+  width: 64px;
+  height: 64px;
+  flex-shrink: 0;
+  object-fit: cover;
+  border-radius: var(--radius-sm);
+  background: var(--color-surface-solid);
+}
+.inspiration-body { flex: 1; min-width: 0; }
+.inspiration-body p { margin: 0; }
+.inspiration-label {
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--color-fg-soft);
+}
+.inspiration-caption {
+  font-weight: 600;
+  color: var(--color-fg);
+  overflow-wrap: anywhere;
+}
+.inspiration-note { font-size: 0.8rem; }
+.inspiration-remove {
+  flex-shrink: 0;
+  align-self: flex-start;
+  min-height: 32px;
+  padding: 0 4px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--color-fg-soft);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.inspiration-remove:hover { color: var(--color-destructive); }

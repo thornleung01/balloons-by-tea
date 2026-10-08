@@ -29,7 +29,8 @@
     { name: "layout_overrides_history", orderBy: "id" },
     { name: "analytics_events", orderBy: "id" },
     { name: "blocked_dates", orderBy: "day" },
-    { name: "delivery_areas", orderBy: "fsa" }
+    { name: "delivery_areas", orderBy: "fsa" },
+    { name: "gallery_items", orderBy: "id" }
   ];
   const BUCKETS = ["product-photos", "site-images"];
   // PostgREST's default max-rows. A page shorter than this means "last page".
