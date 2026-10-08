@@ -828,7 +828,12 @@ function runFieldValidation(form, rules, errorIdPrefix) {
   // page and the phone checkout the errors are scrolled out of view, so
   // pressing submit looks like nothing happened. Focusing the first bad
   // field scrolls it into view and lets a screen reader announce it.
-  if (firstInvalid) firstInvalid.focus({ preventScroll: false });
+  if (firstInvalid) {
+    // Center it rather than relying on focus()'s minimal scroll, which can
+    // leave the field tucked under the sticky nav.
+    firstInvalid.scrollIntoView({ block: "center" });
+    firstInvalid.focus({ preventScroll: true });
+  }
   return valid;
 }
 
