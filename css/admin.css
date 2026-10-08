@@ -495,6 +495,10 @@ body.admin-body {
   background: var(--color-surface-solid);
 }
 .orders-export-btn:hover { border-color: var(--color-accent); color: var(--color-fg); }
+.orders-filter-count { font-weight: 500; opacity: 0.75; }
+.orders-controls { align-items: center; margin-bottom: var(--space-3); }
+.orders-upcoming-toggle { display: inline-flex; align-items: center; gap: 6px; font-size: 0.85rem; color: var(--color-fg-soft); cursor: pointer; white-space: nowrap; }
+.orders-upcoming-toggle input { width: 17px; height: 17px; accent-color: var(--color-accent); cursor: pointer; }
 
 .analytics-clear-row {
   display: flex; align-items: center; flex-wrap: wrap; gap: var(--space-2);
@@ -518,6 +522,10 @@ body.admin-body {
   margin-bottom: var(--space-2);
 }
 .order-row.status-fulfilled { opacity: 0.7; }
+/* Cancelled: dimmer than fulfilled, dashed border, struck-through name —
+   still readable and fully editable (status can be changed back). */
+.order-row.status-cancelled { opacity: 0.55; border-style: dashed; }
+.order-row.status-cancelled .order-row-title strong { text-decoration: line-through; color: var(--color-fg-soft); }
 .status-dot {
   display: inline-block;
   width: 7px; height: 7px;
@@ -529,6 +537,7 @@ body.admin-body {
 }
 .order-row.status-contacted .status-dot { background: var(--soft-yellow, #E8B84B); }
 .order-row.status-fulfilled .status-dot { background: var(--color-success); }
+.order-row.status-cancelled .status-dot { background: var(--color-fg-faint); }
 .status-dot-live { background: var(--color-success); }
 .status-dot-hidden { background: var(--color-fg-faint); }
 .order-row-head { display: flex; align-items: baseline; justify-content: space-between; gap: var(--space-2); flex-wrap: wrap; }
@@ -536,6 +545,25 @@ body.admin-body {
 .order-date { font-size: 0.78rem; color: var(--color-fg-faint); white-space: nowrap; }
 .order-contact { display: flex; gap: var(--space-2); font-size: 0.85rem; margin-top: 2px; }
 .order-contact a { color: var(--color-accent); }
+.order-contact { flex-wrap: wrap; }
+.order-whatsapp-link { font-weight: 600; }
+.order-admin-notes { margin-top: var(--space-2); }
+.order-admin-notes label { display: block; font-size: 0.75rem; font-weight: 600; color: var(--color-fg-faint); margin-bottom: 4px; }
+.order-admin-notes-input {
+  width: 100%; resize: vertical; min-height: 2.6em;
+  font: inherit; font-size: 0.85rem; padding: 6px 8px;
+  border: 1px solid var(--color-border); border-radius: var(--radius-sm);
+  background: var(--color-surface-solid); color: var(--color-fg);
+}
+.order-admin-notes-input:focus { outline: none; border-color: var(--color-accent); }
+.order-admin-notes-input:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 1px; }
+.order-admin-notes-actions { display: flex; align-items: center; gap: var(--space-2); margin-top: 4px; }
+.order-admin-notes-save {
+  font-size: 0.78rem; font-weight: 600; padding: 4px 10px; border-radius: var(--radius-pill);
+  border: 1px solid var(--color-border); color: var(--color-fg-soft); background: var(--color-surface-solid);
+}
+.order-admin-notes-save:hover { border-color: var(--color-accent); color: var(--color-fg); }
+.order-admin-notes-actions .form-status { margin: 0; }
 
 .analytics-card {
   border: 1px solid var(--color-border);
