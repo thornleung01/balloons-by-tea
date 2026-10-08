@@ -57,6 +57,8 @@
   </div>
 </nav>
 
+<main>
+
 <header class="hero-photo" data-edit-key="hero">
   <img class="hero-photo-img" src="images/hero-mascot.png" alt="" data-edit-key="hero-mascot-img" data-edit-type="block"/>
   <div class="hero-photo-scrim" aria-hidden="true"></div>
@@ -164,6 +166,8 @@
   </div>
 </section>
 
+</main>
+
 <footer class="footer">
   <div class="container">
     <div class="footer-grid">
@@ -207,7 +211,7 @@
 
 <div class="scrim" id="scrim"></div>
 
-<aside class="cart-drawer" id="cartDrawer" aria-label="Shopping cart">
+<aside class="cart-drawer" id="cartDrawer" role="dialog" aria-modal="true" aria-label="Shopping cart">
   <div class="drawer-head">
     <h2 data-edit-key="cart-heading" data-edit-type="text">Your Cart</h2>
     <button class="icon-btn" id="closeCart" aria-label="Close cart">
@@ -244,23 +248,23 @@
           <div class="form-grid">
             <div class="field full">
               <label for="name">Full name</label>
-              <input id="name" name="name" type="text" required autocomplete="name"/>
+              <input id="name" name="name" type="text" required autocomplete="name" aria-describedby="error-name"/>
               <div class="field-error" id="error-name"></div>
             </div>
             <div class="field">
               <label for="phone">Phone</label>
-              <input id="phone" name="phone" type="tel" required autocomplete="tel"/>
+              <input id="phone" name="phone" type="tel" required autocomplete="tel" aria-describedby="error-phone"/>
               <div class="field-error" id="error-phone"></div>
             </div>
             <div class="field">
               <label for="email">Email</label>
-              <input id="email" name="email" type="email" required autocomplete="email"/>
+              <input id="email" name="email" type="email" required autocomplete="email" aria-describedby="error-email"/>
               <div class="field-error" id="error-email"></div>
             </div>
             <div class="field full">
               <label for="address">Delivery / event address</label>
               <div class="input-with-action">
-                <input id="address" name="address" type="text" required autocomplete="street-address"/>
+                <input id="address" name="address" type="text" required autocomplete="street-address" aria-describedby="error-address"/>
                 <button type="button" class="input-action-btn" id="useMyLocationBtn" aria-label="Use my current location">
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" width="18" height="18" aria-hidden="true"><path d="M12 21s7-7.5 7-12a7 7 0 1 0-14 0c0 4.5 7 12 7 12z" stroke-linecap="round" stroke-linejoin="round"/><circle cx="12" cy="9" r="2.3"/></svg>
                 </button>

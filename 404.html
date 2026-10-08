@@ -58,6 +58,8 @@
   </div>
 </nav>
 
+<main>
+
 <section class="error-page">
   <div class="container error-page-inner">
     <img src="images/error-404.png" alt="Two kawaii characters surrounded by balloons searching for a missing page, with a big 404 and the words page not found" class="error-page-art" data-edit-key="error-404-art" data-edit-type="block"/>
@@ -70,6 +72,8 @@
     <p class="error-page-redirect">Taking you home in <span id="error404Countdown">8</span>s&hellip;</p>
   </div>
 </section>
+
+</main>
 
 <footer class="footer">
   <div class="container">
@@ -114,7 +118,7 @@
 
 <div class="scrim" id="scrim"></div>
 
-<aside class="cart-drawer" id="cartDrawer" aria-label="Shopping cart">
+<aside class="cart-drawer" id="cartDrawer" role="dialog" aria-modal="true" aria-label="Shopping cart">
   <div class="drawer-head">
     <h2 data-edit-key="cart-heading" data-edit-type="text">Your Cart</h2>
     <button class="icon-btn" id="closeCart" aria-label="Close cart">

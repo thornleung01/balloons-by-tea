@@ -57,6 +57,8 @@
   </div>
 </nav>
 
+<main>
+
 <header class="collection-hero" data-edit-key="collection-hero">
   <div class="container">
     <div class="word-badge collection-title-badge">
@@ -74,6 +76,7 @@
 
 <section class="section section-flush-top" data-edit-key="about-highlights">
   <div class="container">
+    <h2 class="visually-hidden">Why choose us</h2>
     <div class="about-highlights">
       <div class="about-highlight" data-edit-key="about-highlight-1" data-edit-type="block">
         <svg viewBox="0 0 24 24" width="28" height="28" aria-hidden="true"><path d="M12 21s-7-4.4-9.5-8.7C.8 8.8 2.6 5 6.3 5c2 0 3.5 1.1 4.2 2.6C11.2 6.1 12.7 5 14.7 5c3.7 0 5.5 3.8 3.8 7.3C16 16.6 12 21 12 21z" fill="var(--coral)" stroke="var(--brown)" stroke-width="1.4" stroke-linejoin="round"/></svg>
@@ -97,6 +100,8 @@
     </div>
   </div>
 </section>
+
+</main>
 
 <footer class="footer">
   <div class="container">
@@ -141,7 +146,7 @@
 
 <div class="scrim" id="scrim"></div>
 
-<aside class="cart-drawer" id="cartDrawer" aria-label="Shopping cart">
+<aside class="cart-drawer" id="cartDrawer" role="dialog" aria-modal="true" aria-label="Shopping cart">
   <div class="drawer-head">
     <h2 data-edit-key="cart-heading" data-edit-type="text">Your Cart</h2>
     <button class="icon-btn" id="closeCart" aria-label="Close cart">
@@ -178,23 +183,23 @@
           <div class="form-grid">
             <div class="field full">
               <label for="name">Full name</label>
-              <input id="name" name="name" type="text" required autocomplete="name"/>
+              <input id="name" name="name" type="text" required autocomplete="name" aria-describedby="error-name"/>
               <div class="field-error" id="error-name"></div>
             </div>
             <div class="field">
               <label for="phone">Phone</label>
-              <input id="phone" name="phone" type="tel" required autocomplete="tel"/>
+              <input id="phone" name="phone" type="tel" required autocomplete="tel" aria-describedby="error-phone"/>
               <div class="field-error" id="error-phone"></div>
             </div>
             <div class="field">
               <label for="email">Email</label>
-              <input id="email" name="email" type="email" required autocomplete="email"/>
+              <input id="email" name="email" type="email" required autocomplete="email" aria-describedby="error-email"/>
               <div class="field-error" id="error-email"></div>
             </div>
             <div class="field full">
               <label for="address">Delivery / event address</label>
               <div class="input-with-action">
-                <input id="address" name="address" type="text" required autocomplete="street-address"/>
+                <input id="address" name="address" type="text" required autocomplete="street-address" aria-describedby="error-address"/>
                 <button type="button" class="input-action-btn" id="useMyLocationBtn" aria-label="Use my current location">
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" width="18" height="18" aria-hidden="true"><path d="M12 21s7-7.5 7-12a7 7 0 1 0-14 0c0 4.5 7 12 7 12z" stroke-linecap="round" stroke-linejoin="round"/><circle cx="12" cy="9" r="2.3"/></svg>
                 </button>

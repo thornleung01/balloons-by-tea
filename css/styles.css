@@ -790,6 +790,7 @@ button {
   color: var(--color-fg);
 }
 .search-field input:focus { outline: none; border-color: var(--color-accent); }
+.search-field input:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 2px; }
 .search-field input::-webkit-search-cancel-button { cursor: pointer; }
 .filter-select {
   min-height: 48px;
@@ -813,6 +814,7 @@ button {
   cursor: pointer;
 }
 .filter-select:focus { outline: none; border-color: var(--color-accent); }
+.filter-select:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 2px; }
 
 .custom-select { position: relative; width: 190px; flex-shrink: 0; }
 .custom-select-native {
@@ -840,6 +842,8 @@ button {
   text-align: left;
 }
 .custom-select-btn:focus { outline: none; border-color: var(--color-accent); }
+.custom-select-btn:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 2px; }
+.custom-select-option:focus-visible { outline: 2px solid var(--color-accent); outline-offset: -2px; }
 .custom-select-btn svg { flex-shrink: 0; color: var(--color-fg-faint); transition: transform 200ms var(--ease); }
 .custom-select.open .custom-select-btn svg { transform: rotate(180deg); }
 .custom-select-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -868,7 +872,11 @@ button {
   transition: background 150ms var(--ease), color 150ms var(--ease);
 }
 .custom-select-option:hover { background: var(--color-accent-tint); }
-.custom-select-option.selected { background: var(--color-accent); color: #fff; font-weight: 600; }
+/* White text on this coral background measures ~2.4:1, well under the
+   4.5:1 AA minimum for normal text — same contrast problem .btn-primary
+   already solved by pairing coral with the dark brown token instead of
+   white (~4.9:1), so that's the fix here too, not a new idea. */
+.custom-select-option.selected { background: var(--color-accent); color: var(--brown); font-weight: 600; }
 
 @media (max-width: 720px) {
   .catalog-controls { flex-direction: column; align-items: stretch; }
@@ -912,7 +920,10 @@ button {
 .page-btn.active {
   background-color: var(--color-accent);
   border-color: var(--color-accent);
-  color: #fff;
+  /* Same fix as .custom-select-option.selected above: white-on-coral
+     fails AA contrast (~2.4:1); the brown token already used by
+     .btn-primary on this same coral passes (~4.9:1). */
+  color: var(--brown);
 }
 .page-btn:disabled {
   opacity: 0.4;
@@ -1159,7 +1170,14 @@ button {
 @media (max-width: 560px) {
   .form-grid { grid-template-columns: 1fr; }
 }
-.field label { display: block; font-size: 0.8rem; font-weight: 600; margin-bottom: 6px; color: var(--color-fg-soft); }
+.field label, .field legend { display: block; font-size: 0.8rem; font-weight: 600; margin-bottom: 6px; color: var(--color-fg-soft); padding: 0; }
+/* A radio/checkbox group's heading needs to be a <legend> (inside a
+   <fieldset>) rather than a floating <label>, so screen reader users
+   tabbing into "Pick-up" / "Delivery" / etc. hear the group's question
+   announced, not just the bare option text. <fieldset> carries browser
+   default border/padding/margin that would otherwise change the layout
+   here, so it's reset back to how a plain .field div already looks. */
+fieldset.field { border: 0; margin: 0 0 var(--space-2); padding: 0; min-width: 0; }
 .field input, .field textarea {
   width: 100%;
   min-height: 48px;
@@ -1174,6 +1192,7 @@ button {
 }
 .field textarea { min-height: 88px; padding: var(--space-2); resize: vertical; }
 .field input:focus, .field textarea:focus { border-color: var(--color-accent); outline: none; }
+.field input:focus-visible, .field textarea:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 2px; }
 .input-with-action { position: relative; }
 .input-with-action input { padding-right: 46px; }
 .input-action-btn {
