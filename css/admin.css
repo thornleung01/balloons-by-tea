@@ -99,6 +99,21 @@ body.admin-body {
 .photo-library-trigger { margin-top: var(--space-2); }
 
 .photo-library-panel { width: min(680px, 100%); }
+
+/* The shared .lightbox-* classes (css/styles.css) cap the preview box at
+   640px so the public customer-facing lightbox doesn't visibly change
+   size from one product photo to the next. That cap is tiny on an admin's
+   actual monitor when reviewing photos closely — scoped to #adminPhotoPreview
+   only, make it fill most of the viewport instead, while keeping
+   object-fit: contain so the whole image still stays visible regardless
+   of its upload dimensions, just inside a much bigger box. */
+#adminPhotoPreview .lightbox-panel,
+#adminPhotoPreview .lightbox-img-wrap {
+  width: min(1200px, 92vw);
+}
+#adminPhotoPreview .lightbox-img-wrap {
+  height: min(1200px, 88vh);
+}
 .photo-library-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(84px, 1fr));
