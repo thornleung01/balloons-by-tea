@@ -207,6 +207,12 @@
               <div class="field-error" id="error-address"></div>
             </div>
             <div class="field full">
+              <label for="postal">Postal code</label>
+              <input id="postal" name="postal" type="text" autocomplete="postal-code" autocapitalize="characters" spellcheck="false" maxlength="7" placeholder="e.g. M5V 3L9" aria-describedby="error-postal postal-note"/>
+              <div class="field-error" id="error-postal"></div>
+              <p class="field-note delivery-area-note" id="postal-note" aria-live="polite"></p>
+            </div>
+            <div class="field full">
               <label for="date">Preferred date</label>
               <input id="date" name="date" type="date"/>
             </div>

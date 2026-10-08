@@ -2176,3 +2176,10 @@ body.edit-preview-active [data-edit-key].edit-is-hidden { display: none !importa
   color: var(--color-fg-faint);
   margin-top: var(--space-2) !important;
 }
+
+/* Delivery-area check (js/delivery-area.js) — postal-code feedback */
+.delivery-area-note:empty { display: none; }
+.field-error:empty + .delivery-area-note { margin-top: -1em; } /* sit where the (empty) error would */
+.delivery-area-note { color: var(--color-fg); }
+.delivery-area-note.is-ok { color: #2F7A4E; font-weight: 600; }
+.delivery-area-note a { color: inherit; text-decoration: underline; text-underline-offset: 2px; }

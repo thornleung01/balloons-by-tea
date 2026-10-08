@@ -795,12 +795,17 @@ function attachOrderRef(payload) {
 function buildOrderPayload(form) {
   const cart = getCart();
   const summary = cart.map((l) => `${l.qty} x ${l.name} (${collectionLabel(l.collection)}) - ${formatPrice(l.price * l.qty)}`).join("\n");
+  // The postal code has its own field (delivery-area check) but the orders
+  // table only has `address` — append it there unless it's already in it.
+  const street = form.address.value.trim();
+  const postal = form.postal ? form.postal.value.trim().toUpperCase() : "";
+  const hasPostal = postal && street.toUpperCase().replace(/\s/g, "").includes(postal.replace(/\s/g, ""));
   return {
     kind: "checkout",
     name: form.name.value.trim(),
     phone: form.phone.value.trim(),
     email: form.email.value.trim(),
-    address: form.address.value.trim(),
+    address: postal && !hasPostal ? `${street}, ${postal}` : street,
     date: form.date.value.trim(),
     notes: form.notes.value.trim(),
     summary,
@@ -1237,7 +1242,7 @@ function initCustomOrderForm() {
     const service = form.service.value;
     const serviceLabel = { pickup: "Pick-up", delivery: "Delivery", "delivery-setup": "Delivery and set-up" }[service] || service;
     const needsAddress = service !== "pickup";
-    const addressParts = [form.address.value.trim(), form.city.value.trim(), form.province.value.trim(), form.postal.value.trim()].filter(Boolean);
+    const addressParts = [form.address.value.trim(), form.city.value.trim(), form.province.value.trim(), form.postal.value.trim().toUpperCase()].filter(Boolean);
     const address = needsAddress && addressParts.length ? addressParts.join(", ") : (needsAddress ? "Address to be coordinated" : "Pick-up (no delivery)");
 
     const setupAreaEl = form.querySelector('input[name="setupArea"]:checked');
