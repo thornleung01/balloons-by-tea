@@ -938,12 +938,26 @@ async function submitOrder(payload) {
   const client = typeof getSupabaseClient === "function" ? getSupabaseClient() : null;
   if (client) {
     const { kind, name, phone, email, address, date, notes, summary, total } = payload;
-    const { error } = await client.from("orders").insert({
+    const row = {
       kind: kind || "checkout",
       name, phone, email, address,
       event_date: date,
       notes, summary, total
-    });
+    };
+    // Inspiration photo paths (js/order-uploads.js). Only sent when there
+    // are some, so orders keep working on a database without the column.
+    const photos = Array.isArray(payload.attachments) ? payload.attachments : [];
+    if (photos.length) row.attachments = photos;
+    let { error } = await client.from("orders").insert(row);
+    if (error && photos.length && /attachments/.test(error.message || "")) {
+      // The attachments column is missing (latest SQL not run) or the paths
+      // were refused: never lose the order over its photos.
+      console.warn("[Balloons by Tea] Couldn't save photos with the order; sending it without them.", error);
+      delete row.attachments;
+      payload.attachments = [];
+      row.notes = `${row.notes || ""}\n\n(The customer attached ${photos.length} inspiration photo${photos.length === 1 ? "" : "s"}, but they couldn't be saved with this order. Ask them to send them on WhatsApp.)`;
+      ({ error } = await client.from("orders").insert(row));
+    }
     if (error) throw error;
     return;
   }
@@ -1295,12 +1309,26 @@ function initCustomOrderForm() {
       summary: "Custom order request",
       total: budget ? `Budget: ${budget}` : "Budget not specified"
     };
+
+    // Inspiration photos (js/order-uploads.js) upload now, after validation
+    // and guards. null = an upload failed and the customer is choosing
+    // between retrying and sending without; the form stays filled in.
+    if (window.OrderUploads) {
+      const attachments = await window.OrderUploads.prepareForSubmit(submitBtn);
+      if (!attachments) {
+        submitBtn.disabled = false;
+        submitBtn.innerHTML = originalLabel;
+        return;
+      }
+      payload.attachments = attachments;
+    }
     const ref = attachOrderRef(payload);
 
     try {
       await submitOrder(payload);
       document.getElementById("customOrderRef").textContent = ref;
       trackEvent("custom_order_submitted");
+      if (window.OrderUploads) window.OrderUploads.onSubmitted(payload.attachments);
       document.getElementById("customOrderFormWrap").hidden = true;
       document.getElementById("customOrderSuccess").hidden = false;
       form.reset();

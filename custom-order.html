@@ -186,14 +186,25 @@
             <label for="co-budget" data-edit-key="custom-order-label-budget" data-edit-type="text">Budget (optional)</label>
             <input id="co-budget" name="budget" type="text" placeholder="e.g. $200"/>
           </div>
-          <div class="field full">
-            <label data-edit-key="custom-order-label-photos" data-edit-type="text">Photos of the space, as well as any inspirational images</label>
-            <div class="upload-dropzone">
-              <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true" data-edit-key="custom-order-upload-icon" data-edit-type="block"><path d="M12 16V4M12 4l-4 4M12 4l4 4" stroke-linecap="round" stroke-linejoin="round"/><path d="M4 16v3a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-3" stroke-linecap="round" stroke-linejoin="round"/></svg>
-              <strong data-edit-key="custom-order-upload-heading" data-edit-type="text">Photo upload isn't available here yet</strong>
-              <span data-edit-key="custom-order-upload-note" data-edit-type="text">Once you submit, send any inspiration or venue photos to us on WhatsApp or email and we'll attach them to your request.</span>
+          <!-- ===== Inspiration photos (js/order-uploads.js) =====
+               Optional photo attachments, up to 3. Hidden until the script
+               confirms uploads can work (Supabase configured, browser can
+               resize); it hides again if the database isn't set up for them
+               (sql-parts/order-uploads.sql). Photos only upload on submit. -->
+          <div class="field full order-photos" id="orderPhotosField" hidden>
+            <label for="co-photos" data-edit-key="custom-order-label-inspiration-photos" data-edit-type="text">Inspiration photos (optional, up to 3)</label>
+            <div class="upload-dropzone photo-dropzone" id="orderPhotosDropzone">
+              <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M12 16V4M12 4l-4 4M12 4l4 4" stroke-linecap="round" stroke-linejoin="round"/><path d="M4 16v3a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-3" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              <input id="co-photos" class="photo-input" name="photos" type="file" accept="image/*" multiple aria-describedby="co-photos-hint co-photos-count co-error-photos"/>
+              <label for="co-photos" class="btn btn-outline btn-sm photo-pick-btn" aria-hidden="true">Choose photos</label>
+              <span class="photo-drop-text">or drag them here</span>
             </div>
+            <p class="field-note" id="co-photos-hint" data-edit-key="custom-order-photos-hint" data-edit-type="text">Venue shots or designs you love. Up to 3 photos, 20 MB each; we shrink them before sending. Only Balloons by Tea can see these.</p>
+            <ul class="photo-thumbs" id="orderPhotoThumbs" aria-label="Attached photos" hidden></ul>
+            <p class="field-note photo-count" id="co-photos-count" aria-live="polite"></p>
+            <div class="field-error" id="co-error-photos" aria-live="polite"></div>
           </div>
+          <!-- ===== /Inspiration photos ===== -->
         </div>
         <div class="field-error" id="customOrderFormError"></div>
         <button type="submit" class="btn btn-primary btn-block" id="customOrderSubmitBtn" data-edit-key="custom-order-submit-btn" data-edit-type="block">Send Request</button>
@@ -368,6 +379,7 @@
 <script src="js/inspiration-prefill.js"></script>
 <script src="js/availability.js"></script>
 <script src="js/delivery-area.js"></script>
+<script src="js/order-uploads.js"></script>
 <script src="js/supabase-catalog.js"></script>
 <script src="js/site-content.js"></script>
 <script src="js/layout-editor.js"></script>

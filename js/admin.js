@@ -2699,6 +2699,7 @@ async function refreshOrderList() {
   [...orderNoteDrafts.keys()].forEach((id) => { if (!allIds.has(id)) orderNoteDrafts.delete(id); });
 
   renderOrderList();
+  checkOrderPhotosSchema();
 }
 
 /* Applies the status filter, search, "upcoming only" and sort to
@@ -2766,8 +2767,11 @@ function renderOrderList() {
     if (!order) return;
     const waLink = buildWhatsAppLink(order);
     if (waLink) row.querySelector(".order-contact").appendChild(waLink);
+    const photos = buildOrderAttachments(order);
+    if (photos) row.insertBefore(photos, row.querySelector(".order-row-actions"));
     row.insertBefore(buildOrderAdminNotes(order), row.querySelector(".order-row-actions"));
   });
+  loadOrderAttachmentThumbs();
 
   listEl.querySelectorAll(".order-status-select").forEach((sel) => {
     sel.addEventListener("change", () => handleOrderStatusChange(sel.dataset.id, sel.value));
@@ -2798,14 +2802,308 @@ async function handleOrderStatusChange(id, status) {
 }
 
 async function handleDeleteOrder(id) {
-  if (!confirm("Delete this order? This can't be undone.")) return;
+  const order = ordersAllCache.find((o) => String(o.id) === String(id));
+  const photoCount = order ? orderAttachmentPaths(order).length : 0;
+  const photoNote = photoCount ? ` Its ${photoCount === 1 ? "photo" : `${photoCount} photos`} will be deleted too.` : "";
+  if (!confirm(`Delete this order?${photoNote} This can't be undone.`)) return;
   const client = getSupabaseClient();
-  const { error } = await mustAffect(client.from("orders").delete().eq("id", id));
+  const { data, error } = await mustAffect(client.from("orders").delete().eq("id", id));
   if (error) {
     alert("Couldn't delete: " + error.message);
     return;
   }
+  const photoProblem = await removeOrderPhotoFiles(data || []);
   await refreshOrderList();
+  if (photoProblem) alert("The order was deleted, but " + photoProblem);
+}
+
+/* ----- Order photos (customer inspiration photos) -----
+   Custom orders can carry up to 3 photos in orders.attachments: paths in
+   the private 'order-uploads' Storage bucket (see js/order-uploads.js and
+   sql-parts/order-uploads.sql). Only the admin can read them, through
+   short-lived signed URLs. */
+const ORDER_PHOTOS_BUCKET = "order-uploads";
+const ORDER_PHOTOS_SQL_HINT = "Photo uploads need the latest supabase-setup.sql";
+const ORDER_PHOTO_URL_TTL = 3600; // seconds
+const ORDER_PHOTO_PATH_RE = /^pending\/([0-9a-f-]{36})\/[0-9]\.(jpg|jpeg|png|webp)$/;
+const ORDER_PHOTO_FOLDER_RE = /^[0-9a-f-]{36}$/;
+const ORDER_PHOTO_CLEANUP_AGE_DAYS = 7;
+// path -> { url, expires } so re-renders (every search keystroke) don't re-sign.
+const orderPhotoUrlCache = new Map();
+// path -> error message for photos that couldn't be signed (e.g. missing).
+const orderPhotoUrlErrors = new Map();
+let orderPhotosSchemaChecked = false;
+
+function orderAttachmentPaths(order) {
+  return Array.isArray(order && order.attachments) ? order.attachments.filter((p) => typeof p === "string" && p) : [];
+}
+
+function setOrderPhotoToolsStatus(message, kind) {
+  const el = document.getElementById("orderPhotoToolsStatus");
+  if (!el) return;
+  el.textContent = message || "";
+  el.className = "form-status" + (kind ? " " + kind : "");
+}
+
+// Built with DOM APIs; the thumbnails are filled in by
+// loadOrderAttachmentThumbs() once their signed URLs exist.
+function buildOrderAttachments(order) {
+  const paths = orderAttachmentPaths(order);
+  if (!paths.length) return null;
+  const wrap = document.createElement("div");
+  wrap.className = "order-attachments";
+  const label = document.createElement("span");
+  label.className = "order-attachments-label";
+  label.textContent = `Inspiration photos (${paths.length})`;
+  const list = document.createElement("div");
+  list.className = "order-attachments-list";
+  paths.forEach((path, i) => {
+    const link = document.createElement("a");
+    link.className = "order-attachment";
+    link.dataset.path = path;
+    link.dataset.alt = `Inspiration photo ${i + 1} from ${order.name || "the customer"}`;
+    link.textContent = "Loading...";
+    list.appendChild(link);
+  });
+  const status = document.createElement("p");
+  status.className = "form-status error order-attachments-status";
+  status.hidden = true;
+  wrap.append(label, list, status);
+  applyOrderAttachmentUrls(wrap);
+  return wrap;
+}
+
+function applyOrderAttachmentUrls(root) {
+  root.querySelectorAll(".order-attachment[data-path]").forEach((link) => {
+    const path = link.dataset.path;
+    const cached = orderPhotoUrlCache.get(path);
+    if (cached && cached.expires > Date.now()) {
+      if (link.getAttribute("href") === cached.url) return;
+      link.href = cached.url;
+      link.target = "_blank";
+      link.rel = "noopener noreferrer";
+      link.title = "Open full size in a new tab";
+      link.classList.remove("is-error");
+      const img = document.createElement("img");
+      img.src = cached.url;
+      img.alt = link.dataset.alt || "Inspiration photo";
+      img.loading = "lazy";
+      link.replaceChildren(img);
+    } else if (orderPhotoUrlErrors.has(path)) {
+      link.removeAttribute("href");
+      link.classList.add("is-error");
+      link.textContent = "Photo unavailable";
+      link.title = orderPhotoUrlErrors.get(path);
+    }
+  });
+}
+
+/* Signs every visible photo that doesn't have a fresh URL yet, in one
+   request. Looks the links up again after the await, since the list may
+   have re-rendered meanwhile. A failed request shows a message on each
+   affected order instead of thumbnails; the order itself is unaffected. */
+async function loadOrderAttachmentThumbs() {
+  const listEl = document.getElementById("orderList");
+  if (!listEl) return;
+  const soon = Date.now() + 5 * 60 * 1000;
+  const need = [...new Set(Array.from(listEl.querySelectorAll(".order-attachment[data-path]"), (a) => a.dataset.path))]
+    .filter((p) => !orderPhotoUrlErrors.has(p) && !((orderPhotoUrlCache.get(p) || {}).expires > soon));
+  if (!need.length) return;
+  const client = getSupabaseClient();
+  let data = null;
+  let error = null;
+  try {
+    ({ data, error } = await client.storage.from(ORDER_PHOTOS_BUCKET).createSignedUrls(need, ORDER_PHOTO_URL_TTL));
+  } catch (err) {
+    error = err;
+  }
+  if (error) {
+    const message = /bucket not found/i.test(error.message || "")
+      ? `${ORDER_PHOTOS_SQL_HINT} — ${ORDERS_SQL_HINT}.`
+      : `Couldn't load photos: ${error.message || error}`;
+    const needSet = new Set(need);
+    document.querySelectorAll("#orderList .order-attachments").forEach((wrap) => {
+      const links = Array.from(wrap.querySelectorAll(".order-attachment[data-path]"));
+      if (!links.some((a) => needSet.has(a.dataset.path))) return;
+      links.forEach((a) => { if (needSet.has(a.dataset.path)) { a.textContent = "Not loaded"; a.classList.add("is-error"); } });
+      const status = wrap.querySelector(".order-attachments-status");
+      status.textContent = message;
+      status.hidden = false;
+    });
+    return;
+  }
+  const expires = Date.now() + ORDER_PHOTO_URL_TTL * 1000;
+  (data || []).forEach((item) => {
+    if (item && item.signedUrl && !item.error) orderPhotoUrlCache.set(item.path, { url: item.signedUrl, expires });
+    else if (item && item.path) orderPhotoUrlErrors.set(item.path, String(item.error || "Couldn't load this photo"));
+  });
+  applyOrderAttachmentUrls(document.getElementById("orderList"));
+}
+
+/* Deletes the Storage files of orders that were just deleted. Skips any
+   path another order still uses. Returns null on success, or a sentence
+   describing what went wrong (the files are then left behind and "Clean up
+   unused photos" will find them once they're a week old). */
+async function removeOrderPhotoFiles(deletedOrders) {
+  const deletedIds = new Set(deletedOrders.map((o) => String(o.id)));
+  const stillUsed = new Set(ordersAllCache.filter((o) => !deletedIds.has(String(o.id))).flatMap(orderAttachmentPaths));
+  const paths = [...new Set(deletedOrders.flatMap(orderAttachmentPaths))].filter((p) => !stillUsed.has(p));
+  if (!paths.length) return null;
+  const leftoverNote = `"Clean up unused photos" can remove them after ${ORDER_PHOTO_CLEANUP_AGE_DAYS} days.`;
+  let data = null;
+  let error = null;
+  try {
+    ({ data, error } = await getSupabaseClient().storage.from(ORDER_PHOTOS_BUCKET).remove(paths));
+  } catch (err) {
+    error = err;
+  }
+  if (error) {
+    return `its ${paths.length === 1 ? "photo" : `${paths.length} photos`} couldn't be deleted (${error.message || error}). ${leftoverNote}`;
+  }
+  // Like mustAffect(): Storage reports success even when nothing was
+  // removed (login expired, file already gone), so count what came back.
+  const removed = new Set((data || []).map((o) => o.name));
+  const notRemoved = paths.filter((p) => !removed.has(p));
+  paths.forEach((p) => { if (removed.has(p)) orderPhotoUrlCache.delete(p); });
+  if (notRemoved.length) {
+    return `${notRemoved.length === 1 ? "1 photo wasn't" : `${notRemoved.length} photos weren't`} deleted (already gone, or your login may have expired). ${leftoverNote}`;
+  }
+  return null;
+}
+
+/* Shows the "needs the latest SQL" hint when orders has no attachments
+   column yet. Checked once per page load, from the loaded rows when there
+   are any, otherwise with a one-row probe. */
+async function checkOrderPhotosSchema() {
+  if (orderPhotosSchemaChecked) return;
+  orderPhotosSchemaChecked = true;
+  let missing;
+  if (ordersAllCache.length) {
+    missing = !("attachments" in ordersAllCache[0]);
+  } else {
+    const { error } = await getSupabaseClient().from("orders").select("attachments").limit(1);
+    missing = isMissingColumnError(error, "attachments");
+  }
+  const btn = document.getElementById("cleanupOrderPhotosBtn");
+  if (missing) {
+    if (btn) btn.disabled = true;
+    setOrderPhotoToolsStatus(`${ORDER_PHOTOS_SQL_HINT} — ${ORDERS_SQL_HINT}.`, "");
+  }
+}
+
+// Every entry under `prefix` in the bucket, paging through list().
+async function listAllOrderPhotoEntries(prefix) {
+  const client = getSupabaseClient();
+  const pageSize = 100;
+  const all = [];
+  for (let offset = 0; ; offset += pageSize) {
+    const { data, error } = await client.storage.from(ORDER_PHOTOS_BUCKET).list(prefix, { limit: pageSize, offset, sortBy: { column: "name", order: "asc" } });
+    if (error) throw error;
+    all.push(...(data || []));
+    if (!data || data.length < pageSize) return all;
+  }
+}
+
+// Upload folders referenced by any order, fetched fresh (not from the
+// list cache) and paged past PostgREST's 1000-row cap. Throws on any
+// error: "couldn't check" must never be mistaken for "unused".
+async function fetchReferencedOrderPhotoFolders() {
+  const client = getSupabaseClient();
+  const folders = new Set();
+  const pageSize = 1000;
+  for (let from = 0; ; from += pageSize) {
+    const { data, error } = await client.from("orders").select("id, attachments").order("id").range(from, from + pageSize - 1);
+    if (error) throw error;
+    (data || []).forEach((o) => orderAttachmentPaths(o).forEach((p) => {
+      const folder = p.split("/")[1];
+      if (folder) folders.add(folder);
+    }));
+    if (!data || data.length < pageSize) return folders;
+  }
+}
+
+/* pending/<folder>/ folders that no order references and whose newest
+   file is over ORDER_PHOTO_CLEANUP_AGE_DAYS old: uploads from abandoned
+   or failed submissions, and photos of deleted orders. A folder with any
+   file whose age can't be read is left alone. */
+async function findUnusedOrderPhotoFolders() {
+  const referenced = await fetchReferencedOrderPhotoFolders();
+  const cutoff = Date.now() - ORDER_PHOTO_CLEANUP_AGE_DAYS * 24 * 60 * 60 * 1000;
+  const entries = await listAllOrderPhotoEntries("pending");
+  const candidates = [];
+  for (const entry of entries) {
+    // Folders come back as entries without an id.
+    if (entry.id || !ORDER_PHOTO_FOLDER_RE.test(entry.name) || referenced.has(entry.name)) continue;
+    const files = (await listAllOrderPhotoEntries(`pending/${entry.name}`)).filter((f) => f.id);
+    if (!files.length) continue;
+    const times = files.map((f) => new Date(f.created_at || "").getTime());
+    if (times.some((t) => isNaN(t)) || Math.max(...times) >= cutoff) continue;
+    candidates.push({ folder: entry.name, paths: files.map((f) => `pending/${entry.name}/${f.name}`) });
+  }
+  return candidates;
+}
+
+async function handleCleanupOrderPhotos() {
+  const btn = document.getElementById("cleanupOrderPhotosBtn");
+  btn.disabled = true;
+  setOrderPhotoToolsStatus("Looking for unused photos...", "");
+  try {
+    let candidates;
+    try {
+      candidates = await findUnusedOrderPhotoFolders();
+    } catch (err) {
+      const message = isMissingColumnError(err, "attachments") || /bucket not found/i.test(err.message || "")
+        ? `${ORDER_PHOTOS_SQL_HINT} — ${ORDERS_SQL_HINT}.`
+        : `Couldn't check for unused photos (${err.message || err}), so nothing was deleted.`;
+      setOrderPhotoToolsStatus(message, "error");
+      return;
+    }
+    if (!candidates.length) {
+      setOrderPhotoToolsStatus(`No unused photos older than ${ORDER_PHOTO_CLEANUP_AGE_DAYS} days.`, "success");
+      return;
+    }
+    const fileCount = candidates.reduce((n, c) => n + c.paths.length, 0);
+    const summary = `${fileCount} photo${fileCount === 1 ? "" : "s"} from ${candidates.length} upload${candidates.length === 1 ? "" : "s"}`;
+    setOrderPhotoToolsStatus(`Found ${summary} that no order uses.`, "");
+    if (!confirm(`Permanently delete ${summary}? They were uploaded over ${ORDER_PHOTO_CLEANUP_AGE_DAYS} days ago and no order uses them (abandoned forms, or deleted orders). This can't be undone.`)) {
+      setOrderPhotoToolsStatus("Nothing was deleted.", "");
+      return;
+    }
+
+    // Re-check right before deleting: an order may have started using one
+    // of these since the scan. If the check fails, delete nothing.
+    let referenced;
+    try {
+      referenced = await fetchReferencedOrderPhotoFolders();
+    } catch (err) {
+      setOrderPhotoToolsStatus(`Couldn't re-check whether these photos are in use (${err.message || err}), so nothing was deleted. Try again.`, "error");
+      return;
+    }
+    const paths = candidates.filter((c) => !referenced.has(c.folder)).flatMap((c) => c.paths);
+    const skipped = fileCount - paths.length;
+    const client = getSupabaseClient();
+    let deleted = 0;
+    const failures = [];
+    for (let i = 0; i < paths.length; i += 100) {
+      const batch = paths.slice(i, i + 100);
+      const { data, error } = await client.storage.from(ORDER_PHOTOS_BUCKET).remove(batch);
+      if (error) {
+        failures.push(`${batch.length} photo${batch.length === 1 ? "" : "s"}: ${error.message}`);
+        continue;
+      }
+      const removed = new Set((data || []).map((o) => o.name));
+      deleted += batch.filter((p) => removed.has(p)).length;
+      const notRemoved = batch.filter((p) => !removed.has(p)).length;
+      if (notRemoved) failures.push(`${notRemoved} photo${notRemoved === 1 ? "" : "s"} weren't deleted (already gone, or your login may have expired)`);
+    }
+    const parts = [`Deleted ${deleted} unused photo${deleted === 1 ? "" : "s"}.`];
+    if (skipped) parts.push(`${skipped} skipped because an order now uses them.`);
+    if (failures.length) parts.push("Problems: " + failures.join("; ") + ".");
+    setOrderPhotoToolsStatus(parts.join(" "), failures.length ? "error" : "success");
+    if (failures.length) alert("Some photos couldn't be deleted:\n" + failures.join("\n"));
+  } finally {
+    btn.disabled = false;
+  }
 }
 
 /* Keeps the orders "select all" checkbox and bulk action bar in sync with
@@ -2857,18 +3155,24 @@ async function bulkDeleteOrders() {
   const ids = [...selectedOrderIds];
   if (!ids.length) return;
   const label = ids.length === 1 ? "this order" : `these ${ids.length} orders`;
-  if (!confirm(`Delete ${label}? This can't be undone.`)) return;
+  const idSet = new Set(ids);
+  const photoCount = ordersAllCache.filter((o) => idSet.has(String(o.id))).reduce((n, o) => n + orderAttachmentPaths(o).length, 0);
+  const photoNote = photoCount ? ` Their ${photoCount === 1 ? "photo" : `${photoCount} photos`} will be deleted too.` : "";
+  if (!confirm(`Delete ${label}?${photoNote} This can't be undone.`)) return;
   const client = getSupabaseClient();
   const bar = document.getElementById("orderBulkActionBar");
   bar.querySelectorAll("button").forEach((b) => { b.disabled = true; });
-  const { error } = await mustAffect(client.from("orders").delete().in("id", ids));
-  bar.querySelectorAll("button").forEach((b) => { b.disabled = false; });
+  const { data, error } = await mustAffect(client.from("orders").delete().in("id", ids));
   if (error) {
+    bar.querySelectorAll("button").forEach((b) => { b.disabled = false; });
     alert("Couldn't delete: " + error.message);
     return;
   }
+  const photoProblem = await removeOrderPhotoFiles(data || []);
+  bar.querySelectorAll("button").forEach((b) => { b.disabled = false; });
   selectedOrderIds.clear();
   await refreshOrderList();
+  if (photoProblem) alert(`The order${ids.length === 1 ? " was" : "s were"} deleted, but ` + photoProblem);
 }
 
 /* CSV field escaping per RFC 4180: wrap in double quotes (and double up
@@ -3375,6 +3679,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   document.getElementById("orderBulkCancelledBtn").addEventListener("click", () => bulkUpdateOrderStatus("cancelled"));
   document.getElementById("orderBulkDeleteBtn").addEventListener("click", bulkDeleteOrders);
   document.getElementById("orderBulkClearBtn").addEventListener("click", clearOrderSelection);
+  document.getElementById("cleanupOrderPhotosBtn").addEventListener("click", handleCleanupOrderPhotos);
   document.getElementById("analyticsRangeFilter").addEventListener("click", (e) => {
     const btn = e.target.closest(".orders-filter-btn");
     if (!btn) return;

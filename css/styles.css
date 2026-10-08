@@ -1290,6 +1290,69 @@ fieldset.field { border: 0; margin: 0 0 var(--space-2); padding: 0; min-width: 0
 }
 .upload-dropzone svg { color: var(--color-fg-faint); }
 .upload-dropzone strong { color: var(--color-fg-soft); font-size: 0.9rem; }
+
+/* ----- Inspiration photos on the custom-order form (js/order-uploads.js) ----- */
+.photo-dropzone { position: relative; transition: border-color 150ms var(--ease), background 150ms var(--ease); }
+.photo-dropzone.is-dragover { border-color: var(--color-accent); background: var(--color-accent-tint); }
+.photo-dropzone.is-full { opacity: 0.6; }
+.photo-dropzone.is-full .photo-pick-btn { pointer-events: none; }
+/* The real file input stays in the tab order but is visually hidden; the
+   "Choose photos" label is what people see and click. */
+.photo-input {
+  position: absolute;
+  width: 1px; height: 1px;
+  padding: 0; margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  border: 0;
+  opacity: 0;
+}
+.photo-pick-btn { cursor: pointer; }
+.photo-input:focus-visible + .photo-pick-btn { outline: 2px solid var(--color-accent); outline-offset: 2px; }
+.photo-drop-text { font-size: 0.82rem; }
+@media (hover: none) { .photo-drop-text { display: none; } }
+.photo-thumbs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+  list-style: none;
+  padding: 0;
+  margin: var(--space-1) 0 0;
+}
+.photo-thumb {
+  position: relative;
+  width: 88px; height: 88px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--color-border);
+  background: var(--color-bg-alt);
+  overflow: hidden;
+  display: flex; align-items: center; justify-content: center;
+}
+.photo-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.photo-thumb-wait { font-size: 0.72rem; color: var(--color-fg-faint); }
+.photo-thumb-remove {
+  position: absolute;
+  top: 4px; right: 4px;
+  width: 28px; height: 28px;
+  border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  background: rgba(255, 255, 255, 0.92);
+  color: var(--color-fg);
+  border: 1px solid var(--color-border);
+  cursor: pointer;
+}
+.photo-thumb-remove:hover { border-color: var(--color-destructive); color: var(--color-destructive); }
+.photo-thumb-remove:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 1px; }
+.photo-count:empty { display: none; }
+.photo-upload-failure {
+  border: 1px solid var(--color-destructive);
+  border-radius: var(--radius-sm);
+  padding: 12px var(--space-2);
+  margin-top: var(--space-2);
+  font-size: 0.88rem;
+}
+.photo-upload-failure-text { margin: 0 0 10px; color: var(--color-fg); }
+.photo-upload-failure-actions { display: flex; flex-wrap: wrap; gap: var(--space-1); }
 .radio-option input {
   width: 18px;
   height: 18px;
