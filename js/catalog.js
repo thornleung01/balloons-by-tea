@@ -127,7 +127,8 @@ function parsePrice(raw) {
 function sanitizeImageUrl(raw) {
   const trimmed = String(raw || "").trim();
   if (/^https?:\/\//i.test(trimmed)) return trimmed;
-  if (/^images\//i.test(trimmed)) return trimmed;
+  // Bundled PNGs have WebP versions (see optimizedImage() in js/site-content.js).
+  if (/^images\//i.test(trimmed)) return typeof optimizedImage === "function" ? optimizedImage(trimmed).src : trimmed;
   return "";
 }
 

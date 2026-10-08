@@ -40,7 +40,7 @@ const COLLECTIONS = {
       { id: "bday-golden-hour", name: "Golden Hour Bouquet", price: 58, description: "Champagne, cream & gold latex bouquet with trailing ribbon.", colors: ["#D4A94A", "#F3EEE6", "#A16207"] },
       { id: "bday-midnight", name: "Midnight Confetti Bash", price: 68, description: "Charcoal and gold bouquet with a confetti sparkle for a birthday night out.", colors: ["#1C1917", "#A16207", "#57534E"] },
       { id: "bday-garden-party", name: "Garden Party", price: 64, description: "Sage, cream and blush balloons styled with dried florals.", colors: ["#9CAF88", "#F3EEE6", "#E7C5C1"] },
-      { id: "bday-sanrio-bouquet", name: "Sanrio Bouquet", price: 70, description: "Sanrio character foil balloon paired with a playful mixed-latex bouquet.", colors: ["#F8C4C4", "#B9DCF3", "#FFD66B"], image: "images/sanrio-bouquet.png" }
+      { id: "bday-sanrio-bouquet", name: "Sanrio Bouquet", price: 70, description: "Sanrio character foil balloon paired with a playful mixed-latex bouquet.", colors: ["#F8C4C4", "#B9DCF3", "#FFD66B"], image: "images/sanrio-bouquet.webp" }
     ]
   },
   "kids": {

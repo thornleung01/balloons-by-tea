@@ -37,6 +37,31 @@ async function loadSiteContent() {
   }
 }
 
+/* ===== Optimized built-in artwork =====
+   The bundled images ship as resized WebP (scripts/optimize_images.py), but
+   saved settings/collections rows can still hold the ORIGINAL paths (e.g.
+   hero_image_url = "images/hero-mascot.png"), which are kept on disk for
+   exactly that reason. Map those known defaults to their WebP versions so a
+   saved default doesn't swap the 1MB+ PNG back in; any other URL (an
+   uploaded photo) passes through unchanged. */
+const SHOP_CARD_SIZES = "(max-width: 560px) calc(100vw - 42px), (max-width: 960px) calc(50vw - 40px), 300px";
+const OPTIMIZED_IMAGES = {
+  "images/hero-mascot.png": { src: "images/hero-mascot.webp" },
+  "images/logo.png": { src: "images/logo.webp" },
+  "images/no-picture.png": { src: "images/no-picture.webp" },
+  "images/sanrio-bouquet.png": { src: "images/sanrio-bouquet.webp" }
+};
+["anniversary", "birthday", "kids", "other-occasions"].forEach((slug) => {
+  OPTIMIZED_IMAGES[`images/card-${slug}.png`] = {
+    src: `images/card-${slug}-600w.webp`,
+    srcset: `images/card-${slug}-600w.webp 600w, images/card-${slug}-1044w.webp 1044w`
+  };
+});
+function optimizedImage(url) {
+  const key = String(url || "").replace(/^(?:\.\/|\/balloons-by-tea\/|https:\/\/thornleung01\.github\.io\/balloons-by-tea\/)/, "");
+  return OPTIMIZED_IMAGES[key] || { src: url };
+}
+
 /* ===== Nav icons — matches the 5 hand-drawn icons already in the HTML.
    New admin-added nav items (no matching key) get the generic star. ===== */
 const NAV_ICONS = {
@@ -88,7 +113,10 @@ function renderFooterContactAndCategories() {
     if (s.social_rednote) document.querySelectorAll('a[href*="xiaohongshu.com"]').forEach((a) => { a.href = s.social_rednote; });
     if (s.social_tiktok) document.querySelectorAll('a[href*="tiktok.com"]').forEach((a) => { a.href = s.social_tiktok; });
     if (s.social_youtube) document.querySelectorAll('a[href*="youtube.com"]').forEach((a) => { a.href = s.social_youtube; });
-    if (s.logo_url) document.querySelectorAll(".brand-logo").forEach((img) => { img.src = s.logo_url; });
+    if (s.logo_url) {
+      const logoSrc = optimizedImage(s.logo_url).src;
+      document.querySelectorAll(".brand-logo").forEach((img) => { if (img.getAttribute("src") !== logoSrc) img.src = logoSrc; });
+    }
   }
 
   const list = document.getElementById("footerCategoriesList");
@@ -110,7 +138,10 @@ function renderHero() {
   if (h1 && s.hero_heading) h1.textContent = s.hero_heading;
   if (sub && s.hero_subtext) sub.textContent = s.hero_subtext;
   if (cta && s.hero_cta_text) cta.textContent = s.hero_cta_text;
-  if (img && s.hero_image_url) img.src = s.hero_image_url;
+  if (img && s.hero_image_url) {
+    const heroSrc = optimizedImage(s.hero_image_url).src;
+    if (img.getAttribute("src") !== heroSrc) img.src = heroSrc;
+  }
 }
 
 function renderAboutContent() {
@@ -144,14 +175,18 @@ function renderShopGrid() {
   // Keyed by slug (the table's natural unique key, already used elsewhere
   // in this codebase) so a saved per-card override stays attached to the
   // right collection — same reasoning as renderFaqItems()'s id-keying.
-  grid.innerHTML = window.SITE_COLLECTIONS.map((c) => `
+  grid.innerHTML = window.SITE_COLLECTIONS.map((c) => {
+    const pic = optimizedImage(c.card_image_url || NO_PHOTO_IMAGE);
+    const srcset = pic.srcset ? ` srcset="${escapeHtml(pic.srcset)}" sizes="${SHOP_CARD_SIZES}"` : "";
+    return `
     <article class="shop-card">
       <a class="shop-card-media" href="${escapeHtml(collectionHref(c))}" data-edit-key="shop-card-img:${escapeHtml(c.slug)}" data-edit-type="block">
-        <img src="${escapeHtml(c.card_image_url || NO_PHOTO_IMAGE)}" alt="${escapeHtml(c.title)} collection" loading="lazy" decoding="async"/>
+        <img src="${escapeHtml(pic.src)}"${srcset} width="600" height="600" alt="${escapeHtml(c.title)} collection" loading="lazy" decoding="async"/>
       </a>
       <h3><a href="${escapeHtml(collectionHref(c))}" data-edit-key="shop-card-title:${escapeHtml(c.slug)}" data-edit-type="text">${escapeHtml(c.title)}</a></h3>
     </article>
-  `).join("");
+  `;
+  }).join("");
 }
 
 /* Runs on all-products.html, the 4 legacy category pages, and the new

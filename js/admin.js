@@ -79,10 +79,11 @@ function collectionHrefForAdmin(slug) {
    runs it through compressImageFile() first. Admin phone/camera photos
    can easily be 4-12MB and 4000+px wide for something that only ever
    displays at a few hundred px on the public site, so this resizes to a
-   sane max dimension and re-encodes before upload. PNGs are kept as PNG
-   (resized but not otherwise degraded) since this app uses PNG for some
-   photos with transparent backgrounds; everything else is re-encoded as
-   JPEG at a reasonable quality. Files already small enough that this
+   sane max dimension and re-encodes before upload as WebP (which keeps the
+   transparent backgrounds some PNG photos rely on). In a browser that
+   can't encode WebP, PNGs are kept as PNG (resized but not otherwise
+   degraded) and everything else is re-encoded as JPEG at a reasonable
+   quality. Files already small enough that this
    wouldn't meaningfully help are returned unchanged. Any failure here
    (corrupt image, canvas/codec issue, old browser) falls back to
    uploading the ORIGINAL file — a bug in this helper must never block a
@@ -114,7 +115,7 @@ async function loadDrawableImageSource(file) {
   });
 }
 
-async function compressImageFile(file, { maxDimension = 1600, jpegQuality = 0.82, skipBelowBytes = 200 * 1024 } = {}) {
+async function compressImageFile(file, { maxDimension = 1600, webpQuality = 0.82, jpegQuality = 0.82, skipBelowBytes = 200 * 1024 } = {}) {
   if (!file || typeof file.type !== "string" || !file.type.startsWith("image/")) return file; // never touch non-images
   if (file.size <= skipBelowBytes) return file; // already small — not worth the processing
 
@@ -139,17 +140,26 @@ async function compressImageFile(file, { maxDimension = 1600, jpegQuality = 0.82
     if (!ctx) return file;
     ctx.drawImage(source, 0, 0, canvas.width, canvas.height);
 
-    const outputType = keepPng ? "image/png" : "image/jpeg";
-    const blob = await new Promise((resolve, reject) => {
+    const encode = (type, quality) => new Promise((resolve, reject) => {
       canvas.toBlob(
         (b) => (b ? resolve(b) : reject(new Error("canvas.toBlob returned null"))),
-        outputType,
-        keepPng ? undefined : jpegQuality
+        type,
+        quality
       );
     });
+    // WebP keeps PNG transparency and is far smaller than PNG or JPEG.
+    // Browsers that can't encode WebP silently hand back a PNG instead, so
+    // check the real type and fall back to the PNG/JPEG path in that case.
+    let outputType = "image/webp";
+    let blob = await encode(outputType, webpQuality);
+    if (!blob || blob.type !== "image/webp") {
+      outputType = keepPng ? "image/png" : "image/jpeg";
+      blob = await encode(outputType, keepPng ? undefined : jpegQuality);
+    }
     if (!blob || blob.size >= file.size) return file; // never ship something bigger than the original
 
-    const newName = keepPng ? file.name : file.name.replace(/\.[a-zA-Z0-9]+$/, "") + ".jpg";
+    const ext = { "image/webp": ".webp", "image/jpeg": ".jpg" }[outputType];
+    const newName = ext ? file.name.replace(/\.[a-zA-Z0-9]+$/, "") + ext : file.name;
     return new File([blob], newName, { type: outputType, lastModified: Date.now() });
   } catch (err) {
     // Corrupt image, canvas/codec failure, etc. — upload the original
