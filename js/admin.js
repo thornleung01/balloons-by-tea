@@ -822,8 +822,76 @@ function libraryBreadcrumbHtml(path, navAttr) {
   `).join(`<span class="library-breadcrumb-sep">/</span>`);
 }
 
+/* Finds every real, human-readable place a given photo URL is currently
+   referenced from — used to warn before a destructive delete. Checks the
+   same sources as gatherReferencedPhotoUrls(), just keeping track of
+   WHERE each match came from instead of only whether one exists. */
+async function findReferencesForUrl(url) {
+  const client = getSupabaseClient();
+  const refs = [];
+
+  const { data: products } = await client.from("products").select("id,name,image_url,images");
+  (products || []).forEach((p) => {
+    const inImages = Array.isArray(p.images) && p.images.includes(url);
+    if (p.image_url === url || inImages) refs.push(`product "${p.name}"`);
+  });
+
+  const { data: collections } = await client.from("collections").select("id,title,card_image_url");
+  (collections || []).forEach((c) => {
+    if (c.card_image_url === url) refs.push(`category "${c.title}"`);
+  });
+
+  const { data: settings } = await client.from("site_settings").select("key,value");
+  (settings || []).forEach((s) => {
+    if (s.value === url) refs.push(`site setting "${s.key}"`);
+  });
+
+  return refs;
+}
+
+/* Repoints every DB reference to oldUrl at newUrl — called after a
+   successful move/rename, since the file's content hasn't changed, only
+   its location, and nothing the admin does inside the Library should be
+   able to silently break a product that was already using that photo. */
+async function updateReferencesAfterMove(oldUrl, newUrl) {
+  const client = getSupabaseClient();
+  const writes = [];
+
+  const { data: products } = await client.from("products").select("id,image_url,images");
+  (products || []).forEach((p) => {
+    let changed = false;
+    const newImages = Array.isArray(p.images)
+      ? p.images.map((u) => { if (u === oldUrl) { changed = true; return newUrl; } return u; })
+      : p.images;
+    const newImageUrl = p.image_url === oldUrl ? newUrl : p.image_url;
+    if (p.image_url === oldUrl) changed = true;
+    if (changed) writes.push(client.from("products").update({ image_url: newImageUrl, images: newImages }).eq("id", p.id));
+  });
+
+  const { data: collections } = await client.from("collections").select("id,card_image_url");
+  (collections || []).forEach((c) => {
+    if (c.card_image_url === oldUrl) writes.push(client.from("collections").update({ card_image_url: newUrl }).eq("id", c.id));
+  });
+
+  const { data: settings } = await client.from("site_settings").select("key,value");
+  (settings || []).forEach((s) => {
+    if (s.value === oldUrl) writes.push(client.from("site_settings").update({ value: newUrl }).eq("key", s.key));
+  });
+
+  if (writes.length) await Promise.all(writes);
+  return writes.length;
+}
+
 async function deleteLibraryFile(path) {
   const client = getSupabaseClient();
+  const url = client.storage.from("product-photos").getPublicUrl(path).data.publicUrl;
+  const refs = await findReferencesForUrl(url);
+  if (refs.length) {
+    const proceed = confirm(
+      `This photo is currently used by ${refs.join(", ")}. Deleting it will break ${refs.length === 1 ? "that listing" : "those listings"}. Delete anyway?`
+    );
+    if (!proceed) return null;
+  }
   const { error } = await client.storage.from("product-photos").remove([path]);
   return error ? error.message : null;
 }
@@ -844,8 +912,20 @@ async function moveLibraryFile(fromPath, toFolder) {
   const toPath = toFolder ? `${toFolder}/${filename}` : filename;
   if (toPath === fromPath) return null;
   const client = getSupabaseClient();
+  const fromUrl = client.storage.from("product-photos").getPublicUrl(fromPath).data.publicUrl;
+  const toUrl = client.storage.from("product-photos").getPublicUrl(toPath).data.publicUrl;
+
   const { error } = await client.storage.from("product-photos").move(fromPath, toPath);
-  return error ? error.message : null;
+  if (error) return error.message;
+
+  // The file's URL just changed — follow every DB reference to the OLD
+  // url and repoint it at the new one, so organizing photos into folders
+  // never silently breaks whatever was already using one.
+  const updatedCount = await updateReferencesAfterMove(fromUrl, toUrl);
+  if (updatedCount > 0) {
+    alert(`Moved — and updated ${updatedCount} place${updatedCount === 1 ? "" : "s"} that was using this photo so it keeps working.`);
+  }
+  return null;
 }
 
 /* Builds the folders+files markup shared by the Library tab and the item-
