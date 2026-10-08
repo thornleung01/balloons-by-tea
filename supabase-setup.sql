@@ -349,3 +349,244 @@ create policy "Authenticated can delete site images"
   on storage.objects for delete
   to authenticated
   using (bucket_id = 'site-images');
+
+-- Hardening pass — tie "admin write" policies to the one real admin
+-- account, and add DB-level CHECK constraints as a backstop behind the
+-- client-side validation in js/admin.js / js/app.js.
+--
+-- 1. Every policy above that grants write access `to authenticated
+--    using (true)` trusts ANY logged-in Supabase auth user, not
+--    specifically this site's one real admin account
+--    (amandatea02@outlook.com — the only account admin.html's login
+--    form ever signs in via signInWithPassword; there is no sign-up
+--    flow anywhere in this codebase). If self-signup were ever enabled
+--    on this project (unconfirmed either way), a stranger's own account
+--    would otherwise pass every one of those checks. The policies below
+--    re-declare those same policy names (drop-then-recreate, same
+--    mechanism this whole file already relies on) with is_admin() added
+--    to their condition, so re-running this file replaces the looser
+--    version with the tightened one. Public read policies and the two
+--    logged-out-submission policies (orders insert, analytics_events
+--    insert) are untouched on purpose — those must stay open to anon.
+-- 2. CHECK constraints below are defense-in-depth: RLS controls WHO can
+--    write, not WHAT they write. These mirror validation already
+--    enforced client-side (required-field checks in js/admin.js,
+--    <input type="number" min="0"> on price) so a UI bypass or bug
+--    can't insert garbage. Only fields the app always treats as
+--    required/non-negative are constrained; optional fields
+--    (description, style, notes, tagline, images shape, etc.) are left
+--    alone since '' / null / '{}' are legitimate values for them
+--    throughout the codebase.
+
+-- Ties every "admin-only" RLS policy to this one specific account instead
+-- of trusting any authenticated Supabase user — closes a gap where, if
+-- self-signup were ever enabled on this project (unconfirmed either way),
+-- a stranger's own account would otherwise pass every `to authenticated`
+-- check below. To add/change which account counts as admin later, this
+-- function is the only place that needs editing.
+create or replace function is_admin()
+returns boolean
+language sql
+stable
+as $$
+  select auth.email() = 'amandatea02@outlook.com';
+$$;
+
+-- Products — tighten the one "manage" (all) policy.
+drop policy if exists "Authenticated can manage products" on products;
+create policy "Authenticated can manage products"
+  on products for all
+  to authenticated
+  using (is_admin())
+  with check (is_admin());
+
+-- Storage: product-photos bucket — tighten upload/update/delete (public
+-- read policy is left untouched).
+drop policy if exists "Authenticated can upload product photos" on storage.objects;
+create policy "Authenticated can upload product photos"
+  on storage.objects for insert
+  to authenticated
+  with check (bucket_id = 'product-photos' and is_admin());
+
+drop policy if exists "Authenticated can update product photos" on storage.objects;
+create policy "Authenticated can update product photos"
+  on storage.objects for update
+  to authenticated
+  using (bucket_id = 'product-photos' and is_admin());
+
+drop policy if exists "Authenticated can delete product photos" on storage.objects;
+create policy "Authenticated can delete product photos"
+  on storage.objects for delete
+  to authenticated
+  using (bucket_id = 'product-photos' and is_admin());
+
+-- Orders — tighten select/update/delete. The public insert policy
+-- ("Anyone can submit an order") stays open to anon + authenticated,
+-- since that's how checkout works for logged-out customers.
+drop policy if exists "Authenticated can manage orders" on orders;
+create policy "Authenticated can manage orders"
+  on orders for select
+  to authenticated
+  using (is_admin());
+
+drop policy if exists "Authenticated can update orders" on orders;
+create policy "Authenticated can update orders"
+  on orders for update
+  to authenticated
+  using (is_admin())
+  with check (is_admin());
+
+drop policy if exists "Authenticated can delete orders" on orders;
+create policy "Authenticated can delete orders"
+  on orders for delete
+  to authenticated
+  using (is_admin());
+
+-- Site settings — tighten the one "manage" (all) policy.
+drop policy if exists "Authenticated can manage settings" on site_settings;
+create policy "Authenticated can manage settings"
+  on site_settings for all
+  to authenticated
+  using (is_admin())
+  with check (is_admin());
+
+-- Collections — tighten the one "manage" (all) policy.
+drop policy if exists "Authenticated can manage collections" on collections;
+create policy "Authenticated can manage collections"
+  on collections for all
+  to authenticated
+  using (is_admin())
+  with check (is_admin());
+
+-- Nav items — tighten the one "manage" (all) policy.
+drop policy if exists "Authenticated can manage nav items" on nav_items;
+create policy "Authenticated can manage nav items"
+  on nav_items for all
+  to authenticated
+  using (is_admin())
+  with check (is_admin());
+
+-- FAQ items — tighten the one "manage" (all) policy.
+drop policy if exists "Authenticated can manage faq items" on faq_items;
+create policy "Authenticated can manage faq items"
+  on faq_items for all
+  to authenticated
+  using (is_admin())
+  with check (is_admin());
+
+-- Layout overrides — tighten the one "manage" (all) policy.
+drop policy if exists "Authenticated can manage layout overrides" on layout_overrides;
+create policy "Authenticated can manage layout overrides"
+  on layout_overrides for all
+  to authenticated
+  using (is_admin())
+  with check (is_admin());
+
+-- Layout overrides history — tighten the insert (write) policy.
+drop policy if exists "Authenticated can write layout history" on layout_overrides_history;
+create policy "Authenticated can write layout history"
+  on layout_overrides_history for insert
+  to authenticated
+  with check (is_admin());
+
+-- Analytics events — tighten select/delete. The public insert policy
+-- ("Anyone can log an analytics event") stays open to anon +
+-- authenticated, since that's how the public site records its own
+-- behavior for logged-out visitors.
+drop policy if exists "Authenticated can read analytics events" on analytics_events;
+create policy "Authenticated can read analytics events"
+  on analytics_events for select
+  to authenticated
+  using (is_admin());
+
+drop policy if exists "Authenticated can delete analytics events" on analytics_events;
+create policy "Authenticated can delete analytics events"
+  on analytics_events for delete
+  to authenticated
+  using (is_admin());
+
+-- Storage: site-images bucket — tighten upload/update/delete (public
+-- read policy is left untouched).
+drop policy if exists "Authenticated can upload site images" on storage.objects;
+create policy "Authenticated can upload site images"
+  on storage.objects for insert
+  to authenticated
+  with check (bucket_id = 'site-images' and is_admin());
+
+drop policy if exists "Authenticated can update site images" on storage.objects;
+create policy "Authenticated can update site images"
+  on storage.objects for update
+  to authenticated
+  using (bucket_id = 'site-images' and is_admin());
+
+drop policy if exists "Authenticated can delete site images" on storage.objects;
+create policy "Authenticated can delete site images"
+  on storage.objects for delete
+  to authenticated
+  using (bucket_id = 'site-images' and is_admin());
+
+-- CHECK constraints — data-integrity backstops behind client-side
+-- validation. Named explicitly so re-running this file is safe
+-- (drop-if-exists before add, same spirit as the policy blocks above).
+
+-- products: js/admin.js's handleSaveItem() requires a non-blank name
+-- before it will even attempt a save; admin.html's price field is
+-- <input type="number" min="0" step="0.01" required>. description,
+-- style, image_url and images are legitimately optional/empty
+-- ('', null, '{}') throughout the codebase, so left unconstrained.
+alter table products drop constraint if exists products_price_check;
+alter table products add constraint products_price_check check (price >= 0);
+alter table products drop constraint if exists products_name_check;
+alter table products add constraint products_name_check check (trim(name) <> '');
+
+-- collections: handleSaveCollection() requires a non-blank title; slug
+-- is always derived from title via slugify(), which falls back to
+-- "category" rather than ever producing '' or null. sort_order is only
+-- ever set to 0 or a non-negative index by this app's code (initial
+-- default 0, drag-reorder writes 0..n-1).
+alter table collections drop constraint if exists collections_title_check;
+alter table collections add constraint collections_title_check check (trim(title) <> '');
+alter table collections drop constraint if exists collections_slug_check;
+alter table collections add constraint collections_slug_check check (trim(slug) <> '');
+alter table collections drop constraint if exists collections_sort_order_check;
+alter table collections add constraint collections_sort_order_check check (sort_order >= 0);
+
+-- nav_items: handleSaveNav() requires both label and href to be
+-- non-blank before saving. sort_order is only ever 0 or a non-negative
+-- drag-reorder index, same as collections.
+alter table nav_items drop constraint if exists nav_items_label_check;
+alter table nav_items add constraint nav_items_label_check check (trim(label) <> '');
+alter table nav_items drop constraint if exists nav_items_href_check;
+alter table nav_items add constraint nav_items_href_check check (trim(href) <> '');
+alter table nav_items drop constraint if exists nav_items_sort_order_check;
+alter table nav_items add constraint nav_items_sort_order_check check (sort_order >= 0);
+
+-- faq_items: handleSaveFaq() requires both question and answer to be
+-- non-blank before saving. sort_order is only ever 0 or a non-negative
+-- drag-reorder index, same as collections/nav_items.
+alter table faq_items drop constraint if exists faq_items_question_check;
+alter table faq_items add constraint faq_items_question_check check (trim(question) <> '');
+alter table faq_items drop constraint if exists faq_items_answer_check;
+alter table faq_items add constraint faq_items_answer_check check (trim(answer) <> '');
+alter table faq_items drop constraint if exists faq_items_sort_order_check;
+alter table faq_items add constraint faq_items_sort_order_check check (sort_order >= 0);
+
+-- orders: every insert/update in js/app.js and js/admin.js uses exactly
+-- one of these two `kind` values and exactly one of ORDER_STATUSES
+-- (js/admin.js) for `status` — nothing else is ever written. name,
+-- phone, email, address, notes etc. are intentionally left
+-- unconstrained since the public order form doesn't require all of
+-- them for every order type (e.g. a custom-order inquiry may omit
+-- fields a checkout always fills).
+alter table orders drop constraint if exists orders_kind_check;
+alter table orders add constraint orders_kind_check check (kind in ('checkout', 'custom'));
+alter table orders drop constraint if exists orders_status_check;
+alter table orders add constraint orders_status_check check (status in ('new', 'contacted', 'fulfilled'));
+
+-- analytics_events: trackEvent() (js/analytics.js) always passes a
+-- non-empty string literal event_name and a session_id that's either a
+-- real UUID or the literal "unknown" fallback — never blank.
+alter table analytics_events drop constraint if exists analytics_events_event_name_check;
+alter table analytics_events add constraint analytics_events_event_name_check check (trim(event_name) <> '');
+alter table analytics_events drop constraint if exists analytics_events_session_id_check;
+alter table analytics_events add constraint analytics_events_session_id_check check (trim(session_id) <> '');
