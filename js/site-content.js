@@ -147,7 +147,7 @@ function renderShopGrid() {
   grid.innerHTML = window.SITE_COLLECTIONS.map((c) => `
     <article class="shop-card">
       <a class="shop-card-media" href="${escapeHtml(collectionHref(c))}" data-edit-key="shop-card-img:${escapeHtml(c.slug)}" data-edit-type="block">
-        <img src="${escapeHtml(c.card_image_url || NO_PHOTO_IMAGE)}" alt="${escapeHtml(c.title)} collection"/>
+        <img src="${escapeHtml(c.card_image_url || NO_PHOTO_IMAGE)}" alt="${escapeHtml(c.title)} collection" loading="lazy" decoding="async"/>
       </a>
       <h3><a href="${escapeHtml(collectionHref(c))}" data-edit-key="shop-card-title:${escapeHtml(c.slug)}" data-edit-type="text">${escapeHtml(c.title)}</a></h3>
     </article>
