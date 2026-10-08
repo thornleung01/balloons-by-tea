@@ -38,11 +38,19 @@ function trackEvent(eventName, metadata) {
   try {
     const client = typeof getSupabaseClient === "function" ? getSupabaseClient() : null;
     if (!client) return;
-    client.from("analytics_events").insert({
+    const row = {
       session_id: getAnalyticsSessionId(),
       event_name: eventName,
       page: (document.body && document.body.dataset.page) || location.pathname,
       metadata: metadata || {}
+    };
+    // Skip logged-in sessions: the only account that ever signs in is the
+    // admin, and their own page visits (e.g. opening a page to use edit
+    // mode) would otherwise inflate "Visited the site" in the funnel.
+    // getSession() reads the stored session locally — no network call.
+    client.auth.getSession().then(({ data }) => {
+      if (data && data.session) return;
+      return client.from("analytics_events").insert(row);
     }).then(
       () => {},
       () => {} // a failed insert (offline, RLS misconfigured, etc.) is silently dropped

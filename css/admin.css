@@ -59,6 +59,20 @@ body.admin-body {
   align-items: start;
 }
 @media (max-width: 860px) { .admin-grid { grid-template-columns: 1fr; } }
+/* Grid items default to min-width:auto, so a wide child (the product
+   list's filter row, a long item name) refused to shrink and pushed the
+   Products cards to ~590px on a phone, scrolling the whole page sideways. */
+.admin-grid > * { min-width: 0; }
+
+/* On phones the header's logo + email + View site + Log out doesn't fit on
+   one line: let the actions wrap under the logo, and drop the (redundant
+   with the login screen) email address on the narrowest screens. */
+@media (max-width: 560px) {
+  .admin-header { flex-wrap: wrap; gap: var(--space-2); padding: 10px var(--space-3); }
+  .admin-header .brand-logo { height: 40px; }
+  .admin-header-actions { flex-wrap: wrap; justify-content: flex-end; margin-left: auto; }
+  #whoAmI { display: none; }
+}
 
 .admin-card h2 { font-size: 1.2rem; margin-bottom: var(--space-3); }
 
@@ -380,6 +394,14 @@ body.admin-body {
 .admin-item-body .meta { font-size: 0.8rem; color: var(--color-fg-faint); }
 .admin-item-row.inactive { opacity: 0.5; }
 .admin-item-actions { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
+/* Toggle + Edit + Duplicate + Delete + View is ~315px — wider than the
+   room left beside the thumbnail and name on a phone. Wrap the actions
+   onto their own line under the item instead of scrolling the page. */
+@media (max-width: 560px) {
+  .admin-item-row { flex-wrap: wrap; }
+  .admin-item-body { flex: 1 1 0; min-width: 0; }
+  .admin-item-actions { flex: 1 0 100%; flex-wrap: wrap; justify-content: flex-end; }
+}
 .admin-item-actions button,
 .admin-item-actions .view-link {
   font-size: 0.78rem; font-weight: 600; padding: 6px 12px; border-radius: var(--radius-pill);
@@ -392,6 +414,7 @@ body.admin-body {
 }
 .admin-item-actions button:hover,
 .admin-item-actions .view-link:hover { border-color: var(--color-accent); color: var(--color-fg); }
+.admin-item-actions .view-link.is-hidden-item { color: var(--color-fg-faint); border-style: dashed; }
 .admin-item-actions button.danger:hover { border-color: var(--color-destructive); color: var(--color-destructive); }
 
 .empty-note { font-size: 0.9rem; color: var(--color-fg-faint); text-align: center; padding: var(--space-4) 0; }

@@ -316,7 +316,9 @@ function renderProductList() {
         <button type="button" class="edit-btn" data-id="${item.id}">Edit</button>
         <button type="button" class="duplicate-btn" data-id="${item.id}">Duplicate</button>
         <button type="button" class="danger delete-btn" data-id="${item.id}">Delete</button>
-        ${viewHref ? `<a class="view-link" href="${escapeHtml(viewHref)}" target="_blank" rel="noopener">View</a>` : ""}
+        ${viewHref ? (item.active === false
+          ? `<a class="view-link is-hidden-item" href="${escapeHtml(viewHref)}" target="_blank" rel="noopener" title="This item is hidden, so it won't appear on that page until you switch it on">View (hidden)</a>`
+          : `<a class="view-link" href="${escapeHtml(viewHref)}" target="_blank" rel="noopener">View</a>`) : ""}
       </div>
     </div>
   `;
@@ -2334,7 +2336,12 @@ async function bulkDeleteOrders() {
    newline — otherwise a customer name/note/address containing a comma
    would silently split into extra columns. */
 function csvEscapeField(value) {
-  const str = value === null || value === undefined ? "" : String(value);
+  let str = value === null || value === undefined ? "" : String(value);
+  // Order fields come straight from the public checkout/custom-order
+  // forms, so a "customer" could submit a name like =HYPERLINK(...) that a
+  // spreadsheet would execute as a formula on open. Prefix a single quote
+  // to any cell starting with a formula trigger so it's read as text.
+  if (/^[=+\-@\t\r]/.test(str)) str = "'" + str;
   if (/[",\r\n]/.test(str)) {
     return `"${str.replace(/"/g, '""')}"`;
   }
@@ -2372,7 +2379,9 @@ function exportOrdersCsv() {
     ].map(csvEscapeField).join(","));
   });
 
-  const blob = new Blob([lines.join("\r\n")], { type: "text/csv;charset=utf-8;" });
+  // Leading BOM so Excel detects UTF-8 — without it, accented or non-Latin
+  // names/notes open as mojibake.
+  const blob = new Blob(["﻿" + lines.join("\r\n")], { type: "text/csv;charset=utf-8;" });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;

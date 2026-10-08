@@ -807,6 +807,7 @@ const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
    only if every rule passed. */
 function runFieldValidation(form, rules, errorIdPrefix) {
   let valid = true;
+  let firstInvalid = null;
   const formName = errorIdPrefix === "co-error-" ? "custom_order" : "checkout";
   rules.forEach(([field, test, message]) => {
     const input = form[field];
@@ -816,12 +817,18 @@ function runFieldValidation(form, rules, errorIdPrefix) {
       if (errorEl) errorEl.textContent = message;
       input.setAttribute("aria-invalid", "true");
       valid = false;
+      if (!firstInvalid) firstInvalid = input;
       trackEvent(`${formName}_field_error`, { field });
     } else {
       if (errorEl) errorEl.textContent = "";
       input.removeAttribute("aria-invalid");
     }
   });
+  // Without this, focus stays on the submit button — on the custom-order
+  // page and the phone checkout the errors are scrolled out of view, so
+  // pressing submit looks like nothing happened. Focusing the first bad
+  // field scrolls it into view and lets a screen reader announce it.
+  if (firstInvalid) firstInvalid.focus({ preventScroll: false });
   return valid;
 }
 
@@ -922,6 +929,13 @@ function closeCheckoutModal() {
     document.body.style.overflow = "";
   }
   closeOverlay(modal);
+  // After a completed order the cart is empty — dropping the customer back
+  // onto an open, empty cart drawer is a dead end. Close it too, so
+  // "Continue browsing" actually returns them to the page.
+  if (!onFormStep) {
+    const drawerEntry = overlayStack.find((entry) => entry.container === drawer);
+    if (drawerEntry && typeof drawerEntry.close === "function") drawerEntry.close();
+  }
 }
 
 function showCheckoutStep(step) {
@@ -1000,10 +1014,14 @@ function initCheckoutForm() {
     submitBtn.innerHTML = `<span class="spinner" aria-hidden="true"></span><span>Sending order...</span>`;
 
     const payload = buildOrderPayload(form);
+    // Generated before submit and saved with the order (prefixed onto
+    // `summary`, which the admin Orders list and CSV export already show),
+    // so the reference the customer is told actually exists on our side.
+    const ref = "AUR-" + Date.now().toString().slice(-6);
+    payload.summary = `Ref: ${ref}\n${payload.summary}`;
 
     try {
       await submitOrder(payload);
-      const ref = "AUR-" + Date.now().toString().slice(-6);
       document.getElementById("orderRef").textContent = ref;
       trackEvent("checkout_submitted", { cartTotal: payload.total });
       saveCart([]);
@@ -1174,13 +1192,14 @@ function initCustomOrderForm() {
       address,
       date: `${form.eventDate.value.trim()} ${form.eventTime.value.trim()}`.trim(),
       notes: notesLines.join("\n"),
-      summary: "Custom order request",
+      summary: "",
       total: budget ? `Budget: ${budget}` : "Budget not specified"
     };
+    const ref = "AUR-" + Date.now().toString().slice(-6);
+    payload.summary = `Ref: ${ref}\nCustom order request`;
 
     try {
       await submitOrder(payload);
-      const ref = "AUR-" + Date.now().toString().slice(-6);
       document.getElementById("customOrderRef").textContent = ref;
       trackEvent("custom_order_submitted");
       document.getElementById("customOrderFormWrap").hidden = true;

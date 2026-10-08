@@ -2,6 +2,18 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8"/>
+<script>
+  /* GitHub Pages serves this page at whatever bad URL was requested (e.g.
+     /balloons-by-tea/a/b/x), so every relative css/js/image path would
+     resolve against /a/b/ and 404. Pin a <base> to the site root first.
+     On *.github.io the root is the first path segment (the repo name);
+     anywhere else (custom domain, local dev) it's "/". */
+  (function () {
+    var seg = location.pathname.split("/")[1];
+    var root = /\.github\.io$/.test(location.hostname) && seg ? "/" + seg + "/" : "/";
+    document.write('<base href="' + root + '">');
+  })();
+</script>
 <script type="text/javascript">
     (function(c,l,a,r,i,t,y){
         c[a]=c[a]||function(){(c[a].q=c[a].q||[]).push(arguments)};
