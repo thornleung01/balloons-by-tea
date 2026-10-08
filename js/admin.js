@@ -2045,8 +2045,22 @@ const SETTINGS_KEYS = [
 async function loadSettingsIntoForm() {
   // Reset staged photos before the fetch, not after — otherwise a photo
   // picked while this request is in flight gets silently thrown away.
+  // Clear the file inputs too: if one kept showing a filename after its
+  // staged file was dropped, re-picking that same file fires no change
+  // event and Save would quietly skip the upload.
   currentHeroPhotoFile = null;
   currentLogoPhotoFile = null;
+  ["s-hero_image", "s-logo_image"].forEach((id) => {
+    const input = document.getElementById(id);
+    if (input) input.value = "";
+  });
+  // Snapshot text fields so anything typed while the request is in flight
+  // isn't overwritten by the loaded values.
+  const valuesAtStart = {};
+  SETTINGS_KEYS.forEach((key) => {
+    const input = document.getElementById(`s-${key}`);
+    if (input) valuesAtStart[key] = input.value;
+  });
   const client = getSupabaseClient();
   const { data, error } = await client.from("site_settings").select("*");
   const statusEl = document.getElementById("settingsFormStatus");
@@ -2060,7 +2074,9 @@ async function loadSettingsIntoForm() {
 
   SETTINGS_KEYS.forEach((key) => {
     const input = document.getElementById(`s-${key}`);
-    if (input && map[key] != null) input.value = map[key];
+    if (!input || map[key] == null) return;
+    if (input.value !== valuesAtStart[key]) return; // admin edited it mid-load — keep their edit
+    input.value = map[key];
   });
 
   if (!currentHeroPhotoFile) {
@@ -2341,7 +2357,10 @@ function csvEscapeField(value) {
   // forms, so a "customer" could submit a name like =HYPERLINK(...) that a
   // spreadsheet would execute as a formula on open. Prefix a single quote
   // to any cell starting with a formula trigger so it's read as text.
-  if (/^[=+\-@\t\r]/.test(str)) str = "'" + str;
+  // Values made only of digits/spaces/()+-. (phone numbers like
+  // "+852 9123 4567", negative amounts) can't invoke a function, so they
+  // pass through untouched instead of gaining a visible apostrophe.
+  if (/^[=+\-@\t\r]/.test(str) && !/^[+\-\d\s().]+$/.test(str)) str = "'" + str;
   if (/[",\r\n]/.test(str)) {
     return `"${str.replace(/"/g, '""')}"`;
   }
@@ -2381,7 +2400,7 @@ function exportOrdersCsv() {
 
   // Leading BOM so Excel detects UTF-8 — without it, accented or non-Latin
   // names/notes open as mojibake.
-  const blob = new Blob(["﻿" + lines.join("\r\n")], { type: "text/csv;charset=utf-8;" });
+  const blob = new Blob(["\uFEFF" + lines.join("\r\n")], { type: "text/csv;charset=utf-8;" });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;

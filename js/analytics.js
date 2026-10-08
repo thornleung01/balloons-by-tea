@@ -28,6 +28,24 @@ function getAnalyticsSessionId() {
   }
 }
 
+/* True if supabase-js has a stored login session in this browser (its
+   localStorage key is "sb-<project-ref>-auth-token"). Checked synchronously
+   instead of via auth.getSession(), which may make a network call to
+   refresh an expired token — and if that refresh failed, the admin's own
+   visit would get counted after all. An expired-but-present session still
+   means "this is the admin's browser", which is what matters here. */
+function hasStoredAuthSession() {
+  try {
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (/^sb-.+-auth-token$/.test(key) && localStorage.getItem(key)) return true;
+    }
+  } catch (err) {
+    // storage blocked (private mode etc.) — treat as a normal visitor
+  }
+  return false;
+}
+
 /* event_name is a short machine-readable tag (e.g. "checkout_started");
    metadata is a small plain object for extra context (field name on a
    validation error, product id on an add-to-cart, etc). Never await this
@@ -47,11 +65,8 @@ function trackEvent(eventName, metadata) {
     // Skip logged-in sessions: the only account that ever signs in is the
     // admin, and their own page visits (e.g. opening a page to use edit
     // mode) would otherwise inflate "Visited the site" in the funnel.
-    // getSession() reads the stored session locally — no network call.
-    client.auth.getSession().then(({ data }) => {
-      if (data && data.session) return;
-      return client.from("analytics_events").insert(row);
-    }).then(
+    if (hasStoredAuthSession()) return;
+    client.from("analytics_events").insert(row).then(
       () => {},
       () => {} // a failed insert (offline, RLS misconfigured, etc.) is silently dropped
     );

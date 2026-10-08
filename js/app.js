@@ -777,6 +777,21 @@ function initCartUI() {
 /* ==========================================================================
    Checkout modal
    ========================================================================== */
+/* Gives an order the reference shown to the customer and saves it with
+   the order (prefixed onto `summary`, which the admin Orders list and CSV
+   export already show), so a quoted reference can actually be looked up.
+   Random rather than clock-derived: 6 chars from a 32-symbol alphabet is
+   ~1 billion values (256 is a multiple of 32, so no modulo bias), where
+   the old last-6-digits-of-Date.now() repeated every ~17 minutes. */
+function attachOrderRef(payload) {
+  const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"; // no 0/O/1/I to misread
+  const bytes = new Uint8Array(6);
+  crypto.getRandomValues(bytes);
+  const ref = "AUR-" + Array.from(bytes, (b) => alphabet[b % alphabet.length]).join("");
+  payload.summary = `Ref: ${ref}\n${payload.summary || ""}`;
+  return ref;
+}
+
 function buildOrderPayload(form) {
   const cart = getCart();
   const summary = cart.map((l) => `${l.qty} x ${l.name} (${collectionLabel(l.collection)}) - ${formatPrice(l.price * l.qty)}`).join("\n");
@@ -1019,11 +1034,7 @@ function initCheckoutForm() {
     submitBtn.innerHTML = `<span class="spinner" aria-hidden="true"></span><span>Sending order...</span>`;
 
     const payload = buildOrderPayload(form);
-    // Generated before submit and saved with the order (prefixed onto
-    // `summary`, which the admin Orders list and CSV export already show),
-    // so the reference the customer is told actually exists on our side.
-    const ref = "AUR-" + Date.now().toString().slice(-6);
-    payload.summary = `Ref: ${ref}\n${payload.summary}`;
+    const ref = attachOrderRef(payload);
 
     try {
       await submitOrder(payload);
@@ -1197,11 +1208,10 @@ function initCustomOrderForm() {
       address,
       date: `${form.eventDate.value.trim()} ${form.eventTime.value.trim()}`.trim(),
       notes: notesLines.join("\n"),
-      summary: "",
+      summary: "Custom order request",
       total: budget ? `Budget: ${budget}` : "Budget not specified"
     };
-    const ref = "AUR-" + Date.now().toString().slice(-6);
-    payload.summary = `Ref: ${ref}\nCustom order request`;
+    const ref = attachOrderRef(payload);
 
     try {
       await submitOrder(payload);

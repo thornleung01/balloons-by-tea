@@ -1300,24 +1300,29 @@ fieldset.field { border: 0; margin: 0 0 var(--space-2); padding: 0; min-width: 0
 
 .modal-actions { display: flex; gap: var(--space-2); margin-top: var(--space-2); }
 
+/* "Back to cart" was being squeezed by the 100%-wide Place order button
+   until it wrapped onto 2-3 lines — at every width, not just mobile. */
+.modal-actions .btn-outline { flex-shrink: 0; white-space: nowrap; }
+/* `.field label` (display:block) out-ranks `.radio-option` /
+   `.checkbox-option` (display:flex), so the box sat above the text
+   baseline and long labels wrapped underneath it — also at every width. */
+.field label.radio-option,
+.field label.checkbox-option { display: flex; margin-bottom: 0; }
+.field .radio-option input,
+.field .checkbox-option input { flex-shrink: 0; margin: 0; padding: 0; }
+
 @media (max-width: 960px) {
-  /* "Back to cart" was being squeezed by the 100%-wide Place order button
-     until it wrapped onto 2-3 lines. */
-  .modal-actions .btn-outline { flex-shrink: 0; white-space: nowrap; }
-  /* `.field label` (display:block) out-ranks `.radio-option` /
-     `.checkbox-option` (display:flex), so the box sat above the text
-     baseline and long labels wrapped underneath it. Restore the flex row
-     and give each option a full-height tap row. */
+  /* Full-height tap rows for each option on touch screens. */
   .field label.radio-option,
-  .field label.checkbox-option { display: flex; min-height: 44px; margin-bottom: 0; }
-  .field .radio-option input,
-  .field .checkbox-option input { flex-shrink: 0; margin: 0; padding: 0; }
+  .field label.checkbox-option { min-height: 44px; }
   .radio-group { flex-wrap: wrap; gap: 0 var(--space-4); }
   .checkbox-group { gap: 0 var(--space-4); }
 }
 @media (max-width: 560px) {
-  /* Stack Place order above Back to cart, both full width. */
-  #checkoutForm .modal-actions { flex-direction: column-reverse; }
+  /* Stack the two buttons full width. Plain `column` (not
+     column-reverse) so on-screen order matches DOM/keyboard focus order:
+     Back to cart, then Place order at the thumb-reachable bottom. */
+  #checkoutForm .modal-actions { flex-direction: column; }
   #checkoutForm .modal-actions .btn-outline { width: 100%; }
   .radio-group, .checkbox-group { gap: 0 var(--space-3); }
 }
@@ -1581,8 +1586,9 @@ fieldset.field { border: 0; margin: 0 0 var(--space-2); padding: 0; min-width: 0
 .carousel-dots {
   display: flex;
   justify-content: center;
-  gap: 8px;
+  gap: 16px;
   margin-top: var(--space-1);
+  padding: 8px 0; /* room for each dot's 24px tap area, see ::after below */
 }
 .carousel-dot {
   width: 8px;
@@ -1601,10 +1607,13 @@ fieldset.field { border: 0; margin: 0 0 var(--space-2); padding: 0; min-width: 0
   color: var(--color-fg-faint);
   margin: var(--space-2) 0 0;
 }
-/* The dots are drawn 8px tall; an invisible pseudo-element pads the
-   hit area out to a usable size without changing how they look. */
+/* The dots are drawn 8px tall; an invisible pseudo-element pads each hit
+   area to 24x24 without changing how they look. It stays inside the dots
+   row's own padding and the 16px gaps, so it never overlaps the review
+   card above, the attribution below, or a neighbouring dot (an earlier
+   -18px version reached into the card and hijacked taps on it). */
 .carousel-dot { position: relative; }
-.carousel-dot::after { content: ""; position: absolute; inset: -18px -4px; }
+.carousel-dot::after { content: ""; position: absolute; inset: -8px -8px; }
 @media (max-width: 560px) {
   .review-carousel { gap: var(--space-1); }
 }
@@ -1860,35 +1869,19 @@ fieldset.field { border: 0; margin: 0 0 var(--space-2); padding: 0; min-width: 0
 }
 .edit-shortcuts-desc { font-size: 0.82rem; color: var(--color-fg-soft); line-height: 1.4; }
 
+/* Edit-mode handles are positioned against their element, so a statically
+   positioned editable element needs position:relative. Wrapped in :where()
+   so this has ZERO specificity: any element that already declares its own
+   position (the sticky nav, the absolute word-badge headings and hero
+   photo, the fixed WhatsApp button, anything added later) keeps it.
+   Previously this out-ranked those component rules and each one had to be
+   patched back individually — the hero photo dropping into flow and
+   shoving the hero text off-screen was one such miss. */
+:where(body.edit-mode-active [data-edit-key]) { position: relative; }
 body.edit-mode-active [data-edit-key] {
-  position: relative;
   outline: 1.5px dashed transparent;
   transition: outline-color 120ms var(--ease);
 }
-/* .nav relies on position:sticky to stay pinned while scrolling; the
-   generic rule above would silently downgrade it to relative during edit
-   mode (higher specificity wins), so restore sticky specifically for it. */
-body.edit-mode-active nav.nav[data-edit-key] {
-  position: sticky;
-  top: 0;
-}
-/* Same issue, different element: .word-badge > * (the decorative-bow
-   headings — About, FAQ, Custom Order, category titles) relies on
-   position:absolute + inset:0 to stretch and center within the badge
-   artwork. The generic rule above downgrades it to relative, collapsing
-   the heading to hug just its text instead of filling the badge — which
-   then drags the edit-controls cluster along with it, floating oddly
-   next to the words instead of anchored at the badge's corner. */
-body.edit-mode-active .word-badge > [data-edit-key] {
-  position: absolute;
-  inset: 0;
-}
-/* Same again for the homepage hero photo (absolute, filling the hero
-   behind its text) and the floating WhatsApp button (fixed). Downgraded to
-   relative, the hero photo drops into flow and shoves the hero text off
-   the right edge of the screen; the button lands inside the page footer. */
-body.edit-mode-active .hero-photo-img[data-edit-key] { position: absolute; }
-body.edit-mode-active .whatsapp-float[data-edit-key] { position: fixed; }
 body.edit-mode-active [data-edit-key]:hover { outline-color: var(--color-accent); }
 body.edit-mode-active [data-edit-key].edit-is-locked:hover { outline-color: var(--color-fg-faint); }
 body.edit-mode-active [data-edit-key].edit-is-hidden { opacity: 0.35; }
