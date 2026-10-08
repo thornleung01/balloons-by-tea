@@ -621,3 +621,13 @@ alter table analytics_events drop constraint if exists analytics_events_event_na
 alter table analytics_events add constraint analytics_events_event_name_check check (trim(event_name) <> '') not valid;
 alter table analytics_events drop constraint if exists analytics_events_session_id_check;
 alter table analytics_events add constraint analytics_events_session_id_check check (trim(session_id) <> '') not valid;
+
+-- ==========================================================================
+-- Event-date availability (blocked / fully booked dates)
+-- ==========================================================================
+-- (filled in by the availability feature)
+
+-- ==========================================================================
+-- Delivery areas (postal codes we deliver to)
+-- ==========================================================================
+-- (filled in by the delivery-area feature)

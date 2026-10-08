@@ -62,6 +62,7 @@
       <button type="button" class="admin-tab active" id="tabProductsBtn" role="tab" aria-selected="true">Products</button>
       <button type="button" class="admin-tab" id="tabOrdersBtn" role="tab" aria-selected="false">Orders <span class="admin-tab-badge" id="ordersBadge" hidden>0</span></button>
       <button type="button" class="admin-tab" id="tabAnalyticsBtn" role="tab" aria-selected="false">Analytics</button>
+      <button type="button" class="admin-tab" id="tabDeliveryBtn" role="tab" aria-selected="false">Delivery</button>
       <button type="button" class="admin-tab" id="tabCollectionsBtn" role="tab" aria-selected="false">Collections</button>
       <button type="button" class="admin-tab" id="tabLibraryBtn" role="tab" aria-selected="false">Library</button>
       <button type="button" class="admin-tab" id="tabNavBtn" role="tab" aria-selected="false">Nav</button>
@@ -215,6 +216,11 @@
       </div>
       <p class="panel-subtitle">Pairs with <a href="https://clarity.microsoft.com" target="_blank" rel="noopener">Microsoft Clarity</a> (session recordings/heatmaps) for the "why" behind these numbers.</p>
       <div id="analyticsContent"></div>
+    </div>
+
+    <div id="deliveryPanel" class="admin-grid" hidden>
+      <div class="admin-card" id="availabilityAdmin"></div>
+      <div class="admin-card" id="deliveryAreaAdmin"></div>
     </div>
 
     <div id="collectionsPanel" class="admin-grid" hidden>
@@ -441,5 +447,7 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
 <script src="js/supabase-config.js"></script>
 <script src="js/admin.js"></script>
+<script src="js/admin-availability.js"></script>
+<script src="js/admin-delivery-areas.js"></script>
 </body>
 </html>

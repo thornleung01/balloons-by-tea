@@ -1519,6 +1519,12 @@ const TABS = {
   products: { btnId: "tabProductsBtn", panelId: "productsPanel", onEnter: renderProductList },
   orders: { btnId: "tabOrdersBtn", panelId: "ordersPanel", onEnter: refreshOrderList },
   analytics: { btnId: "tabAnalyticsBtn", panelId: "analyticsPanel", onEnter: refreshAnalyticsPanel },
+  // Two independent features share this tab, each in its own file
+  // (js/admin-availability.js, js/admin-delivery-areas.js).
+  delivery: { btnId: "tabDeliveryBtn", panelId: "deliveryPanel", onEnter: () => {
+    window.refreshAvailabilityAdmin();
+    window.refreshDeliveryAreaAdmin();
+  } },
   collections: { btnId: "tabCollectionsBtn", panelId: "collectionsPanel", onEnter: refreshCollectionList },
   library: { btnId: "tabLibraryBtn", panelId: "libraryPanel", onEnter: refreshLibraryPanel },
   nav: { btnId: "tabNavBtn", panelId: "navPanel", onEnter: refreshNavList },

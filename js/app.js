@@ -852,6 +852,51 @@ function runFieldValidation(form, rules, errorIdPrefix) {
   return valid;
 }
 
+/* Order guards — business rules that can stop an otherwise-valid order
+   (a fully booked date, an address outside the delivery area). Each
+   feature lives in its own file (js/availability.js, js/delivery-area.js)
+   and registers itself here:
+
+     window.ORDER_GUARDS.push(async ({ form, kind }) => {
+       // kind is "checkout" or "custom_order"
+       return null;                                  // order may proceed
+       return { field: "date", message: "..." };     // block it
+     });
+
+   `field` is the form control's name. Its error element
+   (`${errorPrefix}${field}`) shows the message if one exists, otherwise
+   the form-level error area does. A guard that throws is treated as
+   passing — a bug or network failure in a guard must never stop a real
+   customer from ordering. */
+window.ORDER_GUARDS = window.ORDER_GUARDS || [];
+
+async function runOrderGuards(form, kind, errorPrefix, formErrorId) {
+  const formErrorEl = document.getElementById(formErrorId);
+  for (const guard of window.ORDER_GUARDS) {
+    let problem = null;
+    try {
+      problem = await guard({ form, kind });
+    } catch (err) {
+      console.error("Order guard failed; letting the order through", err);
+      continue;
+    }
+    if (!problem) continue;
+    const input = problem.field ? form.elements[problem.field] : null;
+    const fieldErrorEl = problem.field ? document.getElementById(`${errorPrefix}${problem.field}`) : null;
+    if (fieldErrorEl) fieldErrorEl.textContent = problem.message;
+    else if (formErrorEl) formErrorEl.textContent = problem.message;
+    if (input && typeof input.focus === "function") {
+      if (input.setAttribute) input.setAttribute("aria-invalid", "true");
+      input.scrollIntoView({ block: "center" });
+      input.focus({ preventScroll: true });
+    }
+    trackEvent(`${kind}_field_error`, { field: problem.field || "order", guard: true });
+    return false;
+  }
+  if (formErrorEl) formErrorEl.textContent = "";
+  return true;
+}
+
 function validateCheckoutForm(form) {
   const rules = [
     ["name", (v) => v.length > 1, "Please enter your name."],
@@ -1033,6 +1078,12 @@ function initCheckoutForm() {
     const originalLabel = submitBtn.innerHTML;
     submitBtn.innerHTML = `<span class="spinner" aria-hidden="true"></span><span>Sending order...</span>`;
 
+    if (!(await runOrderGuards(form, "checkout", "error-", "checkoutFormError"))) {
+      submitBtn.disabled = false;
+      submitBtn.innerHTML = originalLabel;
+      return;
+    }
+
     const payload = buildOrderPayload(form);
     const ref = attachOrderRef(payload);
 
@@ -1175,6 +1226,12 @@ function initCustomOrderForm() {
     submitBtn.disabled = true;
     const originalLabel = submitBtn.innerHTML;
     submitBtn.innerHTML = `<span class="spinner" aria-hidden="true"></span><span>Sending request...</span>`;
+
+    if (!(await runOrderGuards(form, "custom_order", "co-error-", "customOrderFormError"))) {
+      submitBtn.disabled = false;
+      submitBtn.innerHTML = originalLabel;
+      return;
+    }
 
     const budget = form.budget.value.trim();
     const service = form.service.value;
