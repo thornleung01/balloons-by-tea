@@ -625,7 +625,99 @@ alter table analytics_events add constraint analytics_events_session_id_check ch
 -- ==========================================================================
 -- Event-date availability (blocked / fully booked dates)
 -- ==========================================================================
--- (filled in by the availability feature)
+-- Used by js/availability.js (customer date fields) and
+-- js/admin-availability.js (admin "Delivery" tab). Until this section has
+-- been run, the site simply treats every future date as available.
+
+-- Dates the owner has closed by hand (vacation, already fully booked
+-- off-site, etc.). One row per day; a range is just several rows.
+-- The public can read this table so the order forms can grey dates out.
+-- Note that `reason` is therefore readable by anyone too — keep it to
+-- short labels like "Fully booked" or "Vacation", nothing private.
+create table if not exists blocked_dates (
+  day date primary key,
+  reason text not null default '',
+  created_at timestamptz not null default now()
+);
+
+alter table blocked_dates enable row level security;
+
+drop policy if exists "Public can read blocked dates" on blocked_dates;
+create policy "Public can read blocked dates"
+  on blocked_dates for select
+  to anon, authenticated
+  using (true);
+
+drop policy if exists "Admin can manage blocked dates" on blocked_dates;
+create policy "Admin can manage blocked dates"
+  on blocked_dates for all
+  to authenticated
+  using (is_admin())
+  with check (is_admin());
+
+alter table blocked_dates drop constraint if exists blocked_dates_reason_length_check;
+alter table blocked_dates add constraint blocked_dates_reason_length_check check (char_length(reason) <= 200) not valid;
+
+-- Daily capacity. The limit itself is a site_settings row
+-- (key 'max_orders_per_day', value a whole number; blank / missing / 0
+-- means "no limit"), edited from the admin Delivery tab.
+--
+-- Customers can't read the orders table (RLS), so this function runs as
+-- its owner (security definer) and returns ONLY the dates in the asked-for
+-- range that are at or over the limit — never any order data, counts, or
+-- names. search_path is empty and every name is schema-qualified so a
+-- caller can't redirect it to look-alike tables.
+--
+-- orders.event_date is free text ('YYYY-MM-DD' from checkout,
+-- 'YYYY-MM-DD HH:MM' from custom orders). Only values whose first 10
+-- characters are a real calendar date count; anything else (blank,
+-- legacy text, '2026-02-30') is ignored. The date is built with
+-- make_date() from range-checked parts (day-of-month added as an offset,
+-- which can't overflow) and then compared back to the original text, so a
+-- bad value can never make a cast throw and break the whole lookup.
+-- The range is capped at 400 days to keep the query cheap.
+create or replace function public.fully_booked_dates(from_day date, to_day date)
+returns table (day date)
+language sql
+stable
+security definer
+set search_path = ''
+as $$
+  with cap as (
+    select case
+             when trim(s.value) ~ '^[0-9]{1,6}$' then trim(s.value)::integer
+             else 0
+           end as max_per_day
+    from public.site_settings s
+    where s.key = 'max_orders_per_day'
+  ),
+  order_days as (
+    -- The integer casts sit inside CASE so they only ever run on values
+    -- that already matched the pattern (a plain WHERE gives no such
+    -- ordering guarantee once the planner pushes filters around).
+    select case
+             when o.event_date ~ '^[1-9][0-9]{3}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])'
+             then pg_catalog.make_date(substr(o.event_date, 1, 4)::integer,
+                                       substr(o.event_date, 6, 2)::integer, 1)
+                  + (substr(o.event_date, 9, 2)::integer - 1)
+           end as day,
+           substr(o.event_date, 1, 10) as raw
+    from public.orders o
+  )
+  select od.day
+  from order_days od, cap
+  where cap.max_per_day > 0
+    and od.day is not null
+    and pg_catalog.to_char(od.day, 'YYYY-MM-DD') = od.raw   -- drops 2026-02-30 etc.
+    and od.day between from_day and to_day
+    and to_day - from_day between 0 and 400
+  group by od.day, cap.max_per_day
+  having count(*) >= cap.max_per_day
+  order by od.day;
+$$;
+
+revoke all on function public.fully_booked_dates(date, date) from public;
+grant execute on function public.fully_booked_dates(date, date) to anon, authenticated;
 
 -- ==========================================================================
 -- Delivery areas (postal codes we deliver to)
