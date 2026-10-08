@@ -722,4 +722,32 @@ grant execute on function public.fully_booked_dates(date, date) to anon, authent
 -- ==========================================================================
 -- Delivery areas (postal codes we deliver to)
 -- ==========================================================================
--- (filled in by the delivery-area feature)
+-- One row per Forward Sortation Area — the first 3 characters of a
+-- Canadian postal code (letter-digit-letter, e.g. "M5V"), stored
+-- uppercase. Managed from the admin "Delivery" tab (js/admin-delivery-areas.js);
+-- checked at checkout / custom-order delivery (js/delivery-area.js).
+-- While this table is EMPTY the check is off and every address is
+-- accepted — add your first area to switch it on.
+create table if not exists delivery_areas (
+  fsa text primary key,
+  label text not null default '',
+  created_at timestamptz not null default now()
+);
+
+alter table delivery_areas enable row level security;
+
+drop policy if exists "Public can read delivery areas" on delivery_areas;
+create policy "Public can read delivery areas"
+  on delivery_areas for select
+  to anon, authenticated
+  using (true);
+
+drop policy if exists "Admins can manage delivery areas" on delivery_areas;
+create policy "Admins can manage delivery areas"
+  on delivery_areas for all
+  to authenticated
+  using (is_admin())
+  with check (is_admin());
+
+alter table delivery_areas drop constraint if exists delivery_areas_fsa_check;
+alter table delivery_areas add constraint delivery_areas_fsa_check check (fsa ~ '^[A-Z][0-9][A-Z]$') not valid;

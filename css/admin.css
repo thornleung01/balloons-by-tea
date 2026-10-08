@@ -572,3 +572,8 @@ body.admin-body {
 .availability-section { margin-top: var(--space-4); padding-top: var(--space-3); border-top: 1px solid var(--color-border); }
 .availability-section h3 { font-size: 1rem; margin-bottom: var(--space-2); }
 .availability-full-note { margin-top: var(--space-2); }
+
+/* ===== Delivery areas (Delivery tab, js/admin-delivery-areas.js) ===== */
+.delivery-area-intro { font-size: 0.85rem; color: var(--color-fg-faint); margin: 0 0 var(--space-3); line-height: 1.5; }
+.delivery-area-list-title { font-size: 1rem; margin: var(--space-4) 0 var(--space-2); }
+.delivery-area-list-title span { font-weight: 400; color: var(--color-fg-faint); }

@@ -237,7 +237,7 @@
     const btn = document.getElementById("blockDatesBtn");
     btn.disabled = true;
     setStatus("blockDatesStatus", "Saving...");
-    const { error } = await getSupabaseClient().from("blocked_dates").upsert(rows, { onConflict: "day" });
+    const { error } = await mustAffect(getSupabaseClient().from("blocked_dates").upsert(rows, { onConflict: "day" }));
     busy = false;
     btn.disabled = false;
     if (error) {
@@ -259,7 +259,7 @@
     busy = true;
     btn.disabled = true;
     const days = blockedCache.filter((r) => r.day >= range.from && r.day <= range.to).map((r) => r.day);
-    const { error } = await getSupabaseClient().from("blocked_dates").delete().in("day", days);
+    const { error } = await mustAffect(getSupabaseClient().from("blocked_dates").delete().in("day", days));
     busy = false;
     if (error) {
       btn.disabled = false;
@@ -278,7 +278,7 @@
     const btn = document.getElementById("capacitySaveBtn");
     btn.disabled = true;
     setStatus("capacityStatus", "Saving...");
-    const { error } = await getSupabaseClient().from("site_settings").upsert({ key: CAPACITY_KEY, value }, { onConflict: "key" });
+    const { error } = await mustAffect(getSupabaseClient().from("site_settings").upsert({ key: CAPACITY_KEY, value }, { onConflict: "key" }));
     btn.disabled = false;
     if (error) return setStatus("capacityStatus", "Couldn't save: " + error.message, "error");
     input.value = value;
