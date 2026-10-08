@@ -1,0 +1,5 @@
+User-agent: *
+Allow: /
+Disallow: /admin.html
+
+Sitemap: https://thornleung01.github.io/balloons-by-tea/sitemap.xml
