@@ -148,7 +148,7 @@ function escapeHtml(str) {
 /* Any product without a real photo uploaded yet (via admin/Sheet/Supabase)
    shows this same placeholder graphic, rather than a generated icon —
    keeps every "no photo yet" item looking consistent across the site. */
-const NO_PHOTO_IMAGE = "images/no-picture.png";
+const NO_PHOTO_IMAGE = "images/no-picture.webp";
 
 /* A product can list several photos via `images: [...]` (array, newest
    format) or a single `image` (legacy, still supported). Falls back to the
@@ -577,7 +577,7 @@ function renderCartDrawer() {
   if (cart.length === 0) {
     list.innerHTML = `
       <div class="cart-empty">
-        <img src="images/cart-empty-icon.png" alt="" aria-hidden="true" data-edit-key="cart-empty-icon" data-edit-type="block"/>
+        <img src="images/cart-empty-icon.webp" width="154" height="144" alt="" aria-hidden="true" data-edit-key="cart-empty-icon" data-edit-type="block"/>
         <p data-edit-key="cart-empty-heading" data-edit-type="text">Your cart is empty.</p>
         <p style="font-size:0.85rem;" data-edit-key="cart-empty-subtext" data-edit-type="text">Browse a collection and add a few favorites.</p>
       </div>`;

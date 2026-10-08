@@ -614,7 +614,7 @@ button {
   display: inline-block;
   max-width: 100%;
   aspect-ratio: 2074 / 356;
-  background-image: url('../images/word-widget.png?v=2');
+  background-image: url('../images/word-widget.webp');
   background-size: 100% 100%;
   background-repeat: no-repeat;
 }
@@ -680,7 +680,7 @@ button {
   background-color: var(--cream);
   background-image:
     linear-gradient(rgba(255, 245, 227, 0.7), rgba(255, 245, 227, 0.7)),
-    url('../images/pattern-balloons.png');
+    url('../images/pattern-balloons.webp');
   background-repeat: no-repeat, repeat;
   background-size: cover, 300px 300px;
   -webkit-mask-image: var(--wave-top), linear-gradient(black, black), var(--wave-bottom);
@@ -723,7 +723,7 @@ button {
 .collection-hero p { max-width: 520px; margin: 0 auto; }
 .custom-order-section {
   position: relative;
-  background-image: url('../images/custom-order-bg.png');
+  background-image: url('../images/custom-order-bg-1170w.webp');
   background-repeat: no-repeat;
   background-position: top center;
   background-size: 100% auto;
@@ -747,7 +747,7 @@ button {
     grid-row: 1;
     grid-column: 1;
     background-color: #FDFDF8;
-    background-image: url('../images/custom-order-bg.png');
+    background-image: url('../images/custom-order-bg.webp');
     background-repeat: no-repeat;
     background-position: top center;
     background-size: 100% auto;
@@ -1516,7 +1516,7 @@ fieldset.field { border: 0; margin: 0 0 var(--space-2); padding: 0; min-width: 0
   min-width: 0;
   max-width: 880px;
   aspect-ratio: 1774 / 887;
-  background-image: url('../images/review-frame.png');
+  background-image: url('../images/review-frame.webp');
   background-size: 100% 100%;
   background-repeat: no-repeat;
 }
@@ -1559,7 +1559,7 @@ fieldset.field { border: 0; margin: 0 0 var(--space-2); padding: 0; min-width: 0
     display: block;
     width: 100%;
     aspect-ratio: 1774 / 887;
-    background-image: url('../images/review-frame.png');
+    background-image: url('../images/review-frame.webp');
     background-size: 100% 100%;
     background-repeat: no-repeat;
     flex-shrink: 0;
