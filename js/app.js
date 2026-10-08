@@ -258,7 +258,7 @@ function renderItemCards(items, gridId) {
   grid.querySelectorAll(".product-art").forEach((art) => {
     const item = items.find((i) => i.id === art.dataset.artId);
     if (!item) return;
-    const open = () => openLightbox(getItemImages(item), item.name);
+    const open = () => openLightbox(getItemImages(item), item.name, art);
     art.addEventListener("click", open);
     art.addEventListener("keydown", (e) => {
       if (e.key === "Enter" || e.key === " ") {
@@ -370,31 +370,84 @@ function enhanceSelect(select) {
   list.setAttribute("role", "listbox");
   list.hidden = true;
 
+  /* Each <li> is a roving-tabindex option: exactly one of them is
+     tabbable (tabIndex 0) at a time — the rest are -1 — and arrow
+     keys move that single "current" stop among them. Before this,
+     the only way to change the value with a keyboard was through the
+     real <select>, which is tabindex=-1 + aria-hidden and therefore
+     completely unreachable — opening the dropdown worked, but nothing
+     inside it was operable without a mouse. */
+  function choose(value) {
+    select.value = value;
+    select.dispatchEvent(new Event("change", { bubbles: true }));
+    sync();
+    close();
+    button.focus();
+  }
+
   const options = Array.from(select.options).map((opt) => {
     const li = document.createElement("li");
     li.className = "custom-select-option";
     li.setAttribute("role", "option");
+    li.tabIndex = -1;
     li.dataset.value = opt.value;
     li.textContent = opt.textContent;
-    li.addEventListener("click", () => {
-      select.value = opt.value;
-      select.dispatchEvent(new Event("change", { bubbles: true }));
-      sync();
-      close();
+    li.addEventListener("click", () => choose(opt.value));
+    li.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" || e.key === " ") {
+        e.preventDefault();
+        choose(opt.value);
+      } else if (e.key === "ArrowDown") {
+        e.preventDefault();
+        moveFocus(1);
+      } else if (e.key === "ArrowUp") {
+        e.preventDefault();
+        moveFocus(-1);
+      } else if (e.key === "Home") {
+        e.preventDefault();
+        focusOptionAt(0);
+      } else if (e.key === "End") {
+        e.preventDefault();
+        focusOptionAt(options.length - 1);
+      } else if (e.key === "Escape") {
+        e.preventDefault();
+        close();
+        button.focus();
+      } else if (e.key === "Tab") {
+        close();
+      }
     });
     list.appendChild(li);
     return li;
   });
 
+  function focusOptionAt(index) {
+    if (index < 0 || index >= options.length) return;
+    options.forEach((li) => { li.tabIndex = -1; });
+    options[index].tabIndex = 0;
+    options[index].focus();
+  }
+  function moveFocus(delta) {
+    const current = options.findIndex((li) => li.tabIndex === 0);
+    const base = current === -1 ? 0 : current;
+    focusOptionAt(Math.min(options.length - 1, Math.max(0, base + delta)));
+  }
+
   function sync() {
     const selected = select.options[select.selectedIndex];
     label.textContent = selected ? selected.textContent : "";
-    options.forEach((li) => li.classList.toggle("selected", li.dataset.value === select.value));
+    options.forEach((li) => {
+      const isSelected = li.dataset.value === select.value;
+      li.classList.toggle("selected", isSelected);
+      li.setAttribute("aria-selected", String(isSelected));
+    });
   }
   function open() {
     list.hidden = false;
     button.setAttribute("aria-expanded", "true");
     wrapper.classList.add("open");
+    const selectedIndex = options.findIndex((li) => li.dataset.value === select.value);
+    focusOptionAt(selectedIndex >= 0 ? selectedIndex : 0);
   }
   function close() {
     list.hidden = true;
@@ -403,6 +456,12 @@ function enhanceSelect(select) {
   }
 
   button.addEventListener("click", () => (list.hidden ? open() : close()));
+  button.addEventListener("keydown", (e) => {
+    if (e.key === "ArrowDown" && list.hidden) {
+      e.preventDefault();
+      open();
+    }
+  });
   document.addEventListener("click", (e) => {
     if (!wrapper.contains(e.target)) close();
   });
@@ -593,6 +652,74 @@ function findItemById(id) {
 }
 
 /* ==========================================================================
+   Overlay focus management — shared by the cart drawer, checkout modal
+   and photo lightbox. Each is opened/closed in its own function below,
+   but all three need the same three things: move focus in on open, trap
+   Tab/Shift+Tab inside while open (so the page behind it isn't reachable
+   by keyboard), and put focus back on whatever opened it when it closes.
+   A stack (not a single slot) because the checkout modal can open while
+   the cart drawer is still open behind it — closing the modal should
+   return focus to the "Checkout" button inside the still-open drawer,
+   not wherever focus was before the drawer itself was opened.
+   ========================================================================== */
+const overlayStack = [];
+
+function getFocusableIn(container) {
+  const selector = 'a[href], button:not([disabled]), input:not([disabled]):not([type="hidden"]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+  return Array.from(container.querySelectorAll(selector)).filter((el) => el.offsetParent !== null);
+}
+
+/* Background landmarks (nav/main/footer) get aria-hidden while any overlay
+   covers the page, so a screen reader doesn't also announce page content
+   stacked behind the modal — only applied on the 0-to-1 transition so a
+   second overlay opening on top of the first doesn't double up. */
+function setBackgroundHiddenFromAT(hidden) {
+  document.querySelectorAll("body > nav, body > main, body > footer").forEach((el) => {
+    if (hidden) el.setAttribute("aria-hidden", "true");
+    else el.removeAttribute("aria-hidden");
+  });
+}
+
+function openOverlay(container, trigger, closeFn) {
+  overlayStack.push({ container, trigger: trigger || document.activeElement, close: closeFn });
+  if (overlayStack.length === 1) setBackgroundHiddenFromAT(true);
+}
+function closeOverlay(container) {
+  const index = overlayStack.findIndex((entry) => entry.container === container);
+  if (index === -1) return;
+  const [entry] = overlayStack.splice(index, 1);
+  if (overlayStack.length === 0) setBackgroundHiddenFromAT(false);
+  if (entry.trigger && typeof entry.trigger.focus === "function" && document.body.contains(entry.trigger)) {
+    entry.trigger.focus();
+  }
+}
+
+/* Single document-level Tab/Escape listener (rather than one per modal)
+   that always acts on whichever overlay is topmost on the stack — Tab
+   traps focus inside it, Escape closes just that one (e.g. closing the
+   checkout modal with Escape leaves the cart drawer open behind it). */
+document.addEventListener("keydown", (e) => {
+  if (!overlayStack.length) return;
+  const top = overlayStack[overlayStack.length - 1];
+  if (e.key === "Escape") {
+    if (typeof top.close === "function") top.close();
+    return;
+  }
+  if (e.key !== "Tab") return;
+  const focusable = getFocusableIn(top.container);
+  if (!focusable.length) return;
+  const first = focusable[0];
+  const last = focusable[focusable.length - 1];
+  if (e.shiftKey && document.activeElement === first) {
+    e.preventDefault();
+    last.focus();
+  } else if (!e.shiftKey && document.activeElement === last) {
+    e.preventDefault();
+    first.focus();
+  }
+});
+
+/* ==========================================================================
    Cart drawer + checkout modal open/close
    ========================================================================== */
 function initCartUI() {
@@ -602,20 +729,24 @@ function initCartUI() {
   const closeBtn = document.getElementById("closeCart");
   const checkoutBtn = document.getElementById("checkoutBtn");
 
-  function openCart() {
+  function openCart(trigger) {
     drawer.classList.add("open");
     scrim.classList.add("visible");
     document.body.style.overflow = "hidden";
+    openOverlay(drawer, trigger, closeCart);
+    if (closeBtn) closeBtn.focus();
   }
   function closeCart() {
+    if (!drawer.classList.contains("open")) return;
     drawer.classList.remove("open");
     if (!document.getElementById("checkoutModal").classList.contains("open")) {
       scrim.classList.remove("visible");
       document.body.style.overflow = "";
     }
+    closeOverlay(drawer);
   }
 
-  if (openBtn) openBtn.addEventListener("click", () => { renderCartDrawer(); openCart(); trackEvent("cart_opened"); });
+  if (openBtn) openBtn.addEventListener("click", () => { renderCartDrawer(); openCart(openBtn); trackEvent("cart_opened"); });
   if (closeBtn) closeBtn.addEventListener("click", closeCart);
   if (scrim) scrim.addEventListener("click", () => {
     closeCart();
@@ -626,15 +757,8 @@ function initCartUI() {
       showToast("Add something to your cart first");
       return;
     }
-    openCheckoutModal();
+    openCheckoutModal(checkoutBtn);
     trackEvent("checkout_started", { cartItemCount: getCart().length, cartTotal: cartTotal(getCart()) });
-  });
-
-  document.addEventListener("keydown", (e) => {
-    if (e.key === "Escape") {
-      closeCart();
-      closeCheckoutModal();
-    }
   });
 
   renderCartDrawer();
@@ -741,7 +865,7 @@ function renderOrderSummary() {
   `).join("") + `<div class="order-summary-row total"><span>Total</span><span>${formatPrice(cartTotal(cart))}</span></div>`;
 }
 
-function openCheckoutModal() {
+function openCheckoutModal(trigger) {
   const modal = document.getElementById("checkoutModal");
   const scrim = document.getElementById("scrim");
   renderOrderSummary();
@@ -749,6 +873,7 @@ function openCheckoutModal() {
   modal.classList.add("open");
   scrim.classList.add("visible");
   document.body.style.overflow = "hidden";
+  openOverlay(modal, trigger, closeCheckoutModal);
   const firstField = modal.querySelector("#name");
   if (firstField) firstField.focus();
 }
@@ -767,7 +892,7 @@ function checkoutFormHasInput() {
 
 function closeCheckoutModal() {
   const modal = document.getElementById("checkoutModal");
-  if (!modal) return;
+  if (!modal || !modal.classList.contains("open")) return;
   const formStep = document.getElementById("checkoutFormStep");
   const onFormStep = formStep && !formStep.hidden;
   if (onFormStep && checkoutFormHasInput()) {
@@ -786,6 +911,7 @@ function closeCheckoutModal() {
     document.getElementById("scrim").classList.remove("visible");
     document.body.style.overflow = "";
   }
+  closeOverlay(modal);
 }
 
 function showCheckoutStep(step) {
@@ -1097,9 +1223,11 @@ function ensureLightbox() {
   modal.querySelector(".lightbox-prev").addEventListener("click", () => stepLightbox(-1));
   modal.querySelector(".lightbox-next").addEventListener("click", () => stepLightbox(1));
 
+  /* Escape + Tab-trapping are handled generically for every overlay by
+     the shared listener near initCartUI; only the arrow-key photo
+     stepping is specific to the lightbox. */
   document.addEventListener("keydown", (e) => {
     if (!modal.classList.contains("open")) return;
-    if (e.key === "Escape") closeLightbox();
     if (e.key === "ArrowLeft") stepLightbox(-1);
     if (e.key === "ArrowRight") stepLightbox(1);
   });
@@ -1133,7 +1261,7 @@ function stepLightbox(delta) {
   renderLightboxFrame();
 }
 
-function openLightbox(images, name) {
+function openLightbox(images, name, trigger) {
   const modal = ensureLightbox();
   lightboxImages = images && images.length ? images : [NO_PHOTO_IMAGE];
   lightboxIndex = 0;
@@ -1141,15 +1269,19 @@ function openLightbox(images, name) {
   renderLightboxFrame();
   modal.classList.add("open");
   document.body.style.overflow = "hidden";
+  openOverlay(modal, trigger, closeLightbox);
+  const closeBtn = modal.querySelector(".lightbox-close");
+  if (closeBtn) closeBtn.focus();
 }
 
 function closeLightbox() {
   const modal = document.getElementById("imageLightbox");
-  if (!modal) return;
+  if (!modal || !modal.classList.contains("open")) return;
   modal.classList.remove("open");
   const cartOpen = document.getElementById("cartDrawer")?.classList.contains("open");
   const checkoutOpen = document.getElementById("checkoutModal")?.classList.contains("open");
   if (!cartOpen && !checkoutOpen) document.body.style.overflow = "";
+  closeOverlay(modal);
 }
 
 /* ==========================================================================

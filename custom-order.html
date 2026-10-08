@@ -57,6 +57,8 @@
   </div>
 </nav>
 
+<main>
+
 <header class="collection-hero" data-edit-key="collection-hero">
   <div class="container">
     <div class="word-badge collection-title-badge">
@@ -72,35 +74,35 @@
         <div class="form-grid">
           <div class="field">
             <label for="co-first-name" data-edit-key="custom-order-label-first-name" data-edit-type="text">First name</label>
-            <input id="co-first-name" name="firstName" type="text" required autocomplete="given-name"/>
+            <input id="co-first-name" name="firstName" type="text" required autocomplete="given-name" aria-describedby="co-error-firstName"/>
             <div class="field-error" id="co-error-firstName"></div>
           </div>
           <div class="field">
             <label for="co-last-name" data-edit-key="custom-order-label-last-name" data-edit-type="text">Last name</label>
-            <input id="co-last-name" name="lastName" type="text" required autocomplete="family-name"/>
+            <input id="co-last-name" name="lastName" type="text" required autocomplete="family-name" aria-describedby="co-error-lastName"/>
             <div class="field-error" id="co-error-lastName"></div>
           </div>
           <div class="field">
             <label for="co-phone" data-edit-key="custom-order-label-phone" data-edit-type="text">Phone</label>
-            <input id="co-phone" name="phone" type="tel" required autocomplete="tel" placeholder="(000) 000-0000"/>
+            <input id="co-phone" name="phone" type="tel" required autocomplete="tel" placeholder="(000) 000-0000" aria-describedby="co-error-phone"/>
             <div class="field-error" id="co-error-phone"></div>
           </div>
           <div class="field">
             <label for="co-email" data-edit-key="custom-order-label-email" data-edit-type="text">Email</label>
-            <input id="co-email" name="email" type="email" required autocomplete="email"/>
+            <input id="co-email" name="email" type="email" required autocomplete="email" aria-describedby="co-error-email"/>
             <div class="field-error" id="co-error-email"></div>
           </div>
 
-          <h3 class="form-section-heading" data-edit-key="custom-order-event-info-heading" data-edit-type="text">Event Information</h3>
+          <h2 class="form-section-heading" data-edit-key="custom-order-event-info-heading" data-edit-type="text">Event Information</h2>
 
           <div class="field">
             <label for="co-event-date" data-edit-key="custom-order-label-event-date" data-edit-type="text">Event date</label>
-            <input id="co-event-date" name="eventDate" type="date" required/>
+            <input id="co-event-date" name="eventDate" type="date" required aria-describedby="co-error-eventDate"/>
             <div class="field-error" id="co-error-eventDate"></div>
           </div>
           <div class="field">
             <label for="co-event-time" data-edit-key="custom-order-label-event-time" data-edit-type="text">Event time</label>
-            <input id="co-event-time" name="eventTime" type="time" required/>
+            <input id="co-event-time" name="eventTime" type="time" required aria-describedby="co-error-eventTime"/>
             <div class="field-error" id="co-error-eventTime"></div>
           </div>
           <div class="field full">
@@ -111,14 +113,14 @@
             <label for="co-occasion" data-edit-key="custom-order-label-occasion" data-edit-type="text">Event's occasion</label>
             <input id="co-occasion" name="occasion" type="text" placeholder="birthday, wedding, corporate event, etc..."/>
           </div>
-          <div class="field full">
-            <label data-edit-key="custom-order-label-service-option" data-edit-type="text">Preferred service option</label>
+          <fieldset class="field full">
+            <legend data-edit-key="custom-order-label-service-option" data-edit-type="text">Preferred service option</legend>
             <div class="radio-group">
               <label class="radio-option"><input type="radio" name="service" value="pickup" checked/> Pick-up</label>
               <label class="radio-option"><input type="radio" name="service" value="delivery"/> Delivery</label>
               <label class="radio-option"><input type="radio" name="service" value="delivery-setup"/> Delivery and set-up</label>
             </div>
-          </div>
+          </fieldset>
           <div class="field full">
             <label for="co-address" data-edit-key="custom-order-label-address" data-edit-type="text">Delivery address (if delivery or set-up required)</label>
             <input id="co-address" name="address" type="text" placeholder="Street address" autocomplete="street-address"/>
@@ -132,16 +134,16 @@
           <div class="field full">
             <input aria-label="Postal code" name="postal" type="text" placeholder="Postal code" style="max-width:280px;"/>
           </div>
-          <div class="field full">
-            <label data-edit-key="custom-order-label-setup-area" data-edit-type="text">Setup area</label>
+          <fieldset class="field full">
+            <legend data-edit-key="custom-order-label-setup-area" data-edit-type="text">Setup area</legend>
             <div class="radio-group">
               <label class="radio-option"><input type="radio" name="setupArea" value="indoor"/> Indoor</label>
               <label class="radio-option"><input type="radio" name="setupArea" value="outdoor"/> Outdoor</label>
               <label class="radio-option"><input type="radio" name="setupArea" value="other"/> Other</label>
             </div>
-          </div>
-          <div class="field full">
-            <label data-edit-key="custom-order-label-venue" data-edit-type="text">Event venue</label>
+          </fieldset>
+          <fieldset class="field full">
+            <legend data-edit-key="custom-order-label-venue" data-edit-type="text">Event venue</legend>
             <div class="checkbox-group">
               <label class="checkbox-option"><input type="checkbox" name="venue" value="Home"/> Home</label>
               <label class="checkbox-option"><input type="checkbox" name="venue" value="Restaurant"/> Restaurant</label>
@@ -151,12 +153,12 @@
               <label class="checkbox-option"><input type="checkbox" name="venue" value="Indoor Playground"/> Indoor Playground</label>
               <label class="checkbox-option"><input type="checkbox" name="venue" value="Other"/> Other</label>
             </div>
-          </div>
+          </fieldset>
 
-          <h3 class="form-section-heading" data-edit-key="custom-order-style-design-heading" data-edit-type="text">Style and Design</h3>
+          <h2 class="form-section-heading" data-edit-key="custom-order-style-design-heading" data-edit-type="text">Style and Design</h2>
 
-          <div class="field full">
-            <label data-edit-key="custom-order-label-balloon-type" data-edit-type="text">What type of balloon are you looking for?</label>
+          <fieldset class="field full">
+            <legend data-edit-key="custom-order-label-balloon-type" data-edit-type="text">What type of balloon are you looking for?</legend>
             <div class="checkbox-group">
               <label class="checkbox-option"><input type="checkbox" name="balloonType" value="Helium Bouquet"/> Helium Bouquet</label>
               <label class="checkbox-option"><input type="checkbox" name="balloonType" value="Balloon Flowers"/> Balloon Flowers</label>
@@ -166,14 +168,14 @@
               <label class="checkbox-option"><input type="checkbox" name="balloonType" value="Specialty Balloons"/> Specialty Balloons (heart, hot-air balloon, carousel...)</label>
               <label class="checkbox-option"><input type="checkbox" name="balloonType" value="Other"/> Other</label>
             </div>
-          </div>
+          </fieldset>
           <div class="field full">
             <label for="co-color-scheme" data-edit-key="custom-order-label-color-scheme" data-edit-type="text">What is the color scheme for this event?</label>
             <textarea id="co-color-scheme" name="colorScheme"></textarea>
           </div>
           <div class="field full">
             <label for="co-details" data-edit-key="custom-order-label-details" data-edit-type="text">Please describe your vision for the event</label>
-            <textarea id="co-details" name="details" required placeholder="Colors, theme, size, venue, inspiration photos you have in mind..."></textarea>
+            <textarea id="co-details" name="details" required placeholder="Colors, theme, size, venue, inspiration photos you have in mind..." aria-describedby="co-error-details"></textarea>
             <div class="field-error" id="co-error-details"></div>
           </div>
           <div class="field">
@@ -206,6 +208,8 @@
     </div>
   </div>
 </section>
+
+</main>
 
 <footer class="footer">
   <div class="container">
@@ -250,7 +254,7 @@
 
 <div class="scrim" id="scrim"></div>
 
-<aside class="cart-drawer" id="cartDrawer" aria-label="Shopping cart">
+<aside class="cart-drawer" id="cartDrawer" role="dialog" aria-modal="true" aria-label="Shopping cart">
   <div class="drawer-head">
     <h2 data-edit-key="cart-heading" data-edit-type="text">Your Cart</h2>
     <button class="icon-btn" id="closeCart" aria-label="Close cart">
@@ -287,23 +291,23 @@
           <div class="form-grid">
             <div class="field full">
               <label for="name">Full name</label>
-              <input id="name" name="name" type="text" required autocomplete="name"/>
+              <input id="name" name="name" type="text" required autocomplete="name" aria-describedby="error-name"/>
               <div class="field-error" id="error-name"></div>
             </div>
             <div class="field">
               <label for="phone">Phone</label>
-              <input id="phone" name="phone" type="tel" required autocomplete="tel"/>
+              <input id="phone" name="phone" type="tel" required autocomplete="tel" aria-describedby="error-phone"/>
               <div class="field-error" id="error-phone"></div>
             </div>
             <div class="field">
               <label for="email">Email</label>
-              <input id="email" name="email" type="email" required autocomplete="email"/>
+              <input id="email" name="email" type="email" required autocomplete="email" aria-describedby="error-email"/>
               <div class="field-error" id="error-email"></div>
             </div>
             <div class="field full">
               <label for="address">Delivery / event address</label>
               <div class="input-with-action">
-                <input id="address" name="address" type="text" required autocomplete="street-address"/>
+                <input id="address" name="address" type="text" required autocomplete="street-address" aria-describedby="error-address"/>
                 <button type="button" class="input-action-btn" id="useMyLocationBtn" aria-label="Use my current location">
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" width="18" height="18" aria-hidden="true"><path d="M12 21s7-7.5 7-12a7 7 0 1 0-14 0c0 4.5 7 12 7 12z" stroke-linecap="round" stroke-linejoin="round"/><circle cx="12" cy="9" r="2.3"/></svg>
                 </button>
