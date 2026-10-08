@@ -186,6 +186,30 @@ body.admin-body {
    capped modal, so let it grow and the page scroll naturally. */
 #libraryPanel .photo-library-grid { max-height: none; overflow: visible; grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); }
 
+/* "Find unused photos" review panel — appended below the ordinary Library
+   grid rather than a separate modal, since it's a one-off tool specific
+   to this tab (unlike the picker modal, which is reused from the item
+   form too) and the admin benefits from seeing it alongside the regular
+   grid for context. Hidden until the toolbar button is clicked; never
+   auto-populated, never auto-selected. */
+.unused-photos-section {
+  margin-top: var(--space-4);
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--color-border);
+}
+.unused-photos-head { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); margin-bottom: var(--space-2); }
+.unused-photos-head h3 { font-size: 1.05rem; margin: 0; }
+.unused-photos-status { font-size: 0.85rem; color: var(--color-fg-soft); margin-bottom: var(--space-2); }
+.unused-photos-section .photo-library-grid { max-height: none; overflow: visible; grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); }
+.unused-photos-actions { display: flex; flex-wrap: wrap; gap: var(--space-2); align-items: center; margin-top: var(--space-2); }
+
+/* Reuses .btn btn-primary's shape but swaps in the shared destructive-red
+   token, so an irreversible bulk-delete reads as clearly dangerous rather
+   than looking like any other primary action. */
+.btn-delete-danger { background: var(--color-destructive); border-color: var(--color-destructive); }
+.btn-delete-danger:hover:not(:disabled) { background: var(--color-destructive); opacity: 0.88; }
+.btn-delete-danger:disabled { opacity: 0.5; cursor: default; }
+
 .photo-gallery-item {
   position: relative;
   width: 72px; height: 72px;
