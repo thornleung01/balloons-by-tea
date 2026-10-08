@@ -669,26 +669,36 @@ function getFocusableIn(container) {
   return Array.from(container.querySelectorAll(selector)).filter((el) => el.offsetParent !== null);
 }
 
-/* Background landmarks (nav/main/footer) get aria-hidden while any overlay
-   covers the page, so a screen reader doesn't also announce page content
-   stacked behind the modal — only applied on the 0-to-1 transition so a
-   second overlay opening on top of the first doesn't double up. */
-function setBackgroundHiddenFromAT(hidden) {
+/* Recomputes aria-hidden over everything that ISN'T the current topmost
+   overlay: nav/main/footer, plus any OTHER overlay still in the stack
+   beneath the top one — e.g. the cart drawer, left open behind the
+   checkout modal once it opens on top of it. Re-run on every push/pop
+   (not just the 0-to-1/1-to-0 transition) since a second overlay opening
+   needs to additionally hide the first overlay's own container, which
+   hiding only nav/main/footer never covered. */
+function syncBackgroundHiddenFromAT() {
+  const hideLandmarks = overlayStack.length > 0;
   document.querySelectorAll("body > nav, body > main, body > footer").forEach((el) => {
-    if (hidden) el.setAttribute("aria-hidden", "true");
+    if (hideLandmarks) el.setAttribute("aria-hidden", "true");
     else el.removeAttribute("aria-hidden");
+  });
+  overlayStack.forEach((entry, i) => {
+    const isTop = i === overlayStack.length - 1;
+    if (isTop) entry.container.removeAttribute("aria-hidden");
+    else entry.container.setAttribute("aria-hidden", "true");
   });
 }
 
 function openOverlay(container, trigger, closeFn) {
   overlayStack.push({ container, trigger: trigger || document.activeElement, close: closeFn });
-  if (overlayStack.length === 1) setBackgroundHiddenFromAT(true);
+  syncBackgroundHiddenFromAT();
 }
 function closeOverlay(container) {
   const index = overlayStack.findIndex((entry) => entry.container === container);
   if (index === -1) return;
   const [entry] = overlayStack.splice(index, 1);
-  if (overlayStack.length === 0) setBackgroundHiddenFromAT(false);
+  container.removeAttribute("aria-hidden"); // don't leave a stale aria-hidden if this container reopens later
+  syncBackgroundHiddenFromAT();
   if (entry.trigger && typeof entry.trigger.focus === "function" && document.body.contains(entry.trigger)) {
     entry.trigger.focus();
   }

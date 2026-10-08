@@ -118,24 +118,26 @@ async function compressImageFile(file, { maxDimension = 1600, jpegQuality = 0.82
   if (!file || typeof file.type !== "string" || !file.type.startsWith("image/")) return file; // never touch non-images
   if (file.size <= skipBelowBytes) return file; // already small — not worth the processing
 
+  let source = null;
   try {
-    const source = await loadDrawableImageSource(file);
+    source = await loadDrawableImageSource(file);
     const width = source.width || source.naturalWidth || 0;
     const height = source.height || source.naturalHeight || 0;
     if (!width || !height) return file;
 
     const scale = Math.min(1, maxDimension / Math.max(width, height));
     const keepPng = file.type === "image/png";
-    // Already within the size cap and not a PNG — nothing worth doing.
-    if (scale >= 1 && !keepPng) return file;
-
+    // Always redraw through canvas, even at scale 1 — a large-but-already-
+    // right-sized JPEG might just be poorly compressed (e.g. quality 100
+    // straight off a camera), and re-encoding at jpegQuality can still
+    // shrink it meaningfully. The size check below guarantees this never
+    // ships something bigger than what was uploaded.
     const canvas = document.createElement("canvas");
     canvas.width = Math.max(1, Math.round(width * scale));
     canvas.height = Math.max(1, Math.round(height * scale));
     const ctx = canvas.getContext("2d");
     if (!ctx) return file;
     ctx.drawImage(source, 0, 0, canvas.width, canvas.height);
-    if (typeof source.close === "function") source.close(); // release ImageBitmap memory promptly
 
     const outputType = keepPng ? "image/png" : "image/jpeg";
     const blob = await new Promise((resolve, reject) => {
@@ -153,6 +155,10 @@ async function compressImageFile(file, { maxDimension = 1600, jpegQuality = 0.82
     // Corrupt image, canvas/codec failure, etc. — upload the original
     // rather than let a processing bug block a real upload.
     return file;
+  } finally {
+    // Release the ImageBitmap's backing memory promptly on every exit
+    // path (early returns included), not just the success path.
+    if (source && typeof source.close === "function") source.close();
   }
 }
 
@@ -1672,8 +1678,8 @@ function handleCollectionPhotoChange(e) {
   reader.readAsDataURL(file);
 }
 
-async function uploadSiteImage(client, file) {
-  const compressed = await compressImageFile(file);
+async function uploadSiteImage(client, file, compressOptions) {
+  const compressed = await compressImageFile(file, compressOptions);
   const safeName = compressed.name.replace(/[^a-zA-Z0-9.-]/g, "_");
   const path = `${Date.now()}-${safeName}`;
   const { error } = await client.storage.from("site-images").upload(path, compressed, { upsert: true });
@@ -2093,7 +2099,12 @@ async function handleSaveSettings(e) {
     }));
 
     if (currentHeroPhotoFile) {
-      rows.push({ key: "hero_image_url", value: await uploadSiteImage(client, currentHeroPhotoFile) });
+      // The hero photo renders full-bleed (.hero-photo-img, width/height:
+      // 100% of its section) up to the full viewport width, unlike every
+      // other compressed image in this file which only ever displays at a
+      // few hundred px — the generic 1600px cap would visibly soften it on
+      // any desktop monitor or retina display. Give it a larger ceiling.
+      rows.push({ key: "hero_image_url", value: await uploadSiteImage(client, currentHeroPhotoFile, { maxDimension: 2560 }) });
     }
     if (currentLogoPhotoFile) {
       rows.push({ key: "logo_url", value: await uploadSiteImage(client, currentLogoPhotoFile) });
