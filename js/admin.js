@@ -74,6 +74,88 @@ function collectionHrefForAdmin(slug) {
   return c.is_legacy ? `${c.slug}.html` : `category.html?slug=${encodeURIComponent(c.slug)}`;
 }
 
+/* ===== Image compression =====
+   Every place in this file that uploads a raw File to Supabase Storage
+   runs it through compressImageFile() first. Admin phone/camera photos
+   can easily be 4-12MB and 4000+px wide for something that only ever
+   displays at a few hundred px on the public site, so this resizes to a
+   sane max dimension and re-encodes before upload. PNGs are kept as PNG
+   (resized but not otherwise degraded) since this app uses PNG for some
+   photos with transparent backgrounds; everything else is re-encoded as
+   JPEG at a reasonable quality. Files already small enough that this
+   wouldn't meaningfully help are returned unchanged. Any failure here
+   (corrupt image, canvas/codec issue, old browser) falls back to
+   uploading the ORIGINAL file — a bug in this helper must never block a
+   real save the admin is trying to make. */
+
+/* createImageBitmap isn't available in every browser (older Safari in
+   particular) — fall back to decoding through an <img> element, which
+   works everywhere a <canvas> does. */
+async function loadDrawableImageSource(file) {
+  if (typeof createImageBitmap === "function") {
+    try {
+      return await createImageBitmap(file);
+    } catch (e) {
+      // Fall through to the <img> fallback below (e.g. an unsupported
+      // format for createImageBitmap in this browser).
+    }
+  }
+  const dataUrl = await new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = () => reject(reader.error || new Error("Couldn't read file"));
+    reader.readAsDataURL(file);
+  });
+  return await new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => resolve(img);
+    img.onerror = () => reject(new Error("Couldn't decode image"));
+    img.src = dataUrl;
+  });
+}
+
+async function compressImageFile(file, { maxDimension = 1600, jpegQuality = 0.82, skipBelowBytes = 200 * 1024 } = {}) {
+  if (!file || typeof file.type !== "string" || !file.type.startsWith("image/")) return file; // never touch non-images
+  if (file.size <= skipBelowBytes) return file; // already small — not worth the processing
+
+  try {
+    const source = await loadDrawableImageSource(file);
+    const width = source.width || source.naturalWidth || 0;
+    const height = source.height || source.naturalHeight || 0;
+    if (!width || !height) return file;
+
+    const scale = Math.min(1, maxDimension / Math.max(width, height));
+    const keepPng = file.type === "image/png";
+    // Already within the size cap and not a PNG — nothing worth doing.
+    if (scale >= 1 && !keepPng) return file;
+
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.max(1, Math.round(width * scale));
+    canvas.height = Math.max(1, Math.round(height * scale));
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return file;
+    ctx.drawImage(source, 0, 0, canvas.width, canvas.height);
+    if (typeof source.close === "function") source.close(); // release ImageBitmap memory promptly
+
+    const outputType = keepPng ? "image/png" : "image/jpeg";
+    const blob = await new Promise((resolve, reject) => {
+      canvas.toBlob(
+        (b) => (b ? resolve(b) : reject(new Error("canvas.toBlob returned null"))),
+        outputType,
+        keepPng ? undefined : jpegQuality
+      );
+    });
+    if (!blob || blob.size >= file.size) return file; // never ship something bigger than the original
+
+    const newName = keepPng ? file.name : file.name.replace(/\.[a-zA-Z0-9]+$/, "") + ".jpg";
+    return new File([blob], newName, { type: outputType, lastModified: Date.now() });
+  } catch (err) {
+    // Corrupt image, canvas/codec failure, etc. — upload the original
+    // rather than let a processing bug block a real upload.
+    return file;
+  }
+}
+
 function show(el) { el.hidden = false; }
 function hide(el) { el.hidden = true; }
 
@@ -1047,9 +1129,10 @@ async function createFolderAt(basePath, rawName) {
 async function uploadFilesToLibrary(basePath, files) {
   const client = getSupabaseClient();
   for (const file of files) {
-    const safeName = file.name.replace(/[^a-zA-Z0-9.-]/g, "_");
+    const compressed = await compressImageFile(file);
+    const safeName = compressed.name.replace(/[^a-zA-Z0-9.-]/g, "_");
     const path = basePath ? `${basePath}/${Date.now()}-${safeName}` : `${Date.now()}-${safeName}`;
-    const { error } = await client.storage.from("product-photos").upload(path, file, { upsert: true });
+    const { error } = await client.storage.from("product-photos").upload(path, compressed, { upsert: true });
     if (error) return { error: error.message };
   }
   return { error: null };
@@ -1342,11 +1425,12 @@ async function handleSaveItem(e) {
       if (entry.type === "url") {
         finalUrls.push(entry.value);
       } else {
-        const safeName = entry.value.name.replace(/[^a-zA-Z0-9.-]/g, "_");
+        const compressed = await compressImageFile(entry.value);
+        const safeName = compressed.name.replace(/[^a-zA-Z0-9.-]/g, "_");
         const path = `${Date.now()}-${safeName}`;
         const { error: uploadError } = await client.storage
           .from("product-photos")
-          .upload(path, entry.value, { upsert: true });
+          .upload(path, compressed, { upsert: true });
         if (uploadError) throw new Error("Photo upload failed: " + uploadError.message);
         const { data: pub } = client.storage.from("product-photos").getPublicUrl(path);
         finalUrls.push(pub.publicUrl);
@@ -1589,9 +1673,10 @@ function handleCollectionPhotoChange(e) {
 }
 
 async function uploadSiteImage(client, file) {
-  const safeName = file.name.replace(/[^a-zA-Z0-9.-]/g, "_");
+  const compressed = await compressImageFile(file);
+  const safeName = compressed.name.replace(/[^a-zA-Z0-9.-]/g, "_");
   const path = `${Date.now()}-${safeName}`;
-  const { error } = await client.storage.from("site-images").upload(path, file, { upsert: true });
+  const { error } = await client.storage.from("site-images").upload(path, compressed, { upsert: true });
   if (error) throw new Error("Image upload failed: " + error.message);
   const { data: pub } = client.storage.from("site-images").getPublicUrl(path);
   return pub.publicUrl;
