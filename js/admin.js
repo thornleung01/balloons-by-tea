@@ -2128,6 +2128,73 @@ function topProductsHtml(events) {
   `;
 }
 
+/* Deletes analytics_events rows older than the cutoff picked in the
+   "Clear old events" select. Always counts the exact rows that WOULD be
+   deleted first (a head-only, count:"exact" select — no rows fetched) so
+   the confirm() dialog states a real number instead of a vague warning,
+   and skips the confirm entirely when there's nothing to delete. The
+   button/select are disabled for the whole count+delete round trip so a
+   fast double-click can't fire two deletes. */
+async function clearOldAnalyticsEvents() {
+  const select = document.getElementById("analyticsClearRange");
+  const btn = document.getElementById("analyticsClearBtn");
+  const statusEl = document.getElementById("analyticsClearStatus");
+  const days = Number(select.value);
+  const cutoff = new Date();
+  cutoff.setDate(cutoff.getDate() - days);
+  const cutoffIso = cutoff.toISOString();
+  const cutoffDateLabel = cutoffIso.slice(0, 10);
+
+  statusEl.textContent = "";
+  statusEl.className = "form-status";
+  btn.disabled = true;
+  select.disabled = true;
+
+  const client = getSupabaseClient();
+  const { count, error: countError } = await client
+    .from("analytics_events")
+    .select("id", { count: "exact", head: true })
+    .lt("created_at", cutoffIso);
+
+  if (countError) {
+    btn.disabled = false;
+    select.disabled = false;
+    alert("Couldn't clear events: " + countError.message);
+    return;
+  }
+
+  if (!count) {
+    btn.disabled = false;
+    select.disabled = false;
+    statusEl.textContent = "No events older than that to clear.";
+    return;
+  }
+
+  const confirmed = confirm(`Delete ${count.toLocaleString()} analytics events older than ${cutoffDateLabel}? This can't be undone.`);
+  if (!confirmed) {
+    btn.disabled = false;
+    select.disabled = false;
+    return;
+  }
+
+  const { error: deleteError } = await client
+    .from("analytics_events")
+    .delete()
+    .lt("created_at", cutoffIso);
+
+  btn.disabled = false;
+  select.disabled = false;
+
+  if (deleteError) {
+    alert("Couldn't clear events: " + deleteError.message);
+    return;
+  }
+
+  statusEl.textContent = `Cleared ${count.toLocaleString()} old analytics event${count === 1 ? "" : "s"}.`;
+  statusEl.className = "form-status success";
+  await refreshAnalyticsPanel();
+}
+
 function renderAnalyticsPanel(events) {
   const content = document.getElementById("analyticsContent");
   if (!events.length) {
@@ -2253,6 +2320,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     document.querySelectorAll("#analyticsRangeFilter .orders-filter-btn").forEach((b) => b.classList.toggle("active", b === btn));
     refreshAnalyticsPanel();
   });
+  document.getElementById("analyticsClearBtn").addEventListener("click", clearOldAnalyticsEvents);
 
   let itemSearchDebounce = null;
   document.getElementById("itemSearch").addEventListener("input", (e) => {
