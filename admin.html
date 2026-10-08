@@ -254,8 +254,23 @@
           <button type="button" class="btn btn-outline btn-sm" id="libraryNewFolderBtn">New folder</button>
           <label class="btn btn-outline btn-sm" for="libraryUploadInput">Upload photos</label>
           <input id="libraryUploadInput" type="file" accept="image/*" multiple hidden/>
+          <button type="button" class="btn btn-outline btn-sm" id="findUnusedPhotosBtn">Find unused photos</button>
         </div>
         <div class="photo-library-grid" id="libraryTabGrid"></div>
+
+        <div class="unused-photos-section" id="unusedPhotosSection" hidden>
+          <div class="unused-photos-head">
+            <h3>Unused photos</h3>
+            <button type="button" class="icon-btn" id="closeUnusedPhotosBtn" aria-label="Close">&times;</button>
+          </div>
+          <p class="unused-photos-status" id="unusedPhotosStatus"></p>
+          <div class="photo-library-grid" id="unusedPhotosGrid"></div>
+          <div class="unused-photos-actions" id="unusedPhotosActions" hidden>
+            <button type="button" class="btn btn-outline btn-sm" id="unusedSelectAllBtn">Select all shown</button>
+            <button type="button" class="btn btn-outline btn-sm" id="unusedSelectNoneBtn">Clear selection</button>
+            <button type="button" class="btn btn-primary btn-sm btn-delete-danger" id="deleteUnusedPhotosBtn" disabled>Delete selected</button>
+          </div>
+        </div>
       </div>
     </div>
 

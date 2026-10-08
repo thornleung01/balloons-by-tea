@@ -720,6 +720,90 @@ async function listLibraryPath(path) {
   return { folders, files };
 }
 
+/* Recursively walks every folder in the bucket — listLibraryPath() only
+   sees one level at a time — and flattens the whole tree into one list
+   of files, each with its bucket-relative path and public URL. This is
+   the full real inventory "Find unused photos" diffs against whatever's
+   actually referenced in the database. */
+async function walkLibraryTree(path) {
+  const { folders, files } = await listLibraryPath(path);
+  let all = files.slice();
+  for (const folderName of folders) {
+    const subPath = path ? `${path}/${folderName}` : folderName;
+    const nested = await walkLibraryTree(subPath);
+    all = all.concat(nested);
+  }
+  return all;
+}
+
+/* Every place a photo URL can be referenced from the database — checked
+   so "Find unused photos" never flags something actually in use:
+     - products.image_url and every entry of products.images (the item
+       form's photo gallery — see handleSaveItem() below)
+     - collections.card_image_url (category card photo)
+     - site_settings.value for every row. hero_image_url and logo_url are
+       the only keys that actually hold a photo today (see
+       loadSettingsIntoForm()/handleSaveSettings() below), but every
+       row's value is folded in regardless of key — costs nothing and
+       can't produce a false "unused" result.
+     - layout_overrides.value for every row. The live visual editor
+       (js/layout-editor.js applyLayoutOverrides(), js/edit-mode.js
+       RESETTABLE_PROPERTIES) only ever stores one of text/padding-bottom/
+       font-size/font-family/text-color/bg-color/order/translate-x/
+       translate-y/scale/hidden/locked as a property's value — none of
+       those is an image URL, so this table can't actually reference a
+       photo today. Queried and folded in anyway, defensively, in case
+       that ever changes.
+   Note: collection card photos and the settings hero/logo photo are
+   actually uploaded to a different bucket entirely ("site-images", see
+   uploadSiteImage() below) rather than "product-photos", so in practice
+   neither of those two sources will ever match anything in this bucket's
+   scan — but their values are still included here since checking them
+   costs nothing and guards against any future change in how they're
+   stored. */
+async function gatherReferencedPhotoUrls() {
+  const client = getSupabaseClient();
+  const urls = new Set();
+  const add = (v) => { if (v && typeof v === "string" && v.trim()) urls.add(v.trim()); };
+
+  const [productsRes, collectionsRes, settingsRes, overridesRes] = await Promise.all([
+    client.from("products").select("image_url,images"),
+    client.from("collections").select("card_image_url"),
+    client.from("site_settings").select("key,value"),
+    client.from("layout_overrides").select("value")
+  ]);
+
+  const firstError = productsRes.error || collectionsRes.error || settingsRes.error || overridesRes.error;
+  if (firstError) throw new Error(firstError.message);
+
+  (productsRes.data || []).forEach((p) => {
+    add(p.image_url);
+    if (Array.isArray(p.images)) p.images.forEach(add);
+  });
+  (collectionsRes.data || []).forEach((c) => add(c.card_image_url));
+  (settingsRes.data || []).forEach((s) => add(s.value));
+  (overridesRes.data || []).forEach((o) => add(o.value));
+
+  return urls;
+}
+
+/* Diffs the bucket's real contents against every referenced URL gathered
+   above. Matches full public URL to full public URL (not path to URL),
+   since that's the exact form stored in every DB column checked — each
+   Storage file's URL is built the same way (client.storage.from(...)
+   .getPublicUrl(path)) that every save path in this file already uses
+   to produce the URLs that end up in the database. A defensive query/
+   hash-stripped comparison is also checked, in case a stored URL ever
+   picked up a suffix a freshly-built public URL wouldn't have. When in
+   doubt a file counts as "referenced" (excluded), never "unused". */
+async function findUnusedLibraryPhotos() {
+  const allFiles = await walkLibraryTree("");
+  const referenced = await gatherReferencedPhotoUrls();
+  const stripSuffix = (u) => u.split("?")[0].split("#")[0];
+  const referencedStripped = new Set(Array.from(referenced, stripSuffix));
+  return allFiles.filter((f) => !referenced.has(f.url) && !referencedStripped.has(stripSuffix(f.url)));
+}
+
 function libraryBreadcrumbSegments(path) {
   const segments = [{ label: "Library", path: "" }];
   if (!path) return segments;
@@ -1039,6 +1123,115 @@ function renderLibraryTabGrid() {
     afterMutate: () => navigateLibraryTab(libraryTabPath),
     onFileClick: (url) => openImagePreviewSet([url], 0)
   });
+}
+
+/* ----- "Find unused photos" review panel -----
+   A one-off scan, shown inline below the ordinary Library grid (not a
+   modal — this tool is specific to the Library tab, unlike the picker
+   modal which is also opened from the item form). Deliberately
+   conservative: nothing is ever auto-selected or auto-deleted. The admin
+   has to tick individual photos and press "Delete selected" themselves;
+   this is a permanent Storage delete with no undo. */
+let unusedPhotosCandidates = [];
+let unusedPhotosSelected = new Set();
+
+async function openUnusedPhotosSection() {
+  const section = document.getElementById("unusedPhotosSection");
+  const status = document.getElementById("unusedPhotosStatus");
+  const grid = document.getElementById("unusedPhotosGrid");
+  const actions = document.getElementById("unusedPhotosActions");
+  const triggerBtn = document.getElementById("findUnusedPhotosBtn");
+  if (!section || !status || !grid) return;
+
+  section.hidden = false;
+  actions.hidden = true;
+  grid.innerHTML = "";
+  unusedPhotosSelected = new Set();
+  status.textContent = "Scanning the whole photo library and checking it against every product, collection, and setting — this can take a moment...";
+  if (triggerBtn) triggerBtn.disabled = true;
+
+  try {
+    unusedPhotosCandidates = await findUnusedLibraryPhotos();
+    renderUnusedPhotosSection();
+  } catch (err) {
+    status.textContent = "Couldn't finish the scan (" + (err.message || err) + "). Nothing was checked or deleted — try again.";
+  } finally {
+    if (triggerBtn) triggerBtn.disabled = false;
+  }
+}
+
+function closeUnusedPhotosSection() {
+  const section = document.getElementById("unusedPhotosSection");
+  if (section) section.hidden = true;
+  unusedPhotosCandidates = [];
+  unusedPhotosSelected = new Set();
+}
+
+function renderUnusedPhotosSection() {
+  const status = document.getElementById("unusedPhotosStatus");
+  const grid = document.getElementById("unusedPhotosGrid");
+  const actions = document.getElementById("unusedPhotosActions");
+  if (!status || !grid || !actions) return;
+
+  const count = unusedPhotosCandidates.length;
+  if (!count) {
+    status.textContent = "No unused photos found — every file in Storage is referenced by a product, collection, or setting.";
+    grid.innerHTML = "";
+    actions.hidden = true;
+    return;
+  }
+
+  status.textContent = `${count} photo${count === 1 ? "" : "s"} appear${count === 1 ? "s" : ""} unused. Nothing is deleted until you select photos below and click "Delete selected" — this can't be undone.`;
+  grid.innerHTML = unusedPhotosCandidates.map((f) => `
+    <div class="photo-library-item ${unusedPhotosSelected.has(f.url) ? "selected" : ""}" data-url="${escapeHtml(f.url)}" role="checkbox" aria-checked="${unusedPhotosSelected.has(f.url)}" title="${escapeHtml(f.path)}">
+      <img src="${escapeHtml(f.url)}" alt="${escapeHtml(f.name)}"/>
+    </div>
+  `).join("");
+  grid.querySelectorAll(".photo-library-item").forEach((el) => {
+    el.addEventListener("click", () => {
+      const url = el.dataset.url;
+      if (unusedPhotosSelected.has(url)) unusedPhotosSelected.delete(url);
+      else unusedPhotosSelected.add(url);
+      renderUnusedPhotosSection();
+    });
+  });
+  actions.hidden = false;
+  updateDeleteUnusedPhotosBtn();
+}
+
+function updateDeleteUnusedPhotosBtn() {
+  const btn = document.getElementById("deleteUnusedPhotosBtn");
+  if (!btn) return;
+  const n = unusedPhotosSelected.size;
+  btn.disabled = n === 0;
+  btn.textContent = n > 0 ? `Delete selected (${n})` : "Delete selected";
+}
+
+async function handleDeleteSelectedUnusedPhotos() {
+  const toDelete = unusedPhotosCandidates.filter((f) => unusedPhotosSelected.has(f.url));
+  if (!toDelete.length) return;
+  if (!confirm(`Permanently delete ${toDelete.length} photo${toDelete.length === 1 ? "" : "s"} from Storage? This can't be undone.`)) return;
+
+  const btn = document.getElementById("deleteUnusedPhotosBtn");
+  if (btn) btn.disabled = true;
+
+  const failures = [];
+  const succeededPaths = new Set();
+  for (const f of toDelete) {
+    const error = await deleteLibraryFile(f.path);
+    if (error) failures.push(`${f.name}: ${error}`);
+    else succeededPaths.add(f.path);
+  }
+
+  unusedPhotosCandidates = unusedPhotosCandidates.filter((f) => !succeededPaths.has(f.path));
+  toDelete.forEach((f) => { if (succeededPaths.has(f.path)) unusedPhotosSelected.delete(f.url); });
+  renderUnusedPhotosSection();
+
+  if (failures.length) alert("Some photos couldn't be deleted:\n" + failures.join("\n"));
+
+  // Refresh the main Library grid too — a deleted file may have lived in
+  // (or emptied out) the folder currently being browsed there.
+  await navigateLibraryTab(libraryTabPath);
 }
 
 async function handleSaveItem(e) {
@@ -2320,6 +2513,17 @@ document.addEventListener("DOMContentLoaded", async () => {
     if (error) { alert("Upload failed: " + error); return; }
     await navigateLibraryTab(libraryTabPath);
   });
+  document.getElementById("findUnusedPhotosBtn").addEventListener("click", openUnusedPhotosSection);
+  document.getElementById("closeUnusedPhotosBtn").addEventListener("click", closeUnusedPhotosSection);
+  document.getElementById("unusedSelectAllBtn").addEventListener("click", () => {
+    unusedPhotosCandidates.forEach((f) => unusedPhotosSelected.add(f.url));
+    renderUnusedPhotosSection();
+  });
+  document.getElementById("unusedSelectNoneBtn").addEventListener("click", () => {
+    unusedPhotosSelected = new Set();
+    renderUnusedPhotosSection();
+  });
+  document.getElementById("deleteUnusedPhotosBtn").addEventListener("click", handleDeleteSelectedUnusedPhotos);
 
   document.getElementById("navForm").addEventListener("submit", handleSaveNav);
   document.getElementById("cancelNavEditBtn").addEventListener("click", resetNavForm);
