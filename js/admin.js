@@ -2362,13 +2362,26 @@ async function handleSaveSettings(e) {
 /* ===== Orders ===== */
 
 let ordersStatusFilter = "all";
-const ORDER_STATUSES = ["new", "contacted", "fulfilled"];
+const ORDER_STATUSES = ["new", "contacted", "fulfilled", "cancelled"];
+// Search/sort/"upcoming only" are applied client-side to ordersAllCache
+// (the last full fetch), so typing in the search box re-renders without
+// another round trip.
+let ordersAllCache = [];
+let ordersSearchQuery = "";
+let ordersSortMode = "newest";
+let ordersUpcomingOnly = false;
+// Unsaved admin-note text per order id, so a re-render (status change,
+// search keystroke, filter click) doesn't wipe a half-typed note.
+const orderNoteDrafts = new Map();
+// Note text currently being saved per order id — blur and the Save button
+// can both fire for one edit, and the second shouldn't send it again.
+const orderNoteSavesInFlight = new Map();
 // Separate from selectedProductIds (Products tab) so the two bulk-selection
 // features never collide — each tab's checkboxes/bulk bar only ever touch
 // their own Set. IDs as strings, matching every other data-id comparison
 // in this file.
 let selectedOrderIds = new Set();
-// The most recently rendered (status-filtered) order list, kept so
+// The most recently rendered (filtered/searched/sorted) order list, kept so
 // "select all" and the CSV export can act on exactly what's on screen
 // without re-fetching — mirrors how renderProductList() scopes "select
 // all" to its own visible/filtered `items` array.
@@ -2385,9 +2398,232 @@ function formatOrderDate(iso) {
   return d.toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
 }
 
+// Shown when a write touches something the live database doesn't have yet
+// because the latest supabase-setup.sql hasn't been run.
+const ORDERS_SQL_HINT = "run it in the Supabase SQL Editor";
+
+/* True when a Supabase error means a column doesn't exist yet (the latest
+   supabase-setup.sql hasn't been run) — PostgREST PGRST204 ("Could not
+   find the 'x' column ... in the schema cache") or Postgres 42703
+   (undefined column), with the message text as a fallback. Column-level
+   counterpart of isMissingTableError() in supabase-config.js. */
+function isMissingColumnError(error, column) {
+  if (!error) return false;
+  const msg = error.message || "";
+  const mentionsColumn = !column || !msg || msg.includes(column);
+  if ((error.code === "PGRST204" || error.code === "42703") && mentionsColumn) return true;
+  return Boolean(column) && msg.includes(column) && /could not find the .*column|column .* does not exist/i.test(msg);
+}
+
+/* Friendlier text for a failed status write. Until the latest
+   supabase-setup.sql is run, the live orders_status_check constraint
+   only allows new/contacted/fulfilled, so "cancelled" fails with 23514. */
+function orderStatusErrorMessage(error, status) {
+  if (status === "cancelled" && (error.code === "23514" || /orders_status_check/.test(error.message || ""))) {
+    return `The Cancelled status needs the latest supabase-setup.sql — ${ORDERS_SQL_HINT}.`;
+  }
+  return error.message;
+}
+
+/* The "AUR-XXXXXX" reference js/app.js attachOrderRef() prefixes onto
+   summary as "Ref: AUR-XXXXXX\n...". "" for orders placed before refs
+   existed. */
+function orderRef(order) {
+  const m = /^\s*Ref:\s*(AUR-[A-Z0-9]+)/i.exec(order.summary || "");
+  return m ? m[1].toUpperCase() : "";
+}
+
+/* event_date is free text — 'YYYY-MM-DD' from checkout, 'YYYY-MM-DD HH:MM'
+   from custom orders — but older rows or hand edits can hold anything.
+   Returns a local-time Date, or null for empty/unparseable values,
+   including impossible dates like 2026-02-30 that new Date() would
+   silently roll over into March. */
+function parseOrderEventDate(text) {
+  const m = /^\s*(\d{4})-(\d{2})-(\d{2})(?:[ T](\d{1,2}):(\d{2}))?\s*$/.exec(text || "");
+  if (!m) return null;
+  const [y, mo, d, h, mi] = [m[1], m[2], m[3], m[4] || "0", m[5] || "0"].map(Number);
+  if (h > 23 || mi > 59) return null;
+  const date = new Date(y, mo - 1, d, h, mi);
+  if (date.getFullYear() !== y || date.getMonth() !== mo - 1 || date.getDate() !== d) return null;
+  return date;
+}
+
+// Compared by calendar day, so an event earlier today still counts as
+// upcoming. Empty/unparseable dates never do.
+function isUpcomingOrder(order) {
+  const date = parseOrderEventDate(order.event_date);
+  if (!date) return false;
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  return date >= today;
+}
+
+function orderCreatedTime(order) {
+  const t = new Date(order.created_at || "").getTime();
+  return isNaN(t) ? 0 : t;
+}
+
+/* "newest" (the default, same as the fetch order), "oldest", or "event"
+   (soonest event date first; empty/unparseable dates last, newest first
+   among themselves). Returns a new array. */
+function sortOrders(list, mode) {
+  const byNewest = (a, b) => orderCreatedTime(b.order) - orderCreatedTime(a.order);
+  const keyed = list.map((order) => ({ order, event: mode === "event" ? parseOrderEventDate(order.event_date) : null }));
+  keyed.sort((a, b) => {
+    if (mode === "oldest") return -byNewest(a, b);
+    if (mode === "event") {
+      if (a.event && b.event) return (a.event - b.event) || byNewest(a, b);
+      if (a.event) return -1;
+      if (b.event) return 1;
+    }
+    return byNewest(a, b);
+  });
+  return keyed.map((k) => k.order);
+}
+
+/* Every whitespace-separated search word must appear somewhere in the
+   order (case-insensitive). A word made only of digits/phone punctuation
+   also matches the phone's bare digits, so "4165551234" finds
+   "(416) 555-1234". admin_notes is undefined until the column exists,
+   which the || "" covers. */
+function orderMatchesSearch(order, words) {
+  if (!words.length) return true;
+  const text = [order.name, order.phone, order.email, order.address, order.notes, order.summary, order.admin_notes]
+    .map((v) => String(v || "")).join("\n").toLowerCase();
+  const phoneDigits = String(order.phone || "").replace(/\D/g, "");
+  return words.every((word) => {
+    if (text.includes(word)) return true;
+    const digits = word.replace(/\D/g, "");
+    return /^[\d\s()+\-.]+$/.test(word) && digits.length >= 3 && phoneDigits.includes(digits);
+  });
+}
+
+/* wa.me wants the full international number as bare digits. 10 digits is
+   taken as North American and gets the 1 country code; 11 digits starting
+   with 1 already has it; anything else is used as given. Under 10 digits
+   can't be a full number, so no button. */
+function whatsAppNumber(phone) {
+  const digits = String(phone || "").replace(/\D/g, "");
+  if (digits.length < 10) return "";
+  if (digits.length === 10) return "1" + digits;
+  return digits;
+}
+
+// Built with DOM APIs (no innerHTML) since name/phone/summary are
+// customer-supplied.
+function buildWhatsAppLink(order) {
+  const number = whatsAppNumber(order.phone);
+  if (!number) return null;
+  const firstName = String(order.name || "").trim().split(/\s+/)[0];
+  const ref = orderRef(order);
+  const message = `Hi ${firstName || "there"}! It's Balloons by Tea, following up on your ${ref ? `order ${ref}` : "balloon order"}.`;
+  const a = document.createElement("a");
+  a.className = "order-whatsapp-link";
+  a.href = `https://wa.me/${number}?text=${encodeURIComponent(message)}`;
+  a.target = "_blank";
+  a.rel = "noopener noreferrer";
+  a.textContent = "WhatsApp";
+  return a;
+}
+
+function setOrderNoteStatus(id, message, kind) {
+  const el = document.querySelector(`#orderList .order-row[data-id="${CSS.escape(id)}"] .order-admin-notes-status`);
+  if (!el) return;
+  el.textContent = message;
+  el.className = "form-status order-admin-notes-status" + (kind ? " " + kind : "");
+}
+
+/* Private per-order notes (orders.admin_notes). Saves on blur and on the
+   Save button; the in-flight map stops the blur+click pair from saving
+   the same text twice. Feedback is looked up by id when it's shown
+   rather than captured, because the list may have re-rendered while the
+   save was in flight. */
+async function saveOrderAdminNote(id, value, explicit) {
+  const cached = ordersAllCache.find((o) => String(o.id) === id);
+  const saved = (cached && cached.admin_notes) || "";
+  if (value === saved) {
+    orderNoteDrafts.delete(id);
+    if (explicit) setOrderNoteStatus(id, "No changes to save.", "");
+    return;
+  }
+  if (orderNoteSavesInFlight.get(id) === value) return;
+  orderNoteSavesInFlight.set(id, value);
+  setOrderNoteStatus(id, "Saving...", "");
+  const client = getSupabaseClient();
+  const { error } = await mustAffect(client.from("orders").update({ admin_notes: value }).eq("id", id));
+  orderNoteSavesInFlight.delete(id);
+  if (error) {
+    // The draft is kept, so the text isn't lost and the next blur retries.
+    setOrderNoteStatus(id, isMissingColumnError(error, "admin_notes")
+      ? `Admin notes need the latest supabase-setup.sql — ${ORDERS_SQL_HINT}.`
+      : "Couldn't save note: " + error.message, "error");
+    return;
+  }
+  const current = ordersAllCache.find((o) => String(o.id) === id);
+  if (current) current.admin_notes = value;
+  if (orderNoteDrafts.get(id) === value) orderNoteDrafts.delete(id);
+  const textarea = document.getElementById(`orderAdminNotes-${id}`);
+  if (textarea && textarea.value !== value) setOrderNoteStatus(id, "Unsaved changes", "");
+  else setOrderNoteStatus(id, "Saved", "success");
+}
+
+function buildOrderAdminNotes(order) {
+  const id = String(order.id);
+  const saved = order.admin_notes || "";
+  const wrap = document.createElement("div");
+  wrap.className = "order-admin-notes";
+
+  const label = document.createElement("label");
+  label.htmlFor = `orderAdminNotes-${id}`;
+  label.textContent = "Private notes (only admins see these)";
+
+  const textarea = document.createElement("textarea");
+  textarea.id = `orderAdminNotes-${id}`;
+  textarea.className = "order-admin-notes-input";
+  textarea.rows = 2;
+  textarea.placeholder = "Deposit paid, colour changes, follow-up reminders...";
+  textarea.value = orderNoteDrafts.has(id) ? orderNoteDrafts.get(id) : saved;
+
+  const actions = document.createElement("div");
+  actions.className = "order-admin-notes-actions";
+  const saveBtn = document.createElement("button");
+  saveBtn.type = "button";
+  saveBtn.className = "order-admin-notes-save";
+  saveBtn.textContent = "Save note";
+  const status = document.createElement("span");
+  status.className = "form-status order-admin-notes-status";
+  status.setAttribute("role", "status");
+  status.setAttribute("aria-live", "polite");
+  if (textarea.value !== saved) status.textContent = "Unsaved changes";
+  actions.append(saveBtn, status);
+
+  textarea.addEventListener("input", () => {
+    const current = ordersAllCache.find((o) => String(o.id) === id);
+    const savedNow = (current && current.admin_notes) || "";
+    if (textarea.value === savedNow) orderNoteDrafts.delete(id);
+    else orderNoteDrafts.set(id, textarea.value);
+    setOrderNoteStatus(id, textarea.value === savedNow ? "" : "Unsaved changes", "");
+  });
+  textarea.addEventListener("blur", () => saveOrderAdminNote(id, textarea.value, false));
+  saveBtn.addEventListener("click", () => saveOrderAdminNote(id, textarea.value, true));
+
+  wrap.append(label, textarea, actions);
+  return wrap;
+}
+
+function updateOrderFilterCounts(orders) {
+  document.querySelectorAll("#ordersFilter .orders-filter-count").forEach((el) => {
+    const key = el.dataset.countFor;
+    const count = key === "all" ? orders.length : orders.filter((o) => (o.status || "new") === key).length;
+    el.textContent = `(${count})`;
+  });
+}
+
 async function refreshOrderList() {
   const client = getSupabaseClient();
   const listEl = document.getElementById("orderList");
+  // select("*") rather than a column list so loading keeps working on a
+  // database that doesn't have admin_notes yet.
   const { data, error } = await client
     .from("orders")
     .select("*")
@@ -2398,8 +2634,10 @@ async function refreshOrderList() {
     return;
   }
 
+  ordersAllCache = data || [];
+
   const badge = document.getElementById("ordersBadge");
-  const newCount = (data || []).filter((o) => (o.status || "new") === "new").length;
+  const newCount = ordersAllCache.filter((o) => (o.status || "new") === "new").length;
   if (newCount > 0) {
     badge.textContent = String(newCount);
     show(badge);
@@ -2409,26 +2647,45 @@ async function refreshOrderList() {
 
   // Drop any selected ids that no longer exist at all (e.g. deleted by
   // another admin tab/session) so stale ids don't silently pile up in the
-  // Set. Checked against the full fetch, not the status-filtered list, so
-  // a selection made under one filter is still intact after switching to
+  // Set. Checked against the full fetch, not the filtered list, so a
+  // selection made under one filter is still intact after switching to
   // another filter and back — selection is deliberately NOT cleared just
   // because refreshOrderList() re-ran (it re-runs on every filter click).
-  const allIds = new Set((data || []).map((o) => String(o.id)));
+  const allIds = new Set(ordersAllCache.map((o) => String(o.id)));
   [...selectedOrderIds].forEach((id) => { if (!allIds.has(id)) selectedOrderIds.delete(id); });
+  [...orderNoteDrafts.keys()].forEach((id) => { if (!allIds.has(id)) orderNoteDrafts.delete(id); });
 
-  const filtered = (data || []).filter((o) => ordersStatusFilter === "all" || (o.status || "new") === ordersStatusFilter);
-  ordersVisibleCache = filtered;
+  renderOrderList();
+}
 
-  if (!filtered.length) {
-    listEl.innerHTML = `<p class="empty-note">No orders ${ordersStatusFilter === "all" ? "yet" : "with this status"}.</p>`;
+/* Applies the status filter, search, "upcoming only" and sort to
+   ordersAllCache and renders the result. No fetch, so it's cheap enough
+   to run on every (debounced) search keystroke. */
+function renderOrderList() {
+  const listEl = document.getElementById("orderList");
+  updateOrderFilterCounts(ordersAllCache);
+
+  const words = ordersSearchQuery.trim().toLowerCase().split(/\s+/).filter(Boolean);
+  let visible = ordersAllCache
+    .filter((o) => ordersStatusFilter === "all" || (o.status || "new") === ordersStatusFilter)
+    .filter((o) => orderMatchesSearch(o, words));
+  if (ordersUpcomingOnly) visible = visible.filter(isUpcomingOrder);
+  visible = sortOrders(visible, ordersSortMode);
+  ordersVisibleCache = visible;
+
+  if (!visible.length) {
+    const message = words.length || ordersUpcomingOnly
+      ? "No orders match your search and filters."
+      : `No orders ${ordersStatusFilter === "all" ? "yet" : "with this status"}.`;
+    listEl.innerHTML = `<p class="empty-note">${message}</p>`;
     syncOrderBulkSelectionUI([]);
     return;
   }
 
-  listEl.innerHTML = filtered.map((order) => {
+  listEl.innerHTML = visible.map((order) => {
     const status = order.status || "new";
     return `
-    <div class="order-row status-${escapeHtml(status)}" data-id="${order.id}">
+    <div class="order-row status-${escapeHtml(status)}" data-id="${escapeHtml(String(order.id))}">
       <div class="order-row-head">
         <div class="order-row-title">
           <input type="checkbox" class="order-select" data-select-id="${order.id}" aria-label="Select order from ${escapeHtml(order.name || "customer")}" ${selectedOrderIds.has(String(order.id)) ? "checked" : ""}/>
@@ -2448,7 +2705,7 @@ async function refreshOrderList() {
       ${order.summary ? `<div class="order-field order-summary-text">${escapeHtml(order.summary)}</div>` : ""}
       ${order.notes ? `<div class="order-field order-notes-text">${escapeHtml(order.notes)}</div>` : ""}
       <div class="order-row-actions">
-        <select class="order-status-select" data-id="${order.id}">
+        <select class="order-status-select" data-id="${order.id}" aria-label="Order status">
           ${ORDER_STATUSES.map((s) => `<option value="${s}" ${s === status ? "selected" : ""}>${s.charAt(0).toUpperCase() + s.slice(1)}</option>`).join("")}
         </select>
         <button type="button" class="danger delete-order-btn" data-id="${order.id}">Delete</button>
@@ -2456,6 +2713,18 @@ async function refreshOrderList() {
     </div>
   `;
   }).join("");
+
+  // The WhatsApp link and notes editor are added with DOM APIs rather
+  // than the template above, since both put customer/admin text into
+  // attributes and form values.
+  const byId = new Map(visible.map((o) => [String(o.id), o]));
+  listEl.querySelectorAll(".order-row").forEach((row) => {
+    const order = byId.get(row.dataset.id);
+    if (!order) return;
+    const waLink = buildWhatsAppLink(order);
+    if (waLink) row.querySelector(".order-contact").appendChild(waLink);
+    row.insertBefore(buildOrderAdminNotes(order), row.querySelector(".order-row-actions"));
+  });
 
   listEl.querySelectorAll(".order-status-select").forEach((sel) => {
     sel.addEventListener("change", () => handleOrderStatusChange(sel.dataset.id, sel.value));
@@ -2467,17 +2736,19 @@ async function refreshOrderList() {
     box.addEventListener("change", () => {
       if (box.checked) selectedOrderIds.add(box.dataset.selectId);
       else selectedOrderIds.delete(box.dataset.selectId);
-      syncOrderBulkSelectionUI(filtered);
+      syncOrderBulkSelectionUI(ordersVisibleCache);
     });
   });
-  syncOrderBulkSelectionUI(filtered);
+  syncOrderBulkSelectionUI(visible);
 }
 
 async function handleOrderStatusChange(id, status) {
   const client = getSupabaseClient();
   const { error } = await mustAffect(client.from("orders").update({ status }).eq("id", id));
   if (error) {
-    alert("Couldn't update status: " + error.message);
+    alert("Couldn't update status: " + orderStatusErrorMessage(error, status));
+    // Put the dropdown back to the status that's actually saved.
+    renderOrderList();
     return;
   }
   await refreshOrderList();
@@ -2532,7 +2803,7 @@ async function bulkUpdateOrderStatus(status) {
   const { error } = await mustAffect(client.from("orders").update({ status }).in("id", ids));
   bar.querySelectorAll("button").forEach((b) => { b.disabled = false; });
   if (error) {
-    alert("Couldn't update: " + error.message);
+    alert("Couldn't update: " + orderStatusErrorMessage(error, status));
     return;
   }
   selectedOrderIds.clear();
@@ -2578,7 +2849,8 @@ function csvEscapeField(value) {
 }
 
 /* Exports whatever is currently visible in #orderList — i.e. respects the
-   active ordersStatusFilter, using the same ordersVisibleCache that
+   active status filter, search, "upcoming only" and sort, using the same
+   ordersVisibleCache that
    drives "select all" — as a downloadable CSV. No bulk-selection
    dependency: exports every filtered/visible row regardless of checkbox
    state, which is the minimum useful behavior (e.g. "export all New
@@ -2590,7 +2862,7 @@ function exportOrdersCsv() {
     return;
   }
 
-  const header = ["Date", "Kind", "Name", "Phone", "Email", "Address", "Event Date", "Total", "Status", "Summary", "Notes"];
+  const header = ["Date", "Kind", "Name", "Phone", "Email", "Address", "Event Date", "Total", "Status", "Summary", "Notes", "Admin Notes"];
   const lines = [header.map(csvEscapeField).join(",")];
   rows.forEach((order) => {
     lines.push([
@@ -2604,7 +2876,8 @@ function exportOrdersCsv() {
       order.total || "",
       order.status || "new",
       order.summary || "",
-      order.notes || ""
+      order.notes || "",
+      order.admin_notes || ""
     ].map(csvEscapeField).join(","));
   });
 
@@ -2922,8 +3195,26 @@ document.addEventListener("DOMContentLoaded", async () => {
     const btn = e.target.closest(".orders-filter-btn");
     if (!btn) return;
     ordersStatusFilter = btn.dataset.status;
-    document.querySelectorAll(".orders-filter-btn").forEach((b) => b.classList.toggle("active", b === btn));
+    // Scoped to #ordersFilter — the Analytics range buttons share the
+    // .orders-filter-btn class and would otherwise lose their highlight.
+    document.querySelectorAll("#ordersFilter .orders-filter-btn").forEach((b) => b.classList.toggle("active", b === btn));
     refreshOrderList();
+  });
+  let orderSearchDebounce = null;
+  document.getElementById("orderSearch").addEventListener("input", (e) => {
+    clearTimeout(orderSearchDebounce);
+    orderSearchDebounce = setTimeout(() => {
+      ordersSearchQuery = e.target.value;
+      renderOrderList();
+    }, 180);
+  });
+  document.getElementById("orderSort").addEventListener("change", (e) => {
+    ordersSortMode = e.target.value;
+    renderOrderList();
+  });
+  document.getElementById("orderUpcomingOnly").addEventListener("change", (e) => {
+    ordersUpcomingOnly = e.target.checked;
+    renderOrderList();
   });
   document.getElementById("exportOrdersCsvBtn").addEventListener("click", exportOrdersCsv);
   document.getElementById("orderSelectAll").addEventListener("change", (e) => {
@@ -2939,6 +3230,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   });
   document.getElementById("orderBulkContactedBtn").addEventListener("click", () => bulkUpdateOrderStatus("contacted"));
   document.getElementById("orderBulkFulfilledBtn").addEventListener("click", () => bulkUpdateOrderStatus("fulfilled"));
+  document.getElementById("orderBulkCancelledBtn").addEventListener("click", () => bulkUpdateOrderStatus("cancelled"));
   document.getElementById("orderBulkDeleteBtn").addEventListener("click", bulkDeleteOrders);
   document.getElementById("orderBulkClearBtn").addEventListener("click", clearOrderSelection);
   document.getElementById("analyticsRangeFilter").addEventListener("click", (e) => {

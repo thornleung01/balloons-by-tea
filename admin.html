@@ -170,12 +170,28 @@
       <div class="orders-head">
         <h2>Orders</h2>
         <div class="orders-filter" id="ordersFilter">
-          <button type="button" class="orders-filter-btn active" data-status="all">All</button>
-          <button type="button" class="orders-filter-btn" data-status="new">New</button>
-          <button type="button" class="orders-filter-btn" data-status="contacted">Contacted</button>
-          <button type="button" class="orders-filter-btn" data-status="fulfilled">Fulfilled</button>
+          <button type="button" class="orders-filter-btn active" data-status="all">All <span class="orders-filter-count" data-count-for="all"></span></button>
+          <button type="button" class="orders-filter-btn" data-status="new">New <span class="orders-filter-count" data-count-for="new"></span></button>
+          <button type="button" class="orders-filter-btn" data-status="contacted">Contacted <span class="orders-filter-count" data-count-for="contacted"></span></button>
+          <button type="button" class="orders-filter-btn" data-status="fulfilled">Fulfilled <span class="orders-filter-count" data-count-for="fulfilled"></span></button>
+          <button type="button" class="orders-filter-btn" data-status="cancelled">Cancelled <span class="orders-filter-count" data-count-for="cancelled"></span></button>
         </div>
         <button type="button" class="orders-export-btn" id="exportOrdersCsvBtn">Export CSV</button>
+      </div>
+      <div class="catalog-controls orders-controls">
+        <div class="search-field">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.35-4.35" stroke-linecap="round"/></svg>
+          <input type="search" id="orderSearch" placeholder="Search name, phone, email, ref, notes..." aria-label="Search orders"/>
+        </div>
+        <select id="orderSort" class="filter-select" aria-label="Sort orders">
+          <option value="newest">Newest first</option>
+          <option value="oldest">Oldest first</option>
+          <option value="event">Event date soonest</option>
+        </select>
+        <label class="orders-upcoming-toggle">
+          <input type="checkbox" id="orderUpcomingOnly"/>
+          <span>Upcoming events only</span>
+        </label>
       </div>
       <div class="bulk-select-row">
         <label class="bulk-select-all">
@@ -186,6 +202,7 @@
           <span id="orderBulkSelectedCount">0 selected</span>
           <button type="button" id="orderBulkContactedBtn">Mark Contacted</button>
           <button type="button" id="orderBulkFulfilledBtn">Mark Fulfilled</button>
+          <button type="button" id="orderBulkCancelledBtn">Mark Cancelled</button>
           <button type="button" class="danger" id="orderBulkDeleteBtn">Delete</button>
           <button type="button" id="orderBulkClearBtn">Clear</button>
         </div>
