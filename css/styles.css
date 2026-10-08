@@ -1016,6 +1016,30 @@ button {
 .add-btn.added { background: var(--color-success); }
 
 /* ==========================================================================
+   Skeleton loading placeholders — shown the instant a page paints, before
+   Supabase-backed content (product cards, etc.) has had a chance to arrive.
+   Each render function below replaces its container's innerHTML outright on
+   both success and empty-result paths, so these never need to be removed by
+   hand — they're simply overwritten like any other placeholder content.
+   ========================================================================== */
+@keyframes skeleton-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.55; }
+}
+.skeleton-card .product-art,
+.skeleton-line,
+.skeleton-circle {
+  background: var(--color-bg-alt);
+  border-radius: var(--radius-sm);
+  animation: skeleton-pulse 1.3s ease-in-out infinite;
+}
+.skeleton-card { pointer-events: none; }
+.skeleton-line { height: 14px; }
+.skeleton-line-title { width: 72%; height: 16px; margin-top: var(--space-1); }
+.skeleton-line-price { width: 42px; }
+.skeleton-circle { width: 44px; height: 44px; border-radius: var(--radius-pill); flex-shrink: 0; }
+
+/* ==========================================================================
    Cart drawer
    ========================================================================== */
 .scrim {
