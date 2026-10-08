@@ -918,6 +918,22 @@ function validateCheckoutForm(form) {
   return runFieldValidation(form, rules, "error-");
 }
 
+/* The database's spam limits (sql-parts/spam-limits.sql) reject an order
+   with a recognisable message: "rate_limited" when one connection (or the
+   whole site) has sent too many orders recently, "order_field_too_long" when
+   a field is over its length cap. Both get a friendly explanation; anything
+   else (offline, server down) falls back to the caller's generic message. */
+function orderSubmitErrorMessage(err, fallback) {
+  const message = String((err && err.message) || "");
+  if (message.includes("rate_limited")) {
+    return "We've received several orders from you in a short time. Please wait a few minutes, or message us on WhatsApp.";
+  }
+  if (message.includes("order_field_too_long")) {
+    return "Part of your order is longer than we can accept. Please shorten your notes or details and try again, or message us on WhatsApp.";
+  }
+  return fallback;
+}
+
 async function submitOrder(payload) {
   const client = typeof getSupabaseClient === "function" ? getSupabaseClient() : null;
   if (client) {
@@ -1110,7 +1126,7 @@ function initCheckoutForm() {
       console.error("Order submission failed", err);
       trackEvent("checkout_failed", { message: String(err && err.message || err) });
       const errorEl = document.getElementById("checkoutFormError");
-      if (errorEl) errorEl.textContent = "Something went wrong sending your order. Please check your connection and try again, or reach us directly.";
+      if (errorEl) errorEl.textContent = orderSubmitErrorMessage(err, "Something went wrong sending your order. Please check your connection and try again, or reach us directly.");
     } finally {
       submitBtn.disabled = false;
       submitBtn.innerHTML = originalLabel;
@@ -1292,7 +1308,7 @@ function initCustomOrderForm() {
       console.error("Custom order submission failed", err);
       trackEvent("custom_order_failed", { message: String(err && err.message || err) });
       const errorEl = document.getElementById("customOrderFormError");
-      if (errorEl) errorEl.textContent = "Something went wrong sending your request. Please check your connection and try again, or message us on WhatsApp instead.";
+      if (errorEl) errorEl.textContent = orderSubmitErrorMessage(err, "Something went wrong sending your request. Please check your connection and try again, or message us on WhatsApp instead.");
     } finally {
       submitBtn.disabled = false;
       submitBtn.innerHTML = originalLabel;
