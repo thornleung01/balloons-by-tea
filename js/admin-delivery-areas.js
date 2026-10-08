@@ -28,10 +28,6 @@
     return { valid, invalid, repeated };
   }
 
-  function isMissingTableError(error) {
-    return /relation.*delivery_areas.*does not exist|could not find the table/i.test((error && error.message) || "");
-  }
-
   function renderShell(root) {
     root.innerHTML = `
       <h2>Delivery areas</h2>
@@ -92,7 +88,7 @@
   function showLoadError(error) {
     const listEl = document.getElementById("deliveryAreaList");
     const form = document.getElementById("deliveryAreaForm");
-    const missing = isMissingTableError(error);
+    const missing = isMissingTableError(error, "delivery_areas");
     if (form) form.hidden = missing;
     if (listEl) {
       listEl.innerHTML = `<p class="form-status error">${missing
@@ -151,7 +147,7 @@
     btn.disabled = false;
 
     if (error) {
-      setStatus(isMissingTableError(error)
+      setStatus(isMissingTableError(error, "delivery_areas")
         ? "The delivery_areas table doesn't exist yet — run the latest supabase-setup.sql first."
         : `Couldn't add areas: ${error.message}`, "error");
       return;

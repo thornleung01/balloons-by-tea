@@ -44,13 +44,6 @@
     return Math.round((parseIso(toIso) - parseIso(fromIso)) / 86400000);
   }
 
-  function isMissingTableError(error, name) {
-    if (!error) return false;
-    if (error.code === "42P01" || error.code === "PGRST205" || error.code === "PGRST202") return true;
-    const re = new RegExp(`relation.*${name}.*does not exist|could not find the (table|function)`, "i");
-    return re.test(error.message || "");
-  }
-
   function root() { return document.getElementById("availabilityAdmin"); }
 
   function renderShell() {
@@ -258,8 +251,9 @@
     if (!confirm(`Unblock ${label}? Customers will be able to order for ${count === 1 ? "it" : "these dates"} again.`)) return;
     busy = true;
     btn.disabled = true;
-    const days = blockedCache.filter((r) => r.day >= range.from && r.day <= range.to).map((r) => r.day);
-    const { error } = await mustAffect(getSupabaseClient().from("blocked_dates").delete().in("day", days));
+    // Delete by the range itself rather than a list of days from the
+    // (possibly stale) cache — an empty list would match nothing.
+    const { error } = await mustAffect(getSupabaseClient().from("blocked_dates").delete().gte("day", range.from).lte("day", range.to));
     busy = false;
     if (error) {
       btn.disabled = false;

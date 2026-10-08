@@ -703,6 +703,13 @@ as $$
            end as day,
            substr(o.event_date, 1, 10) as raw
     from public.orders o
+    -- Only rows whose text falls in the requested window, so a call reads
+    -- a handful of orders (via orders_event_date_idx below) instead of
+    -- scanning and regex-matching the whole table. 'YYYY-MM-DD...' sorts as
+    -- text in date order, so this is exact; the checks above still decide
+    -- validity. Plain text comparison — no casts that could throw.
+    where o.event_date >= pg_catalog.to_char(from_day, 'YYYY-MM-DD')
+      and o.event_date <  pg_catalog.to_char(to_day + 1, 'YYYY-MM-DD')
   )
   select od.day
   from order_days od, cap
@@ -715,6 +722,9 @@ as $$
   having count(*) >= cap.max_per_day
   order by od.day;
 $$;
+
+-- Supports the date-window filter in fully_booked_dates() above.
+create index if not exists orders_event_date_idx on public.orders (event_date);
 
 revoke all on function public.fully_booked_dates(date, date) from public;
 grant execute on function public.fully_booked_dates(date, date) to anon, authenticated;

@@ -37,3 +37,16 @@ function getSupabaseClient() {
   }
   return _auraSupabaseClient;
 }
+
+/* True when a Supabase error means the table/function hasn't been created
+   yet (supabase-setup.sql not run), as opposed to any other failure.
+   Shared so every admin card detects it the same way: Postgres code
+   42P01 (undefined table), PostgREST PGRST205/PGRST202 (table/function
+   not in schema cache), with the message text as a fallback. */
+function isMissingTableError(error, name) {
+  if (!error) return false;
+  if (error.code === "42P01" || error.code === "PGRST205" || error.code === "PGRST202") return true;
+  const msg = error.message || "";
+  if (/could not find the (table|function)/i.test(msg)) return true;
+  return Boolean(name) && msg.includes("relation") && msg.includes(name) && msg.includes("does not exist");
+}

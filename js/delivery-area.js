@@ -161,8 +161,13 @@ window.ORDER_GUARDS = window.ORDER_GUARDS || [];
       }
     }
 
+    const valueBeforeLoad = normalizePostal(input.value);
     const areas = await loadAreas();
     if (!areas) return {}; // check is off — never block
+    // The customer may have corrected the code while the list was loading.
+    // Re-run on what's in the field now (the list is cached, so this is
+    // instant) instead of writing the old value back over their edit.
+    if (normalizePostal(input.value) !== valueBeforeLoad) return evaluate(kind, form);
 
     if (!compact) {
       return { error: "Please add your postal code so we can confirm we deliver to you." };

@@ -174,7 +174,9 @@ async function mustAffect(query) {
   if (!data || data.length === 0) {
     return {
       data,
-      error: { message: "Nothing was saved — your login may have expired. Please log in again and retry." }
+      // Either the row no longer exists (deleted elsewhere) or RLS blocked
+      // the write (login expired) — the response can't tell which.
+      error: { message: "Nothing was changed — it may already have been deleted, or your login may have expired. Refresh the page and try again." }
     };
   }
   return { data, error: null };
@@ -213,8 +215,13 @@ async function handleLogout() {
   if ((itemFormIsDirty() || settingsFormIsDirty()) && !confirm("You have unsaved changes. Log out anyway?")) return;
   const client = getSupabaseClient();
   loggingOutOnPurpose = true;
-  await client.auth.signOut();
-  loggingOutOnPurpose = false;
+  try {
+    await client.auth.signOut();
+  } finally {
+    // Always reset, even if signOut throws (e.g. offline) — otherwise the
+    // lost-session watcher would stay switched off for the rest of the page.
+    loggingOutOnPurpose = false;
+  }
   showLoginView();
 }
 
@@ -1043,25 +1050,31 @@ async function planReferenceUpdates(oldUrl, newUrl) {
   return writes;
 }
 
-async function deleteLibraryFile(path) {
+/* Deletes one Library photo. Returns { deleted, error }: a cancelled
+   confirm is { deleted: false, error: null }, which callers must NOT treat
+   as a successful delete. Pass { skipReferenceCheck: true } only when the
+   caller has just verified the photo is unused itself. */
+async function deleteLibraryFile(path, { skipReferenceCheck = false } = {}) {
   const client = getSupabaseClient();
-  const url = client.storage.from("product-photos").getPublicUrl(path).data.publicUrl;
-  let refs;
-  try {
-    refs = await findReferencesForUrl(url);
-  } catch (err) {
-    const proceed = confirm(`Couldn't check whether this photo is still used by a product (${err.message}). If it is, deleting it will break that listing. Delete anyway?`);
-    if (!proceed) return null;
-    refs = [];
-  }
-  if (refs.length) {
-    const proceed = confirm(
-      `This photo is currently used by ${refs.join(", ")}. Deleting it will break ${refs.length === 1 ? "that listing" : "those listings"}. Delete anyway?`
-    );
-    if (!proceed) return null;
+  if (!skipReferenceCheck) {
+    const url = client.storage.from("product-photos").getPublicUrl(path).data.publicUrl;
+    let refs;
+    try {
+      refs = await findReferencesForUrl(url);
+    } catch (err) {
+      const proceed = confirm(`Couldn't check whether this photo is still used by a product (${err.message}). If it is, deleting it will break that listing. Delete anyway?`);
+      if (!proceed) return { deleted: false, error: null };
+      refs = [];
+    }
+    if (refs.length) {
+      const proceed = confirm(
+        `This photo is currently used by ${refs.join(", ")}. Deleting it will break ${refs.length === 1 ? "that listing" : "those listings"}. Delete anyway?`
+      );
+      if (!proceed) return { deleted: false, error: null };
+    }
   }
   const { error } = await client.storage.from("product-photos").remove([path]);
-  return error ? error.message : null;
+  return error ? { deleted: false, error: error.message } : { deleted: true, error: null };
 }
 
 async function deleteLibraryFolder(path) {
@@ -1102,15 +1115,26 @@ async function moveLibraryFile(fromPath, toFolder) {
   const failed = results.filter((r) => r.error);
   if (failed.length) {
     // Roll back so the site stays consistent: put the file back, and undo
-    // whichever reference updates did succeed.
-    await client.storage.from("product-photos").move(toPath, fromPath);
+    // whichever reference updates did succeed. Report honestly if the
+    // rollback itself fails — never claim "nothing changed" when it did.
+    const reason = failed[0].error.message;
+    const { error: moveBackError } = await client.storage.from("product-photos").move(toPath, fromPath);
+    if (moveBackError) {
+      return `Photo move failed partway and couldn't be undone: the file is now in "${toFolder || "Library"}" but ${failed.length} listing${failed.length === 1 ? "" : "s"} still point at its old location, so those images may be broken. Move it back manually. (${reason}; move-back: ${moveBackError.message})`;
+    }
+    let revertProblem = null;
     try {
       backward = await planReferenceUpdates(toUrl, fromUrl);
-      await Promise.all(backward.map((write) => write()));
+      const reverted = await Promise.all(backward.map((write) => write()));
+      const revertFailed = reverted.filter((r) => r.error);
+      if (revertFailed.length) revertProblem = revertFailed[0].error.message;
     } catch (err) {
-      // Best effort; reported below either way.
+      revertProblem = err.message;
     }
-    return `Photo not moved — couldn't update ${failed.length} place${failed.length === 1 ? "" : "s"} that use it (${failed[0].error.message}). Nothing was changed.`;
+    if (revertProblem) {
+      return `Photo move failed and the file was put back, but some listings couldn't be pointed back at it — check products using "${filename}" for broken images. (${reason}; revert: ${revertProblem})`;
+    }
+    return `Photo not moved — couldn't update ${failed.length} place${failed.length === 1 ? "" : "s"} that use it (${reason}). Nothing was changed.`;
   }
   if (forward.length > 0) {
     alert(`Moved — and updated ${forward.length} place${forward.length === 1 ? "" : "s"} that was using this photo so it keeps working.`);
@@ -1175,9 +1199,9 @@ function wireLibraryGrid(gridEl, { navigate, onFileClick, afterMutate, getPath }
     btn.addEventListener("click", async (e) => {
       e.stopPropagation();
       if (!confirm("Delete this photo? This can't be undone.")) return;
-      const error = await deleteLibraryFile(btn.dataset.deleteFile);
-      if (error) { alert("Couldn't delete: " + error); return; }
-      afterMutate();
+      const result = await deleteLibraryFile(btn.dataset.deleteFile);
+      if (result.error) { alert("Couldn't delete: " + result.error); return; }
+      if (result.deleted) afterMutate();
     });
   });
   gridEl.querySelectorAll("[data-delete-folder]").forEach((btn) => {
@@ -1494,12 +1518,24 @@ async function handleDeleteSelectedUnusedPhotos() {
   const btn = document.getElementById("deleteUnusedPhotosBtn");
   if (btn) btn.disabled = true;
 
+  // Re-check references once, right before deleting: something may have
+  // started using one of these photos since the scan. If the check itself
+  // fails, delete nothing rather than guess.
+  let referenced;
+  try {
+    referenced = await gatherReferencedPhotoUrls();
+  } catch (err) {
+    if (btn) btn.disabled = false;
+    alert(`Couldn't re-check whether these photos are in use (${err.message}), so nothing was deleted. Try again.`);
+    return;
+  }
   const failures = [];
   const succeededPaths = new Set();
   for (const f of toDelete) {
-    const error = await deleteLibraryFile(f.path);
-    if (error) failures.push(`${f.name}: ${error}`);
-    else succeededPaths.add(f.path);
+    if (referenced.has(f.url)) { failures.push(`${f.name}: now used by a listing — skipped`); continue; }
+    const result = await deleteLibraryFile(f.path, { skipReferenceCheck: true });
+    if (result.deleted) succeededPaths.add(f.path);
+    else failures.push(`${f.name}: ${result.error || "not deleted"}`);
   }
 
   unusedPhotosCandidates = unusedPhotosCandidates.filter((f) => !succeededPaths.has(f.path));
@@ -2220,16 +2256,28 @@ async function loadSettingsIntoForm() {
   const map = {};
   (data || []).forEach((row) => { map[row.key] = row.value; });
 
+  // How a value looks once a field of this kind has held it. Browsers
+  // normalize: colour inputs lowercase hex (and turn invalid values into
+  // #000000), textareas turn CRLF into LF. Comparing against the raw DB
+  // value would make such fields look permanently "changed".
+  const asFieldValue = (input, value) => {
+    const probe = input.cloneNode(false);
+    probe.value = value;
+    return probe.value;
+  };
   const baseline = {};
   SETTINGS_KEYS.forEach((key) => {
     const input = document.getElementById(`s-${key}`);
     if (!input) return;
     const editedMidLoad = input.value !== valuesAtStart[key];
     if (map[key] != null && !editedMidLoad) input.value = map[key];
-    // The baseline is what the database holds. A key the database doesn't
-    // have yet gets the input's own default as its baseline, so an
-    // untouched default (e.g. the colour picker's black) is never written.
-    baseline[key] = map[key] != null ? map[key] : (editedMidLoad ? valuesAtStart[key] : input.value);
+    // The baseline is what the database holds, as this field would show
+    // it. A key the database doesn't have yet gets the input's own default
+    // as its baseline, so an untouched default (e.g. the colour picker's
+    // black) is never written.
+    baseline[key] = map[key] != null
+      ? asFieldValue(input, map[key])
+      : (editedMidLoad ? valuesAtStart[key] : input.value);
   });
   settingsBaseline = baseline;
 
@@ -2742,10 +2790,15 @@ async function clearOldAnalyticsEvents() {
     return;
   }
 
-  const { error: deleteError } = await mustAffect(client
+  // Count on the server rather than mustAffect()'s .select(), which would
+  // send every deleted event back to the browser just to check it's > 0.
+  let { error: deleteError, count: deletedCount } = await client
     .from("analytics_events")
-    .delete()
-    .lt("created_at", cutoffIso));
+    .delete({ count: "exact" })
+    .lt("created_at", cutoffIso);
+  if (!deleteError && !deletedCount) {
+    deleteError = { message: "Nothing was deleted — your login may have expired. Refresh the page and try again." };
+  }
 
   btn.disabled = false;
   select.disabled = false;

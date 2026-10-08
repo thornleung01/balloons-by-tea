@@ -877,14 +877,20 @@ window.ORDER_GUARDS = window.ORDER_GUARDS || [];
 
 async function runOrderGuards(form, kind, errorPrefix, formErrorId) {
   const formErrorEl = document.getElementById(formErrorId);
-  for (const guard of window.ORDER_GUARDS) {
-    let problem = null;
-    try {
-      problem = await guard({ form, kind });
-    } catch (err) {
-      console.error("Order guard failed; letting the order through", err);
+  // Run all guards at once: they're independent, and each has its own
+  // network timeout, so running them one after another would make a
+  // customer on a slow connection wait for every timeout in turn. The
+  // first problem in registration order is the one reported.
+  const outcomes = await Promise.allSettled(
+    // .then() so even a guard that throws synchronously becomes a rejection
+    window.ORDER_GUARDS.map((guard) => Promise.resolve().then(() => guard({ form, kind })))
+  );
+  for (const outcome of outcomes) {
+    if (outcome.status === "rejected") {
+      console.error("Order guard failed; letting the order through", outcome.reason);
       continue;
     }
+    const problem = outcome.value;
     if (!problem) continue;
     const input = problem.field ? form.elements[problem.field] : null;
     const fieldErrorEl = problem.field ? document.getElementById(`${errorPrefix}${problem.field}`) : null;
