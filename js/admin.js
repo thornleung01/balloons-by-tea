@@ -162,6 +162,24 @@ async function compressImageFile(file, { maxDimension = 1600, jpegQuality = 0.82
   }
 }
 
+/* Runs an update/delete/upsert and treats "no rows changed" as a failure.
+   When Row Level Security blocks a write (most often because the login
+   session has expired or been lost), Supabase doesn't return an error —
+   it returns success with zero rows. Without this check every save button
+   would report "updated"/"deleted" while nothing actually changed.
+   Callers keep using { error } exactly as before. */
+async function mustAffect(query) {
+  const { data, error } = await query.select();
+  if (error) return { data, error };
+  if (!data || data.length === 0) {
+    return {
+      data,
+      error: { message: "Nothing was saved — your login may have expired. Please log in again and retry." }
+    };
+  }
+  return { data, error: null };
+}
+
 function show(el) { el.hidden = false; }
 function hide(el) { el.hidden = true; }
 
@@ -189,10 +207,30 @@ async function handleLogin(e) {
   await enterDashboard();
 }
 
+let loggingOutOnPurpose = false;
+
 async function handleLogout() {
+  if ((itemFormIsDirty() || settingsFormIsDirty()) && !confirm("You have unsaved changes. Log out anyway?")) return;
   const client = getSupabaseClient();
+  loggingOutOnPurpose = true;
   await client.auth.signOut();
+  loggingOutOnPurpose = false;
   showLoginView();
+}
+
+/* If the session ends on its own (token refresh failed, signed out in
+   another tab), return to the login screen with an explanation instead of
+   leaving a dashboard up whose saves can no longer succeed. The forms are
+   only hidden, not cleared, so unsaved work is still there after logging
+   back in. */
+function watchForLostSession(client) {
+  client.auth.onAuthStateChange((event) => {
+    if (event !== "SIGNED_OUT" || loggingOutOnPurpose) return;
+    if (document.getElementById("dashboardView").hidden) return;
+    showLoginView();
+    document.getElementById("loginError").textContent =
+      "Your login expired — please log in again. Anything you hadn't saved is still in the form.";
+  });
 }
 
 async function enterDashboard() {
@@ -211,6 +249,9 @@ async function enterDashboard() {
   await loadCollectionsCache();
   await refreshItemList();
   await refreshOrderList();
+  // First clean snapshot of the item form, taken only once the category
+  // dropdown has its real options (filling it changes the form's value).
+  if (itemFormSnapshot === null) markItemFormClean();
 }
 
 function showLoginView() {
@@ -493,7 +534,7 @@ async function moveProductToCollection(id, newSlug) {
   if (isReassigningCollection) return;
   isReassigningCollection = true;
   const client = getSupabaseClient();
-  const { error } = await client.from("products").update({ collection: newSlug }).eq("id", id);
+  const { error } = await mustAffect(client.from("products").update({ collection: newSlug }).eq("id", id));
   isReassigningCollection = false;
   if (error) {
     alert("Couldn't move item: " + error.message);
@@ -533,7 +574,7 @@ async function bulkSetActive(active) {
   const client = getSupabaseClient();
   const bar = document.getElementById("bulkActionBar");
   bar.querySelectorAll("button").forEach((b) => { b.disabled = true; });
-  const { error } = await client.from("products").update({ active }).in("id", ids);
+  const { error } = await mustAffect(client.from("products").update({ active }).in("id", ids));
   bar.querySelectorAll("button").forEach((b) => { b.disabled = false; });
   if (error) {
     alert("Couldn't update: " + error.message);
@@ -551,7 +592,7 @@ async function bulkDeleteProducts() {
   const client = getSupabaseClient();
   const bar = document.getElementById("bulkActionBar");
   bar.querySelectorAll("button").forEach((b) => { b.disabled = true; });
-  const { error } = await client.from("products").delete().in("id", ids);
+  const { error } = await mustAffect(client.from("products").delete().in("id", ids));
   bar.querySelectorAll("button").forEach((b) => { b.disabled = false; });
   if (error) {
     alert("Couldn't delete: " + error.message);
@@ -565,7 +606,7 @@ async function bulkDeleteProducts() {
 async function handleToggleActive(id, active, toggleEl) {
   const client = getSupabaseClient();
   toggleEl.disabled = true;
-  const { error } = await client.from("products").update({ active }).eq("id", id);
+  const { error } = await mustAffect(client.from("products").update({ active }).eq("id", id));
   if (error) {
     alert("Couldn't update: " + error.message);
     toggleEl.checked = !active;
@@ -577,7 +618,31 @@ async function handleToggleActive(id, active, toggleEl) {
 
 /* ===== Form (add / edit) ===== */
 
+/* Unsaved-changes tracking for the item form. A snapshot of the form is
+   taken whenever it's in a known-clean state (just loaded for editing,
+   just reset, just saved); anything different from that snapshot counts
+   as unsaved work. Without this, clicking Edit on another item silently
+   replaced whatever had been typed. */
+let itemFormSnapshot = null;
+
+function itemFormState() {
+  const v = (id) => document.getElementById(id).value;
+  return JSON.stringify({
+    id: currentEditId,
+    collection: v("f-collection"), name: v("f-name"), price: v("f-price"),
+    description: v("f-description"), style: v("f-style"),
+    active: document.getElementById("f-active").checked,
+    photos: currentPhotoEntries.map((e) => (e.type === "url" ? e.value : `file:${e.value.name}:${e.value.size}`))
+  });
+}
+function markItemFormClean() { itemFormSnapshot = itemFormState(); }
+function itemFormIsDirty() { return itemFormSnapshot !== null && itemFormState() !== itemFormSnapshot; }
+function confirmDiscardItemEdits() {
+  return !itemFormIsDirty() || confirm("You have unsaved changes to this item. Discard them?");
+}
+
 function startEdit(item) {
+  if (!confirmDiscardItemEdits()) return;
   currentEditId = item.id;
   document.getElementById("f-collection").value = item.collection;
   document.getElementById("f-name").value = item.name || "";
@@ -597,6 +662,7 @@ function startEdit(item) {
   document.getElementById("saveBtn").textContent = "Update Item";
   show(document.getElementById("cancelEditBtn"));
   setFormStatus("", null);
+  markItemFormClean();
   window.scrollTo({ top: 0, behavior: "smooth" });
 }
 
@@ -609,6 +675,7 @@ function resetForm() {
   document.getElementById("saveBtn").textContent = "Add Item";
   hide(document.getElementById("cancelEditBtn"));
   setFormStatus("", null);
+  markItemFormClean();
 }
 
 function handlePhotoChange(e) {
@@ -795,7 +862,10 @@ async function listLibraryPath(path) {
   const { data, error } = await client.storage
     .from("product-photos")
     .list(path || "", { limit: 500, sortBy: { column: "name", order: "asc" } });
-  if (error) return { folders: [], files: [] };
+  // Report the failure instead of returning an empty listing: an outage
+  // would otherwise read as "Nothing here yet" and an empty folder check
+  // would pass.
+  if (error) return { folders: [], files: [], error: error.message };
   const folders = [];
   const files = [];
   (data || []).forEach((entry) => {
@@ -816,7 +886,8 @@ async function listLibraryPath(path) {
    the full real inventory "Find unused photos" diffs against whatever's
    actually referenced in the database. */
 async function walkLibraryTree(path) {
-  const { folders, files } = await listLibraryPath(path);
+  const { folders, files, error } = await listLibraryPath(path);
+  if (error) throw new Error(error); // a skipped folder would make the scan quietly incomplete
   let all = files.slice();
   for (const folderName of folders) {
     const subPath = path ? `${path}/${folderName}` : folderName;
@@ -915,67 +986,74 @@ function libraryBreadcrumbHtml(path, navAttr) {
 /* Finds every real, human-readable place a given photo URL is currently
    referenced from — used to warn before a destructive delete. Checks the
    same sources as gatherReferencedPhotoUrls(), just keeping track of
-   WHERE each match came from instead of only whether one exists. */
+   WHERE each match came from instead of only whether one exists. Throws if
+   any lookup fails: "couldn't check" must never be mistaken for "unused". */
 async function findReferencesForUrl(url) {
   const client = getSupabaseClient();
   const refs = [];
+  const [productsRes, collectionsRes, settingsRes] = await Promise.all([
+    client.from("products").select("id,name,image_url,images"),
+    client.from("collections").select("id,title,card_image_url"),
+    client.from("site_settings").select("key,value")
+  ]);
+  const readError = productsRes.error || collectionsRes.error || settingsRes.error;
+  if (readError) throw new Error(readError.message);
 
-  const { data: products } = await client.from("products").select("id,name,image_url,images");
-  (products || []).forEach((p) => {
+  (productsRes.data || []).forEach((p) => {
     const inImages = Array.isArray(p.images) && p.images.includes(url);
     if (p.image_url === url || inImages) refs.push(`product "${p.name}"`);
   });
-
-  const { data: collections } = await client.from("collections").select("id,title,card_image_url");
-  (collections || []).forEach((c) => {
+  (collectionsRes.data || []).forEach((c) => {
     if (c.card_image_url === url) refs.push(`category "${c.title}"`);
   });
-
-  const { data: settings } = await client.from("site_settings").select("key,value");
-  (settings || []).forEach((s) => {
+  (settingsRes.data || []).forEach((s) => {
     if (s.value === url) refs.push(`site setting "${s.key}"`);
   });
-
   return refs;
 }
 
-/* Repoints every DB reference to oldUrl at newUrl — called after a
-   successful move/rename, since the file's content hasn't changed, only
-   its location, and nothing the admin does inside the Library should be
-   able to silently break a product that was already using that photo. */
-async function updateReferencesAfterMove(oldUrl, newUrl) {
+/* Works out (without writing anything) every DB change needed to repoint
+   references from oldUrl to newUrl. Throws if any lookup fails, so a move
+   can be refused before anything has changed. Returns a list of functions,
+   each performing one checked write. */
+async function planReferenceUpdates(oldUrl, newUrl) {
   const client = getSupabaseClient();
+  const [productsRes, collectionsRes, settingsRes] = await Promise.all([
+    client.from("products").select("id,image_url,images"),
+    client.from("collections").select("id,card_image_url"),
+    client.from("site_settings").select("key,value")
+  ]);
+  const readError = productsRes.error || collectionsRes.error || settingsRes.error;
+  if (readError) throw new Error(readError.message);
+
   const writes = [];
-
-  const { data: products } = await client.from("products").select("id,image_url,images");
-  (products || []).forEach((p) => {
-    let changed = false;
-    const newImages = Array.isArray(p.images)
-      ? p.images.map((u) => { if (u === oldUrl) { changed = true; return newUrl; } return u; })
-      : p.images;
-    const newImageUrl = p.image_url === oldUrl ? newUrl : p.image_url;
-    if (p.image_url === oldUrl) changed = true;
-    if (changed) writes.push(client.from("products").update({ image_url: newImageUrl, images: newImages }).eq("id", p.id));
+  (productsRes.data || []).forEach((p) => {
+    const inImages = Array.isArray(p.images) && p.images.includes(oldUrl);
+    if (p.image_url !== oldUrl && !inImages) return;
+    const images = Array.isArray(p.images) ? p.images.map((u) => (u === oldUrl ? newUrl : u)) : p.images;
+    const image_url = p.image_url === oldUrl ? newUrl : p.image_url;
+    writes.push(() => mustAffect(client.from("products").update({ image_url, images }).eq("id", p.id)));
   });
-
-  const { data: collections } = await client.from("collections").select("id,card_image_url");
-  (collections || []).forEach((c) => {
-    if (c.card_image_url === oldUrl) writes.push(client.from("collections").update({ card_image_url: newUrl }).eq("id", c.id));
+  (collectionsRes.data || []).forEach((c) => {
+    if (c.card_image_url === oldUrl) writes.push(() => mustAffect(client.from("collections").update({ card_image_url: newUrl }).eq("id", c.id)));
   });
-
-  const { data: settings } = await client.from("site_settings").select("key,value");
-  (settings || []).forEach((s) => {
-    if (s.value === oldUrl) writes.push(client.from("site_settings").update({ value: newUrl }).eq("key", s.key));
+  (settingsRes.data || []).forEach((s) => {
+    if (s.value === oldUrl) writes.push(() => mustAffect(client.from("site_settings").update({ value: newUrl }).eq("key", s.key)));
   });
-
-  if (writes.length) await Promise.all(writes);
-  return writes.length;
+  return writes;
 }
 
 async function deleteLibraryFile(path) {
   const client = getSupabaseClient();
   const url = client.storage.from("product-photos").getPublicUrl(path).data.publicUrl;
-  const refs = await findReferencesForUrl(url);
+  let refs;
+  try {
+    refs = await findReferencesForUrl(url);
+  } catch (err) {
+    const proceed = confirm(`Couldn't check whether this photo is still used by a product (${err.message}). If it is, deleting it will break that listing. Delete anyway?`);
+    if (!proceed) return null;
+    refs = [];
+  }
   if (refs.length) {
     const proceed = confirm(
       `This photo is currently used by ${refs.join(", ")}. Deleting it will break ${refs.length === 1 ? "that listing" : "those listings"}. Delete anyway?`
@@ -990,7 +1068,8 @@ async function deleteLibraryFolder(path) {
   // No recursive delete — refuse rather than silently nuking contents.
   // The admin can move/delete what's inside first, same as any ordinary
   // file manager would require.
-  const { folders, files } = await listLibraryPath(path);
+  const { folders, files, error: listError } = await listLibraryPath(path);
+  if (listError) return `Couldn't check whether that folder is empty, so it wasn't deleted: ${listError}`;
   if (folders.length || files.length) return "That folder isn't empty — move or delete what's inside it first.";
   const client = getSupabaseClient();
   const { error } = await client.storage.from("product-photos").remove([`${path}/.keep`]);
@@ -1005,15 +1084,36 @@ async function moveLibraryFile(fromPath, toFolder) {
   const fromUrl = client.storage.from("product-photos").getPublicUrl(fromPath).data.publicUrl;
   const toUrl = client.storage.from("product-photos").getPublicUrl(toPath).data.publicUrl;
 
+  // Plan the reference updates BEFORE moving: if we can't even read what
+  // uses this photo, refuse now while nothing has changed.
+  let forward, backward;
+  try {
+    forward = await planReferenceUpdates(fromUrl, toUrl);
+  } catch (err) {
+    return `Couldn't check what uses this photo, so it wasn't moved: ${err.message}`;
+  }
+
   const { error } = await client.storage.from("product-photos").move(fromPath, toPath);
   if (error) return error.message;
 
-  // The file's URL just changed — follow every DB reference to the OLD
-  // url and repoint it at the new one, so organizing photos into folders
-  // never silently breaks whatever was already using one.
-  const updatedCount = await updateReferencesAfterMove(fromUrl, toUrl);
-  if (updatedCount > 0) {
-    alert(`Moved — and updated ${updatedCount} place${updatedCount === 1 ? "" : "s"} that was using this photo so it keeps working.`);
+  // The file's URL just changed — repoint everything that used it, so
+  // organizing photos into folders never silently breaks a listing.
+  const results = await Promise.all(forward.map((write) => write()));
+  const failed = results.filter((r) => r.error);
+  if (failed.length) {
+    // Roll back so the site stays consistent: put the file back, and undo
+    // whichever reference updates did succeed.
+    await client.storage.from("product-photos").move(toPath, fromPath);
+    try {
+      backward = await planReferenceUpdates(toUrl, fromUrl);
+      await Promise.all(backward.map((write) => write()));
+    } catch (err) {
+      // Best effort; reported below either way.
+    }
+    return `Photo not moved — couldn't update ${failed.length} place${failed.length === 1 ? "" : "s"} that use it (${failed[0].error.message}). Nothing was changed.`;
+  }
+  if (forward.length > 0) {
+    alert(`Moved — and updated ${forward.length} place${forward.length === 1 ? "" : "s"} that was using this photo so it keeps working.`);
   }
   return null;
 }
@@ -1213,6 +1313,10 @@ async function navigatePickerTo(path) {
   const grid = document.getElementById("photoLibraryGrid");
   grid.innerHTML = `<p class="empty-note">Loading...</p>`;
   pickerEntries = await listLibraryPath(pickerPath);
+  if (pickerEntries.error) {
+    grid.innerHTML = `<p class="form-status error">Couldn't load photos: ${escapeHtml(pickerEntries.error)}</p>`;
+    return;
+  }
   renderPhotoLibraryGrid();
 }
 
@@ -1279,6 +1383,10 @@ async function navigateLibraryTab(path) {
   if (!grid) return;
   grid.innerHTML = `<p class="empty-note">Loading...</p>`;
   libraryTabEntries = await listLibraryPath(libraryTabPath);
+  if (libraryTabEntries.error) {
+    grid.innerHTML = `<p class="form-status error">Couldn't load photos: ${escapeHtml(libraryTabEntries.error)}</p>`;
+    return;
+  }
   renderLibraryTabGrid();
 }
 
@@ -1449,7 +1557,7 @@ async function handleSaveItem(e) {
 
     let error;
     if (currentEditId) {
-      ({ error } = await client.from("products").update(payload).eq("id", currentEditId));
+      ({ error } = await mustAffect(client.from("products").update(payload).eq("id", currentEditId)));
     } else {
       ({ error } = await client.from("products").insert(payload));
     }
@@ -1471,12 +1579,12 @@ async function handleDelete(id, allItems) {
   const label = item ? item.name : "this item";
   if (!confirm(`Delete "${label}"? This can't be undone.`)) return;
   const client = getSupabaseClient();
-  const { error } = await client.from("products").delete().eq("id", id);
+  const { error } = await mustAffect(client.from("products").delete().eq("id", id));
   if (error) {
     alert("Couldn't delete: " + error.message);
     return;
   }
-  if (currentEditId === id) resetForm();
+  if (String(currentEditId) === String(id)) resetForm(); // number (DB) vs string (data-id)
   await refreshItemList();
 }
 
@@ -1645,10 +1753,20 @@ function wireUpRowReorder(listEl, selector, cache, onDrop) {
   });
 }
 
-async function persistCollectionOrder(cache) {
+/* Shared by the Collections, Nav and FAQ drag-to-reorder lists. Every
+   row's write is checked; if any fail the admin is told, and the list is
+   re-read from the database either way so it shows what was really saved
+   rather than a half-applied order. */
+async function persistSortOrder(table, cache, refresh) {
   const client = getSupabaseClient();
-  await Promise.all(cache.map((c, i) => client.from("collections").update({ sort_order: i }).eq("id", c.id)));
-  await refreshCollectionList();
+  const results = await Promise.all(cache.map((row, i) => mustAffect(client.from(table).update({ sort_order: i }).eq("id", row.id))));
+  const failed = results.filter((r) => r.error);
+  if (failed.length) alert(`Couldn't save the new order (${failed.length} of ${cache.length} rows failed): ${failed[0].error.message}`);
+  await refresh();
+}
+
+async function persistCollectionOrder(cache) {
+  await persistSortOrder("collections", cache, refreshCollectionList);
 }
 
 function startCollectionEdit(row) {
@@ -1722,7 +1840,7 @@ async function handleSaveCollection(e) {
 
     let error;
     if (currentCollectionEditId) {
-      ({ error } = await client.from("collections").update(payload).eq("id", currentCollectionEditId));
+      ({ error } = await mustAffect(client.from("collections").update(payload).eq("id", currentCollectionEditId)));
     } else {
       payload.slug = slugify(title);
       payload.is_legacy = false;
@@ -1752,9 +1870,9 @@ async function handleDeleteCollection(id, usedSlugs) {
   }
   if (!confirm(`Delete "${row.title}"? This can't be undone.`)) return;
   const client = getSupabaseClient();
-  const { error } = await client.from("collections").delete().eq("id", id);
+  const { error } = await mustAffect(client.from("collections").delete().eq("id", id));
   if (error) { alert("Couldn't delete: " + error.message); return; }
-  if (currentCollectionEditId === id) resetCollectionForm();
+  if (String(currentCollectionEditId) === String(id)) resetCollectionForm(); // number (DB) vs string (data-id)
   await refreshCollectionList();
 }
 
@@ -1815,7 +1933,7 @@ async function refreshNavList() {
 async function handleToggleNavVisible(id, visible, toggleEl) {
   const client = getSupabaseClient();
   toggleEl.disabled = true;
-  const { error } = await client.from("nav_items").update({ visible }).eq("id", id);
+  const { error } = await mustAffect(client.from("nav_items").update({ visible }).eq("id", id));
   if (error) {
     alert("Couldn't update: " + error.message);
     toggleEl.checked = !visible;
@@ -1826,9 +1944,7 @@ async function handleToggleNavVisible(id, visible, toggleEl) {
 }
 
 async function persistNavOrder(cache) {
-  const client = getSupabaseClient();
-  await Promise.all(cache.map((n, i) => client.from("nav_items").update({ sort_order: i }).eq("id", n.id)));
-  await refreshNavList();
+  await persistSortOrder("nav_items", cache, refreshNavList);
 }
 
 function startNavEdit(row) {
@@ -1878,7 +1994,7 @@ async function handleSaveNav(e) {
   try {
     let error;
     if (currentNavEditId) {
-      ({ error } = await client.from("nav_items").update(payload).eq("id", currentNavEditId));
+      ({ error } = await mustAffect(client.from("nav_items").update(payload).eq("id", currentNavEditId)));
     } else {
       ({ error } = await client.from("nav_items").insert(payload));
     }
@@ -1902,9 +2018,9 @@ async function handleDeleteNav(id) {
   if (!row || row.key) return;
   if (!confirm(`Delete "${row.label}"? This can't be undone.`)) return;
   const client = getSupabaseClient();
-  const { error } = await client.from("nav_items").delete().eq("id", id);
+  const { error } = await mustAffect(client.from("nav_items").delete().eq("id", id));
   if (error) { alert("Couldn't delete: " + error.message); return; }
-  if (currentNavEditId === id) resetNavForm();
+  if (String(currentNavEditId) === String(id)) resetNavForm(); // number (DB) vs string (data-id)
   await refreshNavList();
 }
 
@@ -1955,9 +2071,7 @@ async function refreshFaqList() {
 }
 
 async function persistFaqOrder(cache) {
-  const client = getSupabaseClient();
-  await Promise.all(cache.map((f, i) => client.from("faq_items").update({ sort_order: i }).eq("id", f.id)));
-  await refreshFaqList();
+  await persistSortOrder("faq_items", cache, refreshFaqList);
 }
 
 function startFaqEdit(row) {
@@ -2005,7 +2119,7 @@ async function handleSaveFaq(e) {
   try {
     let error;
     if (currentFaqEditId) {
-      ({ error } = await client.from("faq_items").update(payload).eq("id", currentFaqEditId));
+      ({ error } = await mustAffect(client.from("faq_items").update(payload).eq("id", currentFaqEditId)));
     } else {
       ({ error } = await client.from("faq_items").insert(payload));
     }
@@ -2027,9 +2141,9 @@ async function handleSaveFaq(e) {
 async function handleDeleteFaq(id) {
   if (!confirm("Delete this FAQ item? This can't be undone.")) return;
   const client = getSupabaseClient();
-  const { error } = await client.from("faq_items").delete().eq("id", id);
+  const { error } = await mustAffect(client.from("faq_items").delete().eq("id", id));
   if (error) { alert("Couldn't delete: " + error.message); return; }
-  if (currentFaqEditId === id) resetFaqForm();
+  if (String(currentFaqEditId) === String(id)) resetFaqForm(); // number (DB) vs string (data-id)
   await refreshFaqList();
 }
 
@@ -2048,7 +2162,36 @@ const SETTINGS_KEYS = [
   "theme_coral", "theme_blush", "theme_baby_blue", "theme_soft_yellow", "theme_brown"
 ];
 
+/* Values as last successfully loaded from the database (key -> value), or
+   null if no load has succeeded yet. Save is disabled until it's set, and
+   Save only writes fields that differ from it. Both guard the same
+   failure: if the settings read failed, the form would be full of blanks
+   and black colour-picker defaults, and saving all 23 keys from it would
+   wipe the homepage text, contact details and theme across the live site. */
+let settingsBaseline = null;
+
+function settingsFormIsDirty() {
+  if (!settingsBaseline) return false;
+  if (currentHeroPhotoFile || currentLogoPhotoFile) return true;
+  return SETTINGS_KEYS.some((key) => {
+    const input = document.getElementById(`s-${key}`);
+    return input && input.value !== settingsBaseline[key];
+  });
+}
+
 async function loadSettingsIntoForm() {
+  const statusEl = document.getElementById("settingsFormStatus");
+  const saveBtn = document.getElementById("saveSettingsBtn");
+  // Re-entering the tab with unsaved edits: keep them rather than reload
+  // over them.
+  if (settingsFormIsDirty()) {
+    statusEl.textContent = "You have unsaved changes.";
+    statusEl.className = "form-status";
+    return;
+  }
+  saveBtn.disabled = true;
+  statusEl.textContent = "Loading settings...";
+  statusEl.className = "form-status";
   // Reset staged photos before the fetch, not after — otherwise a photo
   // picked while this request is in flight gets silently thrown away.
   // Clear the file inputs too: if one kept showing a filename after its
@@ -2069,21 +2212,26 @@ async function loadSettingsIntoForm() {
   });
   const client = getSupabaseClient();
   const { data, error } = await client.from("site_settings").select("*");
-  const statusEl = document.getElementById("settingsFormStatus");
   if (error) {
-    statusEl.textContent = "Couldn't load settings: " + error.message;
+    statusEl.textContent = `Couldn't load settings (${error.message}). Saving is disabled so blank fields can't overwrite the live site — reload the page to try again.`;
     statusEl.className = "form-status error";
-    return;
+    return; // Save stays disabled
   }
   const map = {};
   (data || []).forEach((row) => { map[row.key] = row.value; });
 
+  const baseline = {};
   SETTINGS_KEYS.forEach((key) => {
     const input = document.getElementById(`s-${key}`);
-    if (!input || map[key] == null) return;
-    if (input.value !== valuesAtStart[key]) return; // admin edited it mid-load — keep their edit
-    input.value = map[key];
+    if (!input) return;
+    const editedMidLoad = input.value !== valuesAtStart[key];
+    if (map[key] != null && !editedMidLoad) input.value = map[key];
+    // The baseline is what the database holds. A key the database doesn't
+    // have yet gets the input's own default as its baseline, so an
+    // untouched default (e.g. the colour picker's black) is never written.
+    baseline[key] = map[key] != null ? map[key] : (editedMidLoad ? valuesAtStart[key] : input.value);
   });
+  settingsBaseline = baseline;
 
   if (!currentHeroPhotoFile) {
     document.getElementById("heroPhotoPreview").innerHTML = map.hero_image_url ? `<img src="${escapeHtml(map.hero_image_url)}" alt=""/>` : "No photo";
@@ -2092,6 +2240,7 @@ async function loadSettingsIntoForm() {
     document.getElementById("logoPhotoPreview").innerHTML = map.logo_url ? `<img src="${escapeHtml(map.logo_url)}" alt=""/>` : "No photo";
   }
   statusEl.textContent = "";
+  saveBtn.disabled = false;
 }
 
 function handleHeroPhotoChange(e) {
@@ -2123,10 +2272,11 @@ async function handleSaveSettings(e) {
   statusEl.className = "form-status";
 
   try {
-    const rows = SETTINGS_KEYS.map((key) => ({
-      key,
-      value: document.getElementById(`s-${key}`).value
-    }));
+    if (!settingsBaseline) throw new Error("Settings haven't loaded, so nothing was saved. Reload the page and try again.");
+    // Only write what actually changed since the last successful load.
+    const rows = SETTINGS_KEYS
+      .map((key) => ({ key, value: document.getElementById(`s-${key}`).value }))
+      .filter((row) => row.value !== settingsBaseline[row.key]);
 
     if (currentHeroPhotoFile) {
       // The hero photo renders full-bleed (.hero-photo-img, width/height:
@@ -2140,9 +2290,15 @@ async function handleSaveSettings(e) {
       rows.push({ key: "logo_url", value: await uploadSiteImage(client, currentLogoPhotoFile) });
     }
 
-    const { error } = await client.from("site_settings").upsert(rows, { onConflict: "key" });
+    if (!rows.length) {
+      statusEl.textContent = "Nothing has changed — nothing to save.";
+      statusEl.className = "form-status";
+      return;
+    }
+    const { error } = await mustAffect(client.from("site_settings").upsert(rows, { onConflict: "key" }));
     if (error) throw error;
 
+    rows.forEach((row) => { if (row.key in settingsBaseline) settingsBaseline[row.key] = row.value; });
     currentHeroPhotoFile = null;
     currentLogoPhotoFile = null;
     statusEl.textContent = "Settings saved.";
@@ -2151,7 +2307,7 @@ async function handleSaveSettings(e) {
     statusEl.textContent = err.message || "Something went wrong saving settings.";
     statusEl.className = "form-status error";
   } finally {
-    saveBtn.disabled = false;
+    saveBtn.disabled = !settingsBaseline;
   }
 }
 
@@ -2271,7 +2427,7 @@ async function refreshOrderList() {
 
 async function handleOrderStatusChange(id, status) {
   const client = getSupabaseClient();
-  const { error } = await client.from("orders").update({ status }).eq("id", id);
+  const { error } = await mustAffect(client.from("orders").update({ status }).eq("id", id));
   if (error) {
     alert("Couldn't update status: " + error.message);
     return;
@@ -2282,7 +2438,7 @@ async function handleOrderStatusChange(id, status) {
 async function handleDeleteOrder(id) {
   if (!confirm("Delete this order? This can't be undone.")) return;
   const client = getSupabaseClient();
-  const { error } = await client.from("orders").delete().eq("id", id);
+  const { error } = await mustAffect(client.from("orders").delete().eq("id", id));
   if (error) {
     alert("Couldn't delete: " + error.message);
     return;
@@ -2325,7 +2481,7 @@ async function bulkUpdateOrderStatus(status) {
   const client = getSupabaseClient();
   const bar = document.getElementById("orderBulkActionBar");
   bar.querySelectorAll("button").forEach((b) => { b.disabled = true; });
-  const { error } = await client.from("orders").update({ status }).in("id", ids);
+  const { error } = await mustAffect(client.from("orders").update({ status }).in("id", ids));
   bar.querySelectorAll("button").forEach((b) => { b.disabled = false; });
   if (error) {
     alert("Couldn't update: " + error.message);
@@ -2343,7 +2499,7 @@ async function bulkDeleteOrders() {
   const client = getSupabaseClient();
   const bar = document.getElementById("orderBulkActionBar");
   bar.querySelectorAll("button").forEach((b) => { b.disabled = true; });
-  const { error } = await client.from("orders").delete().in("id", ids);
+  const { error } = await mustAffect(client.from("orders").delete().in("id", ids));
   bar.querySelectorAll("button").forEach((b) => { b.disabled = false; });
   if (error) {
     alert("Couldn't delete: " + error.message);
@@ -2586,10 +2742,10 @@ async function clearOldAnalyticsEvents() {
     return;
   }
 
-  const { error: deleteError } = await client
+  const { error: deleteError } = await mustAffect(client
     .from("analytics_events")
     .delete()
-    .lt("created_at", cutoffIso);
+    .lt("created_at", cutoffIso));
 
   btn.disabled = false;
   select.disabled = false;
@@ -2691,10 +2847,20 @@ document.addEventListener("DOMContentLoaded", async () => {
   }
 
   document.getElementById("loginForm").addEventListener("submit", handleLogin);
+  watchForLostSession(client);
   document.getElementById("logoutBtn").addEventListener("click", handleLogout);
   document.getElementById("itemForm").addEventListener("submit", handleSaveItem);
   document.getElementById("f-photo").addEventListener("change", handlePhotoChange);
-  document.getElementById("cancelEditBtn").addEventListener("click", resetForm);
+  document.getElementById("cancelEditBtn").addEventListener("click", () => {
+    if (confirmDiscardItemEdits()) resetForm();
+  });
+  // Closing/reloading the page with unsaved item or settings edits.
+  window.addEventListener("beforeunload", (e) => {
+    if (itemFormIsDirty() || settingsFormIsDirty()) {
+      e.preventDefault();
+      e.returnValue = "";
+    }
+  });
   document.getElementById("openPhotoLibraryBtn").addEventListener("click", openPhotoLibrary);
   Object.keys(TABS).forEach((key) => {
     document.getElementById(TABS[key].btnId).addEventListener("click", () => switchTab(key));
