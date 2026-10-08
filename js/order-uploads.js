@@ -11,7 +11,7 @@
     2. uploads each photo to the PRIVATE 'order-uploads' bucket at
        pending/<folder>/<n>.jpg (upsert off, so nothing is overwritten);
     3. returns the storage paths, which app.js saves in orders.attachments.
-  The server-side rules live in sql-parts/order-uploads.sql. Only the admin
+  The server-side rules live in the "Order photo uploads" section of supabase-setup.sql. Only the admin
   can view the files.
 
   A photo must never cost a customer their order:
@@ -275,7 +275,7 @@
   /* ----- Upload ----- */
 
   // True when the error means the database doesn't have photo uploads set
-  // up (sql-parts/order-uploads.sql not run): missing bucket or function.
+  // up (the "Order photo uploads" section of supabase-setup.sql not run): missing bucket or function.
   function isSetupMissingError(error) {
     if (!error) return false;
     const msg = String(error.message || error.error || "");
@@ -284,7 +284,7 @@
   }
 
   function disableUploads(error) {
-    console.warn("[Balloons by Tea] Photo uploads aren't set up on the database yet (run sql-parts/order-uploads.sql); sending the order without photos.", error);
+    console.warn("[Balloons by Tea] Photo uploads aren't set up on the database yet (run the latest supabase-setup.sql); sending the order without photos.", error);
     available = false;
     items.forEach((i) => { if (i.previewUrl) URL.revokeObjectURL(i.previewUrl); });
     items = [];

@@ -2,7 +2,7 @@
    The gallery's "Order something like this" link on photos without a
    linked product points here as custom-order.html?inspiration=<gallery id>
    (js/gallery.js). This looks that gallery_items row up (plain anon
-   select, so only active photos are found; see sql-parts/gallery.sql),
+   select, so only active photos are found; see the "Gallery" section of supabase-setup.sql),
    then:
      - shows a small "Your inspiration" card (thumbnail, caption, remove)
        in #inspirationCard above the form, and

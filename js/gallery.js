@@ -1,5 +1,5 @@
 /* Past events gallery (gallery.html). Loads the active rows of
-   `gallery_items` (sql-parts/gallery.sql) with a plain anon select and
+   `gallery_items` (the "Gallery" section of supabase-setup.sql) with a plain anon select and
    renders them as a masonry-style photo wall with occasion filter chips.
    Clicking a photo opens the shared product lightbox from js/app.js
    (openLightbox / stepLightbox), stepping through the photos in the

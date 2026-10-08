@@ -942,7 +942,7 @@ async function walkLibraryTree(path) {
    costs nothing and guards against any future change in how they're
    stored. */
 /* Gallery tab (js/admin-gallery.js): gallery_items.image_url is a photo
-   reference too. That table only exists once sql-parts/gallery.sql has been
+   reference too. That table only exists once the "Gallery" section of supabase-setup.sql has been
    run, so a missing table counts as "no gallery photos" here; any other
    read error is returned as-is so the callers below still refuse to guess. */
 async function selectGalleryItemsForReferences(client, columns) {
@@ -2830,7 +2830,7 @@ async function handleDeleteOrder(id) {
 /* ----- Order photos (customer inspiration photos) -----
    Custom orders can carry up to 3 photos in orders.attachments: paths in
    the private 'order-uploads' Storage bucket (see js/order-uploads.js and
-   sql-parts/order-uploads.sql). Only the admin can read them, through
+   the "Order photo uploads" section of supabase-setup.sql). Only the admin can read them, through
    short-lived signed URLs. */
 const ORDER_PHOTOS_BUCKET = "order-uploads";
 const ORDER_PHOTOS_SQL_HINT = "Photo uploads need the latest supabase-setup.sql";

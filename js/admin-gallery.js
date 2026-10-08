@@ -1,6 +1,6 @@
 /* Past events gallery (admin side). Renders into #galleryAdmin on the admin
    "Gallery" tab; js/admin.js calls window.refreshGalleryAdmin() whenever
-   that tab is opened. Rows live in `gallery_items` (sql-parts/gallery.sql)
+   that tab is opened. Rows live in `gallery_items` (the "Gallery" section of supabase-setup.sql)
    and are shown on gallery.html by js/gallery.js.
 
    Reuses from js/admin.js: escapeHtml(), mustAffect() (around every
@@ -81,7 +81,7 @@
     if (toolbar) toolbar.hidden = true;
     setStatus("", null);
     if (listEl) {
-      listEl.innerHTML = `<p class="form-status error gallery-admin-missing">The gallery isn't set up yet. Run the latest supabase-setup.sql (including sql-parts/gallery.sql) in your Supabase SQL Editor, then reopen this tab.</p>`;
+      listEl.innerHTML = `<p class="form-status error gallery-admin-missing">The gallery isn't set up yet. Run the latest supabase-setup.sql in your Supabase SQL Editor, then reopen this tab.</p>`;
     }
   }
 
