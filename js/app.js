@@ -258,7 +258,12 @@ function renderItemCards(items, gridId) {
   grid.querySelectorAll(".product-art").forEach((art) => {
     const item = items.find((i) => i.id === art.dataset.artId);
     if (!item) return;
-    const open = () => openLightbox(getItemImages(item), item.name, art);
+    // Product detail hook (js/product-detail.js): when that file is loaded
+    // the photo opens the detail view (which has its own zoom); otherwise
+    // it falls back to the plain photo lightbox.
+    const open = () => (typeof openProductDetail === "function"
+      ? openProductDetail(item.id, { trigger: art, source: "card", history: "push" })
+      : openLightbox(getItemImages(item), item.name, art));
     art.addEventListener("click", open);
     art.addEventListener("keydown", (e) => {
       if (e.key === "Enter" || e.key === " ") {
@@ -267,6 +272,9 @@ function renderItemCards(items, gridId) {
       }
     });
   });
+
+  // Product detail hook (js/product-detail.js): linked names + clickable cards.
+  if (typeof enhanceProductCards === "function") enhanceProductCards(grid, items);
 }
 
 /* Search + category filter + sort drive every shopping page (home and each
@@ -517,17 +525,23 @@ function saveCart(cart) {
   updateCartBadge();
 }
 
-function addToCart(product) {
+/* qty and source are optional (the product detail view passes both, e.g.
+   3 units from "detail"); a plain card button still adds one. */
+function addToCart(product, qty, source) {
+  const units = Math.max(1, Math.floor(Number(qty)) || 1);
   const cart = getCart();
   const existing = cart.find((line) => line.id === product.id);
   if (existing) {
-    existing.qty += 1;
+    existing.qty += units;
   } else {
-    cart.push({ ...product, qty: 1 });
+    cart.push({ ...product, qty: units });
   }
   saveCart(cart);
   renderCartDrawer();
-  trackEvent("add_to_cart", { productId: product.id, name: product.name, collection: product.collection });
+  const metadata = { productId: product.id, name: product.name, collection: product.collection };
+  if (units > 1) metadata.qty = units;
+  if (source) metadata.source = source;
+  trackEvent("add_to_cart", metadata);
 }
 
 function setQty(id, qty) {
@@ -1455,6 +1469,9 @@ document.addEventListener("DOMContentLoaded", async () => {
   initCustomOrderForm();
   if (typeof applyLayoutOverrides === "function") applyLayoutOverrides();
   if (typeof initEditMode === "function") initEditMode();
+  // Product detail hook (js/product-detail.js): open a ?product= deep link
+  // now that the catalog has loaded and the grids are rendered.
+  if (typeof initProductDetail === "function") initProductDetail();
   await reviewCarouselPromise;
   updateCartBadge();
 });
