@@ -434,6 +434,13 @@ body.admin-body {
 }
 .orders-export-btn:hover { border-color: var(--color-accent); color: var(--color-fg); }
 
+.analytics-clear-row {
+  display: flex; align-items: center; flex-wrap: wrap; gap: var(--space-2);
+  margin-bottom: var(--space-3); font-size: 0.82rem;
+}
+.analytics-clear-row label { color: var(--color-fg-soft); white-space: nowrap; }
+.analytics-clear-row .form-status { margin: 0; }
+
 .order-row-title { display: flex; align-items: center; gap: 6px; }
 .order-select {
   flex-shrink: 0;

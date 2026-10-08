@@ -202,6 +202,17 @@
           <button type="button" class="orders-filter-btn" data-range="all">All time</button>
         </div>
       </div>
+      <div class="analytics-clear-row">
+        <label for="analyticsClearRange">Clear old events</label>
+        <select id="analyticsClearRange" class="order-status-select">
+          <option value="30">Older than 30 days</option>
+          <option value="90">Older than 90 days</option>
+          <option value="180">Older than 180 days</option>
+          <option value="365">Older than 1 year</option>
+        </select>
+        <button type="button" id="analyticsClearBtn" class="orders-filter-btn">Clear</button>
+        <span id="analyticsClearStatus" class="form-status"></span>
+      </div>
       <p class="panel-subtitle">Pairs with <a href="https://clarity.microsoft.com" target="_blank" rel="noopener">Microsoft Clarity</a> (session recordings/heatmaps) for the "why" behind these numbers.</p>
       <div id="analyticsContent"></div>
     </div>
