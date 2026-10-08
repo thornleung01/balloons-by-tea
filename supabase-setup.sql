@@ -371,12 +371,24 @@ create policy "Authenticated can delete site images"
 -- 2. CHECK constraints below are defense-in-depth: RLS controls WHO can
 --    write, not WHAT they write. These mirror validation already
 --    enforced client-side (required-field checks in js/admin.js,
---    <input type="number" min="0"> on price) so a UI bypass or bug
+--    <input type="number" min="0"> on price, min="0" now added to the
+--    sort-order fields alongside this migration) so a UI bypass or bug
 --    can't insert garbage. Only fields the app always treats as
 --    required/non-negative are constrained; optional fields
 --    (description, style, notes, tagline, images shape, etc.) are left
 --    alone since '' / null / '{}' are legitimate values for them
---    throughout the codebase.
+--    throughout the codebase. Every constraint is added `not valid` —
+--    this still enforces on every INSERT/UPDATE from the moment it's
+--    added, but skips checking rows that already exist. Without it, a
+--    single pre-existing row that happens to violate a brand-new
+--    constraint (e.g. a sort_order that went negative before the
+--    matching UI fix shipped) would abort this entire script partway
+--    through, leaving the policy hardening above only half-applied on
+--    whatever ran before the failure. Once you're confident no legacy
+--    row violates a given constraint, `alter table X validate
+--    constraint constraint_name;` retroactively checks existing rows
+--    too — optional, not required for the constraint to work going
+--    forward.
 
 -- Ties every "admin-only" RLS policy to this one specific account instead
 -- of trusting any authenticated Supabase user — closes a gap where, if
@@ -384,12 +396,20 @@ create policy "Authenticated can delete site images"
 -- a stranger's own account would otherwise pass every `to authenticated`
 -- check below. To add/change which account counts as admin later, this
 -- function is the only place that needs editing.
+-- lower()'d on both sides so a stored auth.users email with different
+-- casing than this literal (possible if the account was ever touched via
+-- the Supabase Dashboard rather than only through the app's own
+-- signInWithPassword flow) doesn't silently fail every policy check.
+-- set search_path = '' follows Supabase's own hardening guidance for
+-- functions referenced inside RLS policies; auth.email() is already
+-- schema-qualified so this changes nothing about how the function runs.
 create or replace function is_admin()
 returns boolean
 language sql
 stable
+set search_path = ''
 as $$
-  select auth.email() = 'amandatea02@outlook.com';
+  select lower(auth.email()) = lower('amandatea02@outlook.com');
 $$;
 
 -- Products — tighten the one "manage" (all) policy.
@@ -482,7 +502,18 @@ create policy "Authenticated can manage layout overrides"
   using (is_admin())
   with check (is_admin());
 
--- Layout overrides history — tighten the insert (write) policy.
+-- Layout overrides history — tighten both policies. The table's own
+-- original comment already describes it as "admin-only, not public", so
+-- its read policy gets the same tightening as its write policy for
+-- consistency, even though it was already `to authenticated` rather than
+-- `to anon, authenticated` (i.e. a logged-out visitor could never read it
+-- either way — this closes the "any OTHER authenticated account" gap).
+drop policy if exists "Authenticated can read layout history" on layout_overrides_history;
+create policy "Authenticated can read layout history"
+  on layout_overrides_history for select
+  to authenticated
+  using (is_admin());
+
 drop policy if exists "Authenticated can write layout history" on layout_overrides_history;
 create policy "Authenticated can write layout history"
   on layout_overrides_history for insert
@@ -535,9 +566,9 @@ create policy "Authenticated can delete site images"
 -- style, image_url and images are legitimately optional/empty
 -- ('', null, '{}') throughout the codebase, so left unconstrained.
 alter table products drop constraint if exists products_price_check;
-alter table products add constraint products_price_check check (price >= 0);
+alter table products add constraint products_price_check check (price >= 0) not valid;
 alter table products drop constraint if exists products_name_check;
-alter table products add constraint products_name_check check (trim(name) <> '');
+alter table products add constraint products_name_check check (trim(name) <> '') not valid;
 
 -- collections: handleSaveCollection() requires a non-blank title; slug
 -- is always derived from title via slugify(), which falls back to
@@ -545,31 +576,31 @@ alter table products add constraint products_name_check check (trim(name) <> '')
 -- ever set to 0 or a non-negative index by this app's code (initial
 -- default 0, drag-reorder writes 0..n-1).
 alter table collections drop constraint if exists collections_title_check;
-alter table collections add constraint collections_title_check check (trim(title) <> '');
+alter table collections add constraint collections_title_check check (trim(title) <> '') not valid;
 alter table collections drop constraint if exists collections_slug_check;
-alter table collections add constraint collections_slug_check check (trim(slug) <> '');
+alter table collections add constraint collections_slug_check check (trim(slug) <> '') not valid;
 alter table collections drop constraint if exists collections_sort_order_check;
-alter table collections add constraint collections_sort_order_check check (sort_order >= 0);
+alter table collections add constraint collections_sort_order_check check (sort_order >= 0) not valid;
 
 -- nav_items: handleSaveNav() requires both label and href to be
 -- non-blank before saving. sort_order is only ever 0 or a non-negative
 -- drag-reorder index, same as collections.
 alter table nav_items drop constraint if exists nav_items_label_check;
-alter table nav_items add constraint nav_items_label_check check (trim(label) <> '');
+alter table nav_items add constraint nav_items_label_check check (trim(label) <> '') not valid;
 alter table nav_items drop constraint if exists nav_items_href_check;
-alter table nav_items add constraint nav_items_href_check check (trim(href) <> '');
+alter table nav_items add constraint nav_items_href_check check (trim(href) <> '') not valid;
 alter table nav_items drop constraint if exists nav_items_sort_order_check;
-alter table nav_items add constraint nav_items_sort_order_check check (sort_order >= 0);
+alter table nav_items add constraint nav_items_sort_order_check check (sort_order >= 0) not valid;
 
 -- faq_items: handleSaveFaq() requires both question and answer to be
 -- non-blank before saving. sort_order is only ever 0 or a non-negative
 -- drag-reorder index, same as collections/nav_items.
 alter table faq_items drop constraint if exists faq_items_question_check;
-alter table faq_items add constraint faq_items_question_check check (trim(question) <> '');
+alter table faq_items add constraint faq_items_question_check check (trim(question) <> '') not valid;
 alter table faq_items drop constraint if exists faq_items_answer_check;
-alter table faq_items add constraint faq_items_answer_check check (trim(answer) <> '');
+alter table faq_items add constraint faq_items_answer_check check (trim(answer) <> '') not valid;
 alter table faq_items drop constraint if exists faq_items_sort_order_check;
-alter table faq_items add constraint faq_items_sort_order_check check (sort_order >= 0);
+alter table faq_items add constraint faq_items_sort_order_check check (sort_order >= 0) not valid;
 
 -- orders: every insert/update in js/app.js and js/admin.js uses exactly
 -- one of these two `kind` values and exactly one of ORDER_STATUSES
@@ -579,14 +610,14 @@ alter table faq_items add constraint faq_items_sort_order_check check (sort_orde
 -- them for every order type (e.g. a custom-order inquiry may omit
 -- fields a checkout always fills).
 alter table orders drop constraint if exists orders_kind_check;
-alter table orders add constraint orders_kind_check check (kind in ('checkout', 'custom'));
+alter table orders add constraint orders_kind_check check (kind in ('checkout', 'custom')) not valid;
 alter table orders drop constraint if exists orders_status_check;
-alter table orders add constraint orders_status_check check (status in ('new', 'contacted', 'fulfilled'));
+alter table orders add constraint orders_status_check check (status in ('new', 'contacted', 'fulfilled')) not valid;
 
 -- analytics_events: trackEvent() (js/analytics.js) always passes a
 -- non-empty string literal event_name and a session_id that's either a
 -- real UUID or the literal "unknown" fallback — never blank.
 alter table analytics_events drop constraint if exists analytics_events_event_name_check;
-alter table analytics_events add constraint analytics_events_event_name_check check (trim(event_name) <> '');
+alter table analytics_events add constraint analytics_events_event_name_check check (trim(event_name) <> '') not valid;
 alter table analytics_events drop constraint if exists analytics_events_session_id_check;
-alter table analytics_events add constraint analytics_events_session_id_check check (trim(session_id) <> '');
+alter table analytics_events add constraint analytics_events_session_id_check check (trim(session_id) <> '') not valid;

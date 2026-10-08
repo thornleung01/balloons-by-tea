@@ -1336,7 +1336,7 @@ async function handleSaveCollection(e) {
   const payload = {
     title,
     tagline: document.getElementById("c-tagline").value.trim(),
-    sort_order: parseInt(document.getElementById("c-sort").value, 10) || 0
+    sort_order: Math.max(0, parseInt(document.getElementById("c-sort").value, 10) || 0)
   };
 
   saveBtn.disabled = true;
@@ -1495,7 +1495,7 @@ async function handleSaveNav(e) {
     label,
     href,
     icon: document.getElementById("n-icon").value,
-    sort_order: parseInt(document.getElementById("n-sort").value, 10) || 0,
+    sort_order: Math.max(0, parseInt(document.getElementById("n-sort").value, 10) || 0),
     visible: document.getElementById("n-visible").checked
   };
 
@@ -1622,7 +1622,7 @@ async function handleSaveFaq(e) {
   const payload = {
     question,
     answer,
-    sort_order: parseInt(document.getElementById("fq-sort").value, 10) || 0,
+    sort_order: Math.max(0, parseInt(document.getElementById("fq-sort").value, 10) || 0),
     is_open_default: document.getElementById("fq-open").checked
   };
 
