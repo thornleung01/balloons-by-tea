@@ -918,7 +918,7 @@ function validateCheckoutForm(form) {
   return runFieldValidation(form, rules, "error-");
 }
 
-/* The database's spam limits (sql-parts/spam-limits.sql) reject an order
+/* The database's spam limits ("Spam limits" in supabase-setup.sql) reject an order
    with a recognisable message: "rate_limited" when one connection (or the
    whole site) has sent too many orders recently, "order_field_too_long" when
    a field is over its length cap. Both get a friendly explanation; anything
