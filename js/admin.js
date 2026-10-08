@@ -2041,6 +2041,10 @@ const SETTINGS_KEYS = [
 ];
 
 async function loadSettingsIntoForm() {
+  // Reset staged photos before the fetch, not after — otherwise a photo
+  // picked while this request is in flight gets silently thrown away.
+  currentHeroPhotoFile = null;
+  currentLogoPhotoFile = null;
   const client = getSupabaseClient();
   const { data, error } = await client.from("site_settings").select("*");
   const statusEl = document.getElementById("settingsFormStatus");
@@ -2057,10 +2061,12 @@ async function loadSettingsIntoForm() {
     if (input && map[key] != null) input.value = map[key];
   });
 
-  document.getElementById("heroPhotoPreview").innerHTML = map.hero_image_url ? `<img src="${escapeHtml(map.hero_image_url)}" alt=""/>` : "No photo";
-  document.getElementById("logoPhotoPreview").innerHTML = map.logo_url ? `<img src="${escapeHtml(map.logo_url)}" alt=""/>` : "No photo";
-  currentHeroPhotoFile = null;
-  currentLogoPhotoFile = null;
+  if (!currentHeroPhotoFile) {
+    document.getElementById("heroPhotoPreview").innerHTML = map.hero_image_url ? `<img src="${escapeHtml(map.hero_image_url)}" alt=""/>` : "No photo";
+  }
+  if (!currentLogoPhotoFile) {
+    document.getElementById("logoPhotoPreview").innerHTML = map.logo_url ? `<img src="${escapeHtml(map.logo_url)}" alt=""/>` : "No photo";
+  }
   statusEl.textContent = "";
 }
 
