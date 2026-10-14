@@ -1,7 +1,7 @@
 /* One-click data backup (admin side). Renders into #backupAdmin at the
    bottom of the admin "Settings" tab. Uses getSupabaseClient() /
    isMissingTableError() from js/supabase-config.js and escapeHtml() from
-   js/admin.js.
+   js/admin-core.js.
 
    Strictly read-only: every table is read with select() (GET), and the
    storage buckets are only listed (supabase-js's list() is a POST to

@@ -1,9 +1,9 @@
 /* Past events gallery (admin side). Renders into #galleryAdmin on the admin
-   "Gallery" tab; js/admin.js calls window.refreshGalleryAdmin() whenever
+   "Gallery" tab; js/admin-core.js calls window.refreshGalleryAdmin() whenever
    that tab is opened. Rows live in `gallery_items` (the "Gallery" section of supabase-setup.sql)
    and are shown on gallery.html by js/gallery.js.
 
-   Reuses from js/admin.js: escapeHtml(), mustAffect() (around every
+   Reuses from js/admin-core.js / js/admin-library.js: escapeHtml(), mustAffect() (around every
    write), persistSortOrder() + wireUpRowReorder() + the row lock toggles
    (reordering), openPhotoLibrary({ onAdd }) (the same Library picker the
    product form uses), uploadSiteImage(..., "gallery") (compressed upload

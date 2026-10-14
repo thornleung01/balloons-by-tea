@@ -1,7 +1,7 @@
 /* Delivery-area check (admin side). Renders into #deliveryAreaAdmin on the
-   admin "Delivery" tab; js/admin.js calls window.refreshDeliveryAreaAdmin()
+   admin "Delivery" tab; js/admin-core.js calls window.refreshDeliveryAreaAdmin()
    whenever that tab is opened. Uses escapeHtml() / getSupabaseClient()
-   from js/admin.js and js/supabase-config.js.
+   from js/admin-core.js and js/supabase-config.js.
 
    Rows live in `delivery_areas` (see supabase-setup.sql): one per FSA,
    the first 3 characters of a postal code ("M5V"). Empty list = the

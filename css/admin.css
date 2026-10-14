@@ -565,7 +565,7 @@ body.admin-body {
 .order-admin-notes-save:hover { border-color: var(--color-accent); color: var(--color-fg); }
 .order-admin-notes-actions .form-status { margin: 0; }
 
-/* Customer inspiration photos on an order (js/admin.js "Order photos") */
+/* Customer inspiration photos on an order (js/admin-orders.js "Order photos") */
 .order-attachments { margin-top: var(--space-2); }
 .order-attachments-label { display: block; font-size: 0.75rem; font-weight: 600; color: var(--color-fg-faint); margin-bottom: 4px; }
 .order-attachments-list { display: flex; flex-wrap: wrap; gap: 8px; }

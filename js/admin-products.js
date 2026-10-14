@@ -1,0 +1,654 @@
+/* Admin "Products" tab: the item list (search/filter/sort, "By Category"
+   folders with drag-between-categories), bulk actions, and the add/edit
+   item form with its photo gallery. Uses helpers from js/admin-core.js and
+   collectionsCache from js/admin-collections.js. */
+
+let currentEditId = null;
+/* Each entry is { type: "url", value: string } for an already-uploaded
+   photo being kept, or { type: "file", value: File } for a newly chosen
+   one not uploaded yet. Order in this array is the order shown on the
+   site; entries[0] becomes the card thumbnail (image_url). */
+let currentPhotoEntries = [];
+
+function setFormStatus(message, kind) {
+  const el = document.getElementById("formStatus");
+  el.textContent = message || "";
+  el.className = "form-status" + (kind ? " " + kind : "");
+}
+
+/* ===== Item list ===== */
+
+let productsCache = [];
+let itemSearchQuery = "";
+let itemFilterSlug = "all";
+let itemSortMode = "collection";
+// IDs as strings throughout, matching how every data-id attribute in this
+// file is already compared (String(d.id) === btn.dataset.id) — avoids a
+// number/string mismatch between Supabase's bigint ids and DOM dataset values.
+let selectedProductIds = new Set();
+// Which category folders are collapsed in the "By Category" product view.
+// Keyed by collection slug (plus the "__uncategorized__" sentinel for the
+// catch-all group). Pure client-side UI state — intentionally never synced
+// to Supabase, so it resets on reload — but kept in a module-level Set
+// (not local to renderProductList) so it survives the re-renders that a
+// search keystroke or a drag-drop move triggers.
+let collapsedCollectionGroups = new Set();
+// Product id currently being dragged between category folders in the "By
+// Category" view. Deliberately a separate variable from wireUpRowReorder's
+// draggedRowIndex (js/admin-core.js) — that one reorders rows within a single list,
+// this one moves a row between different list containers, and the two
+// features run over the same page at the same time.
+let draggedProductId = null;
+// Guards against firing a second recategorize write while one is still in
+// flight (e.g. a fast double-drop), mirroring the disable-while-saving
+// pattern used elsewhere in this file (handleToggleActive, bulkSetActive).
+let isReassigningCollection = false;
+
+async function refreshItemList() {
+  const client = getSupabaseClient();
+  const listEl = document.getElementById("itemList");
+  const { data, error } = await client
+    .from("products")
+    .select("*")
+    .order("collection", { ascending: true })
+    .order("created_at", { ascending: true });
+
+  if (error) {
+    listEl.innerHTML = `<p class="form-status error">Couldn't load items: ${escapeHtml(error.message)}</p>`;
+    return;
+  }
+
+  productsCache = data || [];
+  selectedProductIds.clear();
+  populateItemFilterOptions();
+  renderProductList();
+}
+
+function populateItemFilterOptions() {
+  const select = document.getElementById("itemFilter");
+  if (!select) return;
+  const prev = select.value;
+  select.innerHTML = `<option value="all">All Products</option>` +
+    collectionsCache.map((c) => `<option value="${escapeHtml(c.slug)}">${escapeHtml(c.title)}</option>`).join("");
+  if ([...select.options].some((o) => o.value === prev)) select.value = prev;
+}
+
+function renderProductList() {
+  const listEl = document.getElementById("itemList");
+
+  if (!productsCache.length) {
+    listEl.innerHTML = `<p class="empty-note">No items yet — add your first one on the left.</p>`;
+    syncBulkSelectionUI([]);
+    return;
+  }
+
+  const query = itemSearchQuery.trim().toLowerCase();
+  let items = productsCache.filter((item) => {
+    if (itemFilterSlug !== "all" && item.collection !== itemFilterSlug) return false;
+    if (query && !item.name.toLowerCase().includes(query)) return false;
+    return true;
+  });
+
+  if (itemSortMode === "alpha") items = items.slice().sort((a, b) => a.name.localeCompare(b.name));
+  else if (itemSortMode === "price-asc") items = items.slice().sort((a, b) => a.price - b.price);
+  else if (itemSortMode === "price-desc") items = items.slice().sort((a, b) => b.price - a.price);
+  else if (itemSortMode === "newest") items = items.slice().sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+
+  const renderRow = (item) => {
+    const viewHref = collectionHrefForAdmin(item.collection);
+    return `
+    <div class="admin-item-row ${item.active === false ? "inactive" : ""}" data-id="${item.id}">
+      <input type="checkbox" class="admin-item-select" data-select-id="${item.id}" aria-label="Select ${escapeHtml(item.name)}" ${selectedProductIds.has(String(item.id)) ? "checked" : ""}/>
+      <div class="admin-item-thumb">${item.image_url ? `<img src="${escapeHtml(item.image_url)}" alt=""/>` : ""}${Array.isArray(item.images) && item.images.length > 1 ? `<span class="admin-item-thumb-count">${item.images.length}</span>` : ""}</div>
+      <div class="admin-item-body">
+        <div class="name">${escapeHtml(item.name)}</div>
+        <div class="meta">$${Number(item.price).toFixed(0)} ${item.active === false ? "&middot; hidden" : ""}</div>
+      </div>
+      <div class="admin-item-actions">
+        <label class="toggle-switch" title="${item.active === false ? "Hidden, click to show on site" : "Live on site, click to hide"}">
+          <input type="checkbox" class="active-toggle" data-id="${item.id}" ${item.active !== false ? "checked" : ""}/>
+          <span class="toggle-slider"></span>
+        </label>
+        <button type="button" class="edit-btn" data-id="${item.id}">Edit</button>
+        <button type="button" class="duplicate-btn" data-id="${item.id}">Duplicate</button>
+        <button type="button" class="danger delete-btn" data-id="${item.id}">Delete</button>
+        ${viewHref ? (item.active === false
+          ? `<a class="view-link is-hidden-item" href="${escapeHtml(viewHref)}" target="_blank" rel="noopener" title="This item is hidden, so it won't appear on that page until you switch it on">View (hidden)</a>`
+          : `<a class="view-link" href="${escapeHtml(viewHref)}" target="_blank" rel="noopener">View</a>`) : ""}
+      </div>
+    </div>
+  `;
+  };
+
+  if (itemSortMode === "collection") {
+    const bySlug = {};
+    items.forEach((item) => {
+      if (!bySlug[item.collection]) bySlug[item.collection] = [];
+      bySlug[item.collection].push(item);
+    });
+    const knownSlugs = new Set(collectionsCache.map((c) => c.slug));
+    const searching = query.length > 0;
+    // With the search box empty and no category filter applied, render a
+    // folder for every category — even ones with zero items right now —
+    // so they stay around as valid drag-drop targets. While actively
+    // searching, only show folders that actually matched something, so a
+    // long list of empty folders doesn't bury the results. A category
+    // filter (itemFilterSlug) already narrows `items` to one slug, so
+    // showing the rest as empty folders would just contradict the filter.
+    const showEmptyFolders = itemFilterSlug === "all" && !searching;
+
+    const renderGroup = (slug, title, groupItems, isDropTarget) => {
+      const collapsed = collapsedCollectionGroups.has(slug);
+      return `
+        <div class="collection-group" ${isDropTarget ? `data-drop-slug="${escapeHtml(slug)}"` : ""}>
+          <button type="button" class="collection-group-toggle" data-group-toggle="${escapeHtml(slug)}" aria-expanded="${collapsed ? "false" : "true"}">
+            <svg class="collection-group-chevron ${collapsed ? "is-collapsed" : ""}" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>
+            <h3>${escapeHtml(title)}</h3>
+            <span class="collection-group-count">${groupItems.length}</span>
+          </button>
+          <div class="collection-group-rows ${collapsed ? "is-collapsed" : ""}">
+            ${groupItems.length ? groupItems.map(renderRow).join("") : `<p class="collection-group-empty">No items${isDropTarget ? " — drag one here" : ""}.</p>`}
+          </div>
+        </div>
+      `;
+    };
+
+    let groupsHtml = collectionsCache
+      .filter((c) => showEmptyFolders || (bySlug[c.slug] && bySlug[c.slug].length))
+      .map((c) => renderGroup(c.slug, collectionTitle(c.slug), bySlug[c.slug] || [], true))
+      .join("");
+
+    // Safety net: a product whose `collection` doesn't match any known
+    // slug (e.g. a category that was since renamed/deleted) would
+    // otherwise silently vanish from the list. Not a valid drop target —
+    // there's no slug here to assign — just somewhere for it to show up.
+    const uncategorizedItems = items.filter((item) => !knownSlugs.has(item.collection));
+    if (uncategorizedItems.length) {
+      groupsHtml += renderGroup("__uncategorized__", "Uncategorized", uncategorizedItems, false);
+    }
+
+    if (!groupsHtml) {
+      listEl.innerHTML = `<p class="empty-note">No items match. Try a different search or category.</p>`;
+      syncBulkSelectionUI([]);
+      return;
+    }
+
+    listEl.innerHTML = groupsHtml;
+  } else {
+    if (!items.length) {
+      listEl.innerHTML = `<p class="empty-note">No items match. Try a different search or category.</p>`;
+      syncBulkSelectionUI([]);
+      return;
+    }
+    listEl.innerHTML = items.map(renderRow).join("");
+  }
+
+  if (itemSortMode === "collection") {
+    wireUpCollectionGroupToggles(listEl);
+    wireUpCollectionGroupDrag(listEl);
+  }
+
+  listEl.querySelectorAll(".edit-btn").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const item = productsCache.find((d) => String(d.id) === btn.dataset.id);
+      if (item) startEdit(item);
+    });
+  });
+  listEl.querySelectorAll(".delete-btn").forEach((btn) => {
+    btn.addEventListener("click", () => handleDelete(btn.dataset.id, productsCache));
+  });
+  listEl.querySelectorAll(".duplicate-btn").forEach((btn) => {
+    btn.addEventListener("click", () => handleDuplicateProduct(btn.dataset.id));
+  });
+  listEl.querySelectorAll(".active-toggle").forEach((toggle) => {
+    toggle.addEventListener("change", () => handleToggleActive(toggle.dataset.id, toggle.checked, toggle));
+  });
+  listEl.querySelectorAll(".admin-item-select").forEach((box) => {
+    box.addEventListener("change", () => {
+      if (box.checked) selectedProductIds.add(box.dataset.selectId);
+      else selectedProductIds.delete(box.dataset.selectId);
+      syncBulkSelectionUI(items);
+    });
+  });
+  syncBulkSelectionUI(items);
+}
+
+/* Disclosure toggle for each category folder header in the "By Category"
+   product view. Collapsed/expanded state is tracked in
+   collapsedCollectionGroups so it's still correct next time
+   renderProductList() rebuilds the list (search keystroke, filter change,
+   a drag-drop move) — but the actual DOM update here is done directly
+   (no re-render) so the click feels instant. */
+function wireUpCollectionGroupToggles(listEl) {
+  listEl.querySelectorAll(".collection-group-toggle").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const key = btn.dataset.groupToggle;
+      const nowCollapsed = !collapsedCollectionGroups.has(key);
+      if (nowCollapsed) collapsedCollectionGroups.add(key);
+      else collapsedCollectionGroups.delete(key);
+
+      const group = btn.closest(".collection-group");
+      group.querySelector(".collection-group-rows").classList.toggle("is-collapsed", nowCollapsed);
+      btn.querySelector(".collection-group-chevron").classList.toggle("is-collapsed", nowCollapsed);
+      btn.setAttribute("aria-expanded", String(!nowCollapsed));
+    });
+  });
+}
+
+/* Drag-and-drop re-categorizing in the "By Category" product view: drag a
+   product row onto a *different* category's whole folder to move it
+   there. This is a different kind of drag than wireUpRowReorder() (js/admin-core.js)
+   (which reorders rows within one list in place) — here a row moves
+   between separate group containers — so it tracks its own
+   draggedProductId instead of reusing wireUpRowReorder's draggedRowIndex.
+   Drop targets are the .collection-group containers themselves (not the
+   individual rows), and collapsing a folder only hides its
+   .collection-group-rows — the group container, with its listeners, stays
+   in the DOM — so a collapsed folder keeps accepting drops. */
+function wireUpCollectionGroupDrag(listEl) {
+  listEl.querySelectorAll(".admin-item-row").forEach((row) => {
+    row.setAttribute("draggable", "true");
+    row.addEventListener("dragstart", (e) => {
+      draggedProductId = row.dataset.id;
+      row.classList.add("dragging");
+      if (e.dataTransfer) e.dataTransfer.effectAllowed = "move";
+    });
+    row.addEventListener("dragend", () => {
+      row.classList.remove("dragging");
+      draggedProductId = null;
+    });
+  });
+
+  listEl.querySelectorAll(".collection-group[data-drop-slug]").forEach((group) => {
+    group.addEventListener("dragover", (e) => {
+      if (draggedProductId === null) return;
+      e.preventDefault();
+      group.classList.add("drop-target-active");
+    });
+    group.addEventListener("dragleave", (e) => {
+      if (group.contains(e.relatedTarget)) return;
+      group.classList.remove("drop-target-active");
+    });
+    group.addEventListener("drop", (e) => {
+      e.preventDefault();
+      group.classList.remove("drop-target-active");
+      const id = draggedProductId;
+      draggedProductId = null;
+      if (id === null) return;
+      const targetSlug = group.dataset.dropSlug;
+      const item = productsCache.find((p) => String(p.id) === String(id));
+      // Dropping back onto the folder a product is already in is a no-op
+      // — no point writing the same value back to Supabase.
+      if (!item || item.collection === targetSlug) return;
+      moveProductToCollection(id, targetSlug);
+    });
+  });
+}
+
+async function moveProductToCollection(id, newSlug) {
+  if (isReassigningCollection) return;
+  isReassigningCollection = true;
+  const client = getSupabaseClient();
+  const { error } = await mustAffect(client.from("products").update({ collection: newSlug }).eq("id", id));
+  isReassigningCollection = false;
+  if (error) {
+    alert("Couldn't move item: " + error.message);
+    return;
+  }
+  await refreshItemList();
+}
+
+/* Keeps the "select all" checkbox and the bulk action bar in sync with
+   selectedProductIds. Takes the currently visible (filtered/sorted) items
+   so "select all" only ever covers what's on screen, not the full catalog. */
+function syncBulkSelectionUI(visibleItems) {
+  const selectAllBox = document.getElementById("itemSelectAll");
+  if (selectAllBox) {
+    const visibleIds = visibleItems.map((item) => String(item.id));
+    const selectedVisibleCount = visibleIds.filter((id) => selectedProductIds.has(id)).length;
+    selectAllBox.checked = visibleIds.length > 0 && selectedVisibleCount === visibleIds.length;
+    selectAllBox.indeterminate = selectedVisibleCount > 0 && selectedVisibleCount < visibleIds.length;
+  }
+
+  const bar = document.getElementById("bulkActionBar");
+  const count = selectedProductIds.size;
+  bar.hidden = count === 0;
+  if (count > 0) {
+    document.getElementById("bulkSelectedCount").textContent = `${count} selected`;
+  }
+}
+
+function clearProductSelection() {
+  selectedProductIds.clear();
+  renderProductList();
+}
+
+async function bulkSetActive(active) {
+  const ids = [...selectedProductIds];
+  if (!ids.length) return;
+  const client = getSupabaseClient();
+  const bar = document.getElementById("bulkActionBar");
+  bar.querySelectorAll("button").forEach((b) => { b.disabled = true; });
+  const { error } = await mustAffect(client.from("products").update({ active }).in("id", ids));
+  bar.querySelectorAll("button").forEach((b) => { b.disabled = false; });
+  if (error) {
+    alert("Couldn't update: " + error.message);
+    return;
+  }
+  selectedProductIds.clear();
+  await refreshItemList();
+}
+
+async function bulkDeleteProducts() {
+  const ids = [...selectedProductIds];
+  if (!ids.length) return;
+  const label = ids.length === 1 ? "this item" : `these ${ids.length} items`;
+  if (!confirm(`Delete ${label}? This can't be undone.`)) return;
+  const client = getSupabaseClient();
+  const bar = document.getElementById("bulkActionBar");
+  bar.querySelectorAll("button").forEach((b) => { b.disabled = true; });
+  const { error } = await mustAffect(client.from("products").delete().in("id", ids));
+  bar.querySelectorAll("button").forEach((b) => { b.disabled = false; });
+  if (error) {
+    alert("Couldn't delete: " + error.message);
+    return;
+  }
+  if (ids.includes(String(currentEditId))) resetForm();
+  selectedProductIds.clear();
+  await refreshItemList();
+}
+
+async function handleToggleActive(id, active, toggleEl) {
+  const client = getSupabaseClient();
+  toggleEl.disabled = true;
+  const { error } = await mustAffect(client.from("products").update({ active }).eq("id", id));
+  if (error) {
+    alert("Couldn't update: " + error.message);
+    toggleEl.checked = !active;
+    toggleEl.disabled = false;
+    return;
+  }
+  await refreshItemList();
+}
+
+/* ===== Form (add / edit) ===== */
+
+/* Unsaved-changes tracking for the item form. A snapshot of the form is
+   taken whenever it's in a known-clean state (just loaded for editing,
+   just reset, just saved); anything different from that snapshot counts
+   as unsaved work. Without this, clicking Edit on another item silently
+   replaced whatever had been typed. */
+let itemFormSnapshot = null;
+
+function itemFormState() {
+  const v = (id) => document.getElementById(id).value;
+  return JSON.stringify({
+    id: currentEditId,
+    collection: v("f-collection"), name: v("f-name"), price: v("f-price"),
+    description: v("f-description"), style: v("f-style"),
+    active: document.getElementById("f-active").checked,
+    photos: currentPhotoEntries.map((e) => (e.type === "url" ? e.value : `file:${e.value.name}:${e.value.size}`))
+  });
+}
+function markItemFormClean() { itemFormSnapshot = itemFormState(); }
+function itemFormIsDirty() { return itemFormSnapshot !== null && itemFormState() !== itemFormSnapshot; }
+function confirmDiscardItemEdits() {
+  return !itemFormIsDirty() || confirm("You have unsaved changes to this item. Discard them?");
+}
+
+function startEdit(item) {
+  if (!confirmDiscardItemEdits()) return;
+  currentEditId = item.id;
+  document.getElementById("f-collection").value = item.collection;
+  document.getElementById("f-name").value = item.name || "";
+  document.getElementById("f-price").value = item.price || 0;
+  document.getElementById("f-description").value = item.description || "";
+  document.getElementById("f-style").value = item.style || "";
+  document.getElementById("f-active").checked = item.active !== false;
+  document.getElementById("f-photo").value = "";
+
+  const existingUrls = Array.isArray(item.images) && item.images.length
+    ? item.images
+    : (item.image_url ? [item.image_url] : []);
+  currentPhotoEntries = existingUrls.map((url) => ({ type: "url", value: url }));
+  renderPhotoGallery();
+
+  document.getElementById("formTitle").textContent = "Edit Item";
+  document.getElementById("saveBtn").textContent = "Update Item";
+  show(document.getElementById("cancelEditBtn"));
+  setFormStatus("", null);
+  markItemFormClean();
+  window.scrollTo({ top: 0, behavior: "smooth" });
+}
+
+function resetForm() {
+  currentEditId = null;
+  currentPhotoEntries = [];
+  document.getElementById("itemForm").reset();
+  renderPhotoGallery();
+  document.getElementById("formTitle").textContent = "Add Item";
+  document.getElementById("saveBtn").textContent = "Add Item";
+  hide(document.getElementById("cancelEditBtn"));
+  setFormStatus("", null);
+  markItemFormClean();
+}
+
+function handlePhotoChange(e) {
+  const files = Array.from(e.target.files || []);
+  files.forEach((file) => currentPhotoEntries.push({ type: "file", value: file }));
+  e.target.value = "";
+  renderPhotoGallery();
+}
+
+function photoEntryPreviewUrl(entry) {
+  return entry.type === "url" ? entry.value : URL.createObjectURL(entry.value);
+}
+
+function renderPhotoGallery() {
+  const gallery = document.getElementById("photoGallery");
+  if (!gallery) return;
+  gallery.innerHTML = currentPhotoEntries.map((entry, i) => `
+    <div class="photo-gallery-item ${i === 0 ? "is-primary" : ""}" data-index="${i}" draggable="true">
+      <img src="${photoEntryPreviewUrl(entry)}" alt="" data-preview="${i}"/>
+      ${i === 0 ? '<span class="photo-gallery-primary-tag">Thumbnail</span>' : ""}
+      <button type="button" class="photo-gallery-move move-left" data-move="-1" data-index="${i}" ${i === 0 ? "disabled" : ""} aria-label="Move photo earlier">&lsaquo;</button>
+      <button type="button" class="photo-gallery-move move-right" data-move="1" data-index="${i}" ${i === currentPhotoEntries.length - 1 ? "disabled" : ""} aria-label="Move photo later">&rsaquo;</button>
+      <button type="button" class="photo-gallery-remove" data-remove="${i}" aria-label="Remove photo">&times;</button>
+    </div>
+  `).join("");
+
+  gallery.querySelectorAll("[data-remove]").forEach((btn) => {
+    btn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      currentPhotoEntries.splice(Number(btn.dataset.remove), 1);
+      renderPhotoGallery();
+    });
+  });
+  gallery.querySelectorAll("[data-move]").forEach((btn) => {
+    btn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      const i = Number(btn.dataset.index);
+      const j = i + Number(btn.dataset.move);
+      if (j < 0 || j >= currentPhotoEntries.length) return;
+      [currentPhotoEntries[i], currentPhotoEntries[j]] = [currentPhotoEntries[j], currentPhotoEntries[i]];
+      renderPhotoGallery();
+    });
+  });
+  gallery.querySelectorAll("[data-preview]").forEach((img) => {
+    img.addEventListener("click", () => openPhotoPreview(Number(img.dataset.preview)));
+  });
+
+  wireUpRowReorder(gallery, ".photo-gallery-item", currentPhotoEntries, () => renderPhotoGallery());
+}
+
+/* Opens the shared lightbox (js/admin-core.js) on the item form's photos. */
+function openPhotoPreview(index) {
+  previewUrls = currentPhotoEntries.map(photoEntryPreviewUrl);
+  previewIndex = index;
+  const modal = ensurePhotoPreviewModal();
+  renderPhotoPreviewFrame();
+  modal.classList.add("open");
+}
+
+async function handleSaveItem(e) {
+  e.preventDefault();
+  const client = getSupabaseClient();
+  const saveBtn = document.getElementById("saveBtn");
+
+  const payload = {
+    collection: document.getElementById("f-collection").value,
+    name: document.getElementById("f-name").value.trim(),
+    price: parseFloat(document.getElementById("f-price").value) || 0,
+    description: document.getElementById("f-description").value.trim(),
+    style: document.getElementById("f-style").value || null,
+    active: document.getElementById("f-active").checked
+  };
+
+  if (!payload.name) {
+    setFormStatus("Item name is required.", "error");
+    return;
+  }
+
+  saveBtn.disabled = true;
+  setFormStatus("Saving...", null);
+
+  try {
+    const finalUrls = [];
+    for (const entry of currentPhotoEntries) {
+      if (entry.type === "url") {
+        finalUrls.push(entry.value);
+      } else {
+        const compressed = await compressImageFile(entry.value);
+        const safeName = compressed.name.replace(/[^a-zA-Z0-9.-]/g, "_");
+        const path = `${Date.now()}-${safeName}`;
+        const { error: uploadError } = await client.storage
+          .from("product-photos")
+          .upload(path, compressed, { upsert: true });
+        if (uploadError) throw new Error("Photo upload failed: " + uploadError.message);
+        const { data: pub } = client.storage.from("product-photos").getPublicUrl(path);
+        finalUrls.push(pub.publicUrl);
+      }
+    }
+    payload.images = finalUrls;
+    payload.image_url = finalUrls[0] || null;
+
+    let error;
+    if (currentEditId) {
+      ({ error } = await mustAffect(client.from("products").update(payload).eq("id", currentEditId)));
+    } else {
+      ({ error } = await client.from("products").insert(payload));
+    }
+    if (error) throw error;
+
+    const message = currentEditId ? "Item updated." : "Item added.";
+    resetForm();
+    setFormStatus(message, "success");
+    await refreshItemList();
+  } catch (err) {
+    setFormStatus(err.message || "Something went wrong saving this item.", "error");
+  } finally {
+    saveBtn.disabled = false;
+  }
+}
+
+async function handleDelete(id, allItems) {
+  const item = allItems.find((d) => String(d.id) === String(id));
+  const label = item ? item.name : "this item";
+  if (!confirm(`Delete "${label}"? This can't be undone.`)) return;
+  const client = getSupabaseClient();
+  const { error } = await mustAffect(client.from("products").delete().eq("id", id));
+  if (error) {
+    alert("Couldn't delete: " + error.message);
+    return;
+  }
+  if (String(currentEditId) === String(id)) resetForm(); // number (DB) vs string (data-id)
+  await refreshItemList();
+}
+
+/* Duplicates a product row as a brand-new product (a fresh DB-generated
+   id, never the original's). The copy starts inactive (active: false)
+   rather than mirroring the original's active state — the admin almost
+   certainly wants to tweak the duplicate (name, price, photos) before it
+   goes live next to the one it was copied from, not have two identical
+   listings visible to shoppers the instant "Duplicate" is clicked. */
+async function handleDuplicateProduct(id) {
+  const item = productsCache.find((d) => String(d.id) === String(id));
+  if (!item) return;
+  const client = getSupabaseClient();
+  const payload = {
+    collection: item.collection,
+    name: `${item.name} (Copy)`,
+    price: item.price,
+    description: item.description,
+    style: item.style,
+    active: false,
+    images: item.images,
+    image_url: item.image_url
+  };
+  const { error } = await client.from("products").insert(payload);
+  if (error) {
+    alert("Couldn't duplicate: " + error.message);
+    return;
+  }
+  await refreshItemList();
+}
+
+registerAdminTab("products", {
+  btnId: "tabProductsBtn",
+  panelId: "productsPanel",
+  // onEnter re-renders (not re-fetches) the product list so that
+  // switching back here after adding/renaming a category on the
+  // Categories tab immediately reflects the current collectionsCache —
+  // otherwise the "By Category" view's folders would only pick up a
+  // just-added category after a full page reload.
+  onEnter: renderProductList
+});
+
+registerAdminDirtyCheck(itemFormIsDirty);
+
+onAdminInit(() => {
+  document.getElementById("itemForm").addEventListener("submit", handleSaveItem);
+  document.getElementById("f-photo").addEventListener("change", handlePhotoChange);
+  document.getElementById("cancelEditBtn").addEventListener("click", () => {
+    if (confirmDiscardItemEdits()) resetForm();
+  });
+  document.getElementById("openPhotoLibraryBtn").addEventListener("click", openPhotoLibrary);
+
+  let itemSearchDebounce = null;
+  document.getElementById("itemSearch").addEventListener("input", (e) => {
+    clearTimeout(itemSearchDebounce);
+    itemSearchDebounce = setTimeout(() => {
+      itemSearchQuery = e.target.value;
+      renderProductList();
+    }, 180);
+  });
+  document.getElementById("itemFilter").addEventListener("change", (e) => {
+    itemFilterSlug = e.target.value;
+    renderProductList();
+  });
+  document.getElementById("itemSort").addEventListener("change", (e) => {
+    itemSortMode = e.target.value;
+    renderProductList();
+  });
+  document.getElementById("itemSelectAll").addEventListener("change", (e) => {
+    // Only the currently visible (filtered/sorted) rows, not the whole
+    // catalog — matches what the checkbox's indeterminate state reflects.
+    document.querySelectorAll("#itemList .admin-item-select").forEach((box) => {
+      box.checked = e.target.checked;
+      if (e.target.checked) selectedProductIds.add(box.dataset.selectId);
+      else selectedProductIds.delete(box.dataset.selectId);
+    });
+    renderProductList();
+  });
+  document.getElementById("bulkShowBtn").addEventListener("click", () => bulkSetActive(true));
+  document.getElementById("bulkHideBtn").addEventListener("click", () => bulkSetActive(false));
+  document.getElementById("bulkDeleteBtn").addEventListener("click", bulkDeleteProducts);
+  document.getElementById("bulkClearBtn").addEventListener("click", clearProductSelection);
+
+  wireClickableThumbList("itemList", (id) => {
+    const item = productsCache.find((d) => String(d.id) === String(id));
+    if (!item) return null;
+    const urls = Array.isArray(item.images) && item.images.length ? item.images : (item.image_url ? [item.image_url] : []);
+    return { urls, index: 0 };
+  });
+});

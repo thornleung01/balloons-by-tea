@@ -1,5 +1,5 @@
 /* Event-date availability (admin side). Renders into #availabilityAdmin on
-   the admin "Delivery" tab; js/admin.js calls window.refreshAvailabilityAdmin()
+   the admin "Delivery" tab; js/admin-core.js calls window.refreshAvailabilityAdmin()
    whenever that tab is opened.
 
    - Blocked dates: the blocked_dates table (one row per day). The owner can
@@ -10,7 +10,7 @@
      are reported by the fully_booked_dates() SQL function, which the public
      order forms also use (see js/availability.js).
 
-   Uses escapeHtml() and getSupabaseClient() from js/admin.js /
+   Uses escapeHtml() and getSupabaseClient() from js/admin-core.js /
    js/supabase-config.js (loaded first). */
 (function () {
   const MAX_RANGE_DAYS = 366;

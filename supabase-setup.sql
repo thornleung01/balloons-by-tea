@@ -352,7 +352,7 @@ create policy "Authenticated can delete site images"
 
 -- Hardening pass — tie "admin write" policies to the one real admin
 -- account, and add DB-level CHECK constraints as a backstop behind the
--- client-side validation in js/admin.js / js/app.js.
+-- client-side validation in js/admin-*.js / js/app.js.
 --
 -- 1. Every policy above that grants write access `to authenticated
 --    using (true)` trusts ANY logged-in Supabase auth user, not
@@ -370,7 +370,7 @@ create policy "Authenticated can delete site images"
 --    insert) are untouched on purpose — those must stay open to anon.
 -- 2. CHECK constraints below are defense-in-depth: RLS controls WHO can
 --    write, not WHAT they write. These mirror validation already
---    enforced client-side (required-field checks in js/admin.js,
+--    enforced client-side (required-field checks in js/admin-*.js,
 --    <input type="number" min="0"> on price, min="0" now added to the
 --    sort-order fields alongside this migration) so a UI bypass or bug
 --    can't insert garbage. Only fields the app always treats as
@@ -560,7 +560,7 @@ create policy "Authenticated can delete site images"
 -- validation. Named explicitly so re-running this file is safe
 -- (drop-if-exists before add, same spirit as the policy blocks above).
 
--- products: js/admin.js's handleSaveItem() requires a non-blank name
+-- products: js/admin-products.js's handleSaveItem() requires a non-blank name
 -- before it will even attempt a save; admin.html's price field is
 -- <input type="number" min="0" step="0.01" required>. description,
 -- style, image_url and images are legitimately optional/empty
@@ -602,9 +602,9 @@ alter table faq_items add constraint faq_items_answer_check check (trim(answer) 
 alter table faq_items drop constraint if exists faq_items_sort_order_check;
 alter table faq_items add constraint faq_items_sort_order_check check (sort_order >= 0) not valid;
 
--- orders: every insert/update in js/app.js and js/admin.js uses exactly
+-- orders: every insert/update in js/app.js and js/admin-orders.js uses exactly
 -- one of these two `kind` values and exactly one of ORDER_STATUSES
--- (js/admin.js) for `status` — nothing else is ever written. name,
+-- (js/admin-orders.js) for `status` — nothing else is ever written. name,
 -- phone, email, address, notes etc. are intentionally left
 -- unconstrained since the public order form doesn't require all of
 -- them for every order type (e.g. a custom-order inquiry may omit
@@ -765,7 +765,7 @@ alter table delivery_areas add constraint delivery_areas_fsa_check check (fsa ~ 
 -- ==========================================================================
 -- Orders tools: private admin notes, "cancelled" status, insert hardening
 -- ==========================================================================
--- Used by the admin Orders tab (js/admin.js). Safe to re-run. Until this
+-- Used by the admin Orders tab (js/admin-orders.js). Safe to re-run. Until this
 -- has been run the Orders tab still works; only saving a private note and
 -- setting an order to Cancelled fail, with a message pointing here.
 
@@ -815,7 +815,7 @@ create trigger orders_reset_admin_fields
 -- stopped growing. This function does the counting in Postgres and returns
 -- one small jsonb object with everything the tab shows.
 --
--- js/admin.js (computeAnalyticsSummary) still has a browser-side version
+-- js/admin-analytics.js (computeAnalyticsSummary) still has a browser-side version
 -- of the exact same rules, used only until this function exists. The two
 -- MUST stay in sync — change one, change the other:
 --   * window: from_ts <= created_at < to_ts (null from_ts = the beginning
@@ -1297,7 +1297,7 @@ create index if not exists gallery_items_active_sort_idx on public.gallery_items
 -- ==========================================================================
 -- Lets a customer attach up to 3 photos to a custom order request
 -- (custom-order.html, js/order-uploads.js) and lets the admin see them in
--- the Orders tab (js/admin.js). This is the first place where the public can
+-- the Orders tab (js/admin-orders.js). This is the first place where the public can
 -- write files, so the rules are deliberately narrow.
 --
 -- Safe to re-run (on conflict / if not exists / create or replace / drop ...

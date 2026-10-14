@@ -100,8 +100,8 @@ who'll use the admin page day to day):
 **Why it's safe to put the anon key directly in the JS file:** that key
 is meant to be public — it's how every Supabase site works. The actual
 protection is the security rules from step 2 (`supabase-setup.sql`),
-which only let a *logged-in* user change anything. Reading `js/admin.js`
-confirms it never trusts anything the page itself claims — every field is
+which only let a *logged-in* user change anything. Reading the `js/admin-*.js` files
+confirms they never trust anything the page itself claims — every field is
 escaped before being shown, the same way the Google Sheet catalog is
 (see 2b below).
 
@@ -419,7 +419,8 @@ js/products.js           Built-in/fallback product catalog data
 js/catalog.js            Optional live catalog — loads products from a Google Sheet (2b)
 js/supabase-config.js    Paste your Supabase project URL + anon key here (2a)
 js/supabase-catalog.js   Loads products from Supabase for the public site (2a)
-js/admin.js              Admin page logic: login, products, orders, collections, nav, FAQ, settings (2a)
+js/admin-core.js         Admin page core: login, tab registry, shared helpers, photo preview (2a)
+js/admin-*.js            One file per admin tab: products, collections, library, nav, FAQ, settings, orders, analytics, gallery, delivery, backup
 js/site-content.js       Loads hero/about/footer/nav/FAQ/theme content from Supabase for the public site (2a)
 js/google-reviews-config.js  Paste your Google Maps API key + Place ID here (section 6)
 js/google-reviews.js     Loads real reviews from Google for the homepage carousel (section 6)
