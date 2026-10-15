@@ -117,7 +117,7 @@ async function restoreTrashedProducts(ids, btn) {
 }
 
 async function deleteTrashedForever(ids, label) {
-  if (!confirm(`Permanently delete ${label}? This can't be undone.`)) return;
+  if (!(await adminConfirm({ title: `Permanently delete ${label}?`, message: "This can't be undone.", confirmLabel: "Delete forever", danger: true, requireText: ids.length >= 5 ? "DELETE" : undefined }))) return;
   const client = getSupabaseClient();
   // In batches, so "Empty trash" on a big Trash stays within URL limits.
   for (let i = 0; i < ids.length; i += 100) {
