@@ -346,7 +346,7 @@ function libraryGridHtml(path, entries, selectedUrls) {
   const fileHtml = files.map((f) => `
     <div class="photo-library-item ${selectedUrls && selectedUrls.has(f.url) ? "selected" : ""}" data-url="${escapeHtml(f.url)}" data-path="${escapeHtml(f.path)}" draggable="true">
       <img src="${escapeHtml(f.url)}" alt="${escapeHtml(f.name)}"/>
-      <button type="button" class="library-item-delete" data-delete-file="${escapeHtml(f.path)}" aria-label="Delete photo">&times;</button>
+      <button type="button" class="library-item-delete" data-delete-file="${escapeHtml(f.path)}" aria-label="Delete photo ${escapeHtml(f.name)}">&times;</button>
     </div>
   `).join("");
   if (!upTile && !folderHtml && !fileHtml) return `<p class="empty-note">Nothing here yet — upload a photo or create a folder.</p>`;
@@ -495,7 +495,7 @@ function ensurePhotoLibraryModal() {
   modal.querySelectorAll("[data-close-library]").forEach((el) => el.addEventListener("click", closePhotoLibrary));
   modal.querySelector("#photoLibraryAddBtn").addEventListener("click", addSelectedLibraryPhotos);
   modal.querySelector("#pickerNewFolderBtn").addEventListener("click", async () => {
-    const name = await adminConfirm.prompt({ title: "New folder", label: "New folder name", confirmLabel: "Create folder" });
+    const name = await adminConfirm.input({ title: "New folder", label: "New folder name", confirmLabel: "Create folder" });
     if (!name) return;
     const { error } = await createFolderAt(pickerPath, name);
     if (error) { adminToast(error, { kind: "error" }); return; }
@@ -764,7 +764,7 @@ onAdminInit(() => {
     if (btn) navigateLibraryTab(btn.dataset.libraryNav);
   });
   document.getElementById("libraryNewFolderBtn").addEventListener("click", async () => {
-    const name = await adminConfirm.prompt({ title: "New folder", label: "New folder name", confirmLabel: "Create folder" });
+    const name = await adminConfirm.input({ title: "New folder", label: "New folder name", confirmLabel: "Create folder" });
     if (!name) return;
     const { error } = await createFolderAt(libraryTabPath, name);
     if (error) { adminToast(error, { kind: "error" }); return; }

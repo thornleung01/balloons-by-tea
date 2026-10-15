@@ -705,7 +705,7 @@
   if (typeof window.adminConfirm === "function" && typeof window.adminAlert === "function" && typeof window.adminToast === "function") return;
   var join = function (a, b) { return (a ? a + "\n\n" : "") + (b || ""); };
   window.adminConfirm = function (o) { o = o || {}; return Promise.resolve(window.confirm(join(o.title, o.message))); };
-  window.adminConfirm.prompt = function (o) { o = o || {}; return Promise.resolve(window.prompt(join(o.title, o.message || o.label), o.value || "")); };
+  window.adminConfirm.input = function (o) { o = o || {}; return Promise.resolve(window.prompt(join(o.title, o.message || o.label), o.value || "")); };
   window.adminAlert = function (m, o) { window.alert(join(o && o.title, m)); return Promise.resolve(); };
   window.adminToast = function (m, o) { if (o && o.kind === "error") window.alert(m); return function () {}; };
 })();

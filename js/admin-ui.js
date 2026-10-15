@@ -3,7 +3,7 @@
 
    window.adminToast(message, {kind, duration, actionLabel, onAction}) -> dismiss()
    window.adminConfirm({title, message, confirmLabel, cancelLabel, danger, requireText}) -> Promise<boolean>
-   window.adminConfirm.prompt({title, message, label, value, placeholder, confirmLabel}) -> Promise<string|null>
+   window.adminConfirm.input({title, message, label, value, placeholder, confirmLabel}) -> Promise<string|null>
    window.adminAlert(message, {title}) -> Promise<void>
 
    All text is set with textContent (never innerHTML), so it is safe to pass
@@ -268,7 +268,7 @@
     }).then(function (r) { return r.ok; });
   }
 
-  adminConfirm.prompt = function (opts) {
+  adminConfirm.input = function (opts) {
     opts = opts || {};
     return openDialog({
       title: opts.title || "Enter a value",
