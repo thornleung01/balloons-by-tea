@@ -1716,8 +1716,21 @@ function setOrdersView(view) {
   if (ordersView === "calendar" && window.AdminOrderCalendar) window.AdminOrderCalendar.show(cal);
 }
 
-registerAdminTab("orders", { btnId: "tabOrdersBtn", panelId: "ordersPanel", onEnter: () => {
+/* Sets the payment filter ('all' | 'balance_due' | 'unpaid' | 'deposit_paid'
+   | 'paid') and syncs the pills. Called by the Overview deep links; the
+   caller (the tab's onEnter) does the refresh, otherwise pass refresh=true. */
+window.setOrdersPaymentFilter = function (value, refresh) {
+  const v = ["all", "balance_due", "unpaid", "deposit_paid", "paid"].includes(value) ? value : "all";
+  ordersPaymentFilter = v;
+  document.querySelectorAll("#ordersPaymentFilter .orders-filter-btn").forEach((b) => b.classList.toggle("active", b.dataset.payment === v));
+  if (refresh) resetOrdersPagingAndRefresh();
+};
+
+registerAdminTab("orders", { btnId: "tabOrdersBtn", panelId: "ordersPanel", onEnter: (params) => {
+  if (params) ordersPage = 0;
+  if (params && ordersView === "calendar" && (params.status || params.search != null || params.payment || params.orderId)) setOrdersView("list");
   refreshOrderList({ skipCalendar: true });
+  if (params && params.orderId) openOrderDrawer(String(params.orderId));
   if (ordersView === "calendar" && window.AdminOrderCalendar) {
     detectOrdersSchema().then(() => window.AdminOrderCalendar.show(document.getElementById("ordersCalendarView")));
   }
