@@ -458,5 +458,6 @@
     load();
   }
 
-  registerAdminTab("activity", { btnId: "tabActivityBtn", panelId: "activityPanel", onEnter: enter });
+  if (typeof ADMIN_ICONS === "object" && !ADMIN_ICONS.clock) ADMIN_ICONS.clock = '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>';
+  registerAdminTab("activity", { btnId: "tabActivityBtn", panelId: "activityPanel", label: "Activity", group: "site", icon: "clock", order: 50, onEnter: enter });
 })();
