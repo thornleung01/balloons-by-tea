@@ -1,0 +1,18 @@
+/* ===== New-order notifications card (Settings tab, js/admin-notifications.js) ===== */
+.notify-subheading { font-size: 1rem; margin: var(--space-4, 24px) 0 var(--space-2, 8px); }
+.notify-status-list { list-style: none; margin: 0 0 var(--space-3, 16px); padding: 0; font-size: 0.88rem; }
+.notify-status-item { display: flex; gap: 10px; align-items: flex-start; padding: 6px 0; border-bottom: 1px solid var(--color-border); line-height: 1.45; }
+.notify-status-item:last-child { border-bottom: 0; }
+.notify-status-icon { flex: 0 0 22px; height: 22px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; font-weight: 700; font-size: 0.8rem; background: var(--color-border); color: var(--color-fg-soft); }
+.notify-ok .notify-status-icon { background: var(--color-success); color: #fff; }
+.notify-bad .notify-status-icon { background: var(--color-destructive); color: #fff; }
+.notify-warn .notify-status-icon { background: #E0A630; color: #fff; }
+.notify-status-detail { display: block; color: var(--color-fg-soft); font-size: 0.82rem; word-break: break-word; }
+.notify-actions { display: flex; flex-wrap: wrap; gap: var(--space-2, 8px); align-items: center; }
+.notify-actions .notify-status-detail { display: inline; }
+.notify-details { margin-top: var(--space-3, 16px); border: 1px solid var(--color-border); border-radius: var(--radius-md, 10px); padding: var(--space-2, 8px) var(--space-3, 16px); }
+.notify-details summary { cursor: pointer; font-weight: 600; padding: 4px 0; }
+.notify-details[open] summary { margin-bottom: var(--space-2, 8px); }
+.notify-inline { display: flex; flex-wrap: wrap; gap: var(--space-2, 8px); }
+.notify-inline input { flex: 1 1 220px; min-width: 0; font-family: ui-monospace, Menlo, Consolas, monospace; }
+.notify-section code { font-size: 0.85em; background: var(--color-border); padding: 1px 5px; border-radius: 4px; }
