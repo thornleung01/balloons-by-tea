@@ -992,6 +992,16 @@ function orderSubmitErrorMessage(err, fallback) {
   return fallback;
 }
 
+/* Session traffic source for orders.source: analytics.js's answer when that
+   file is on the page (so Analytics lines up), else js/order-source.js. */
+function orderTrafficSource() {
+  try {
+    if (typeof analyticsSessionTrafficSource === "function") return String(analyticsSessionTrafficSource() || "");
+    if (window.OrderSource) return String(window.OrderSource.get() || "");
+  } catch (e) { /* never block an order */ }
+  return "";
+}
+
 async function submitOrder(payload) {
   const client = typeof getSupabaseClient === "function" ? getSupabaseClient() : null;
   if (client) {
@@ -1011,7 +1021,7 @@ async function submitOrder(payload) {
       event_on: payload.event_on || null,
       event_time: payload.event_time || "",
       fulfillment: payload.fulfillment === "pickup" ? "pickup" : "delivery",
-      source: window.OrderSource && typeof window.OrderSource.get === "function" ? String(window.OrderSource.get() || "") : ""
+      source: orderTrafficSource()
     };
     Object.assign(row, v2);
     // Inspiration photo paths (js/order-uploads.js). Only sent when there
