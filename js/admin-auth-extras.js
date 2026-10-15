@@ -41,6 +41,7 @@
     if (value.length >= 14) score += 1;
     if (classes >= 3) score += 1;
     if (value.length >= 18 || (classes === 4 && value.length >= 12)) score += 1;
+    if (value.length >= 24) score += 1;
     score = Math.min(4, score);
     const label = ["", "Weak", "Okay", "Good", "Strong"][score];
     const hint = score >= 3 ? "Nice. Keep it somewhere safe, like a password manager." : "Longer is stronger: try three or four unrelated words.";
