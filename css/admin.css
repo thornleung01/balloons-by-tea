@@ -24,6 +24,7 @@ body.admin-body {
 .admin-body .btn-primary { color: var(--a-on-accent); }
 .admin-body .btn-primary:hover { color: var(--a-on-accent); }
 /* Photos sit a little lower in dark mode (no inversion, just a slight dim). */
+.admin-body .modal-scrim { background: var(--a-scrim); }
 .admin-main img { filter: var(--a-photo-filter); }
 .admin-main .mfa-qr-wrap img { filter: none; }
 
@@ -414,7 +415,8 @@ body.admin-body {
 .admin-item-body { flex: 1; min-width: 0; }
 .admin-item-body .name { font-weight: 600; font-size: var(--a-text-base); }
 .admin-item-body .meta { font-size: var(--a-text-sm); color: var(--color-fg-faint); }
-.admin-item-row.inactive { opacity: 0.5; }
+.admin-item-row.inactive .admin-item-thumb { opacity: 0.5; }
+.admin-item-row.inactive .admin-item-body .name { color: var(--color-fg-soft); }
 .admin-item-actions { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
 /* Toggle + Edit + Duplicate + Delete + View is ~315px — wider than the
    room left beside the thumbnail and name on a phone. Wrap the actions
@@ -504,7 +506,7 @@ body.admin-body {
   background: var(--color-surface-solid);
 }
 .orders-export-btn:hover { border-color: var(--color-accent); color: var(--color-fg); }
-.orders-filter-count { font-weight: 500; opacity: 0.75; }
+.orders-filter-count { font-weight: 500; }
 .orders-controls { align-items: center; margin-bottom: var(--space-3); }
 .orders-upcoming-toggle { display: inline-flex; align-items: center; gap: 6px; font-size: var(--a-text-sm); color: var(--color-fg-soft); cursor: pointer; white-space: nowrap; }
 .orders-upcoming-toggle input { width: 17px; height: 17px; accent-color: var(--color-accent); cursor: pointer; }
@@ -530,10 +532,10 @@ body.admin-body {
   padding: var(--space-2) var(--space-3);
   margin-bottom: var(--space-2);
 }
-.order-row.status-fulfilled { opacity: 0.7; }
+.order-row.status-fulfilled .order-row-name, .order-row.status-fulfilled .order-row-title strong { color: var(--color-fg-soft); }
 /* Cancelled: dimmer than fulfilled, dashed border, struck-through name —
    still readable and fully editable (status can be changed back). */
-.order-row.status-cancelled { opacity: 0.55; border-style: dashed; }
+.order-row.status-cancelled { border-style: dashed; }
 .order-row.status-cancelled .order-row-title strong { text-decoration: line-through; color: var(--color-fg-soft); }
 .status-dot {
   display: inline-block;
@@ -652,7 +654,7 @@ a.order-attachment:focus-visible { outline: var(--a-ring-w) solid var(--a-focus)
 /* ===== Past events gallery (Gallery tab, js/admin-gallery.js) ===== */
 .gallery-admin-head .panel-subtitle { line-height: 1.5; }
 .gallery-admin-head code { background: var(--color-bg-alt); padding: 1px 6px; border-radius: var(--a-radius-xs); font-size: 0.85em; }
-.gallery-admin-head a { color: var(--color-accent-hover); text-decoration: underline; text-underline-offset: 2px; }
+.gallery-admin-head a { color: var(--a-accent-text); text-decoration: underline; text-underline-offset: 2px; }
 .gallery-admin-toolbar { flex-wrap: wrap; }
 .gallery-admin-toolbar.is-disabled { opacity: 0.6; pointer-events: none; }
 #galleryAdminStatus { margin: 0 0 var(--space-2); }

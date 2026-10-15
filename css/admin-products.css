@@ -63,7 +63,7 @@ label.pf-check, .field label.pf-check { display: inline-flex; align-items: cente
 .pf-snippet-site { font-size: var(--a-text-xs); color: var(--a-serp-text); }
 .pf-snippet-title { font-size: 1.1rem; color: var(--a-serp-title); line-height: 1.3; margin: 2px 0; overflow-wrap: anywhere; }
 .pf-snippet-desc { font-size: var(--a-text-sm); color: var(--a-serp-text); line-height: 1.5; overflow-wrap: anywhere; }
-.pf-snippet .is-fallback { opacity: 0.6; }
+.pf-snippet .is-fallback { color: var(--a-serp-label); }
 .pf-tag-suggestions { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-top: 6px; }
 .pf-tag-suggestions-label { font-size: var(--a-text-xs); color: var(--color-fg-faint); }
 .pf-tag-chip { font-size: var(--a-text-xs); padding: 3px 10px; border-radius: var(--radius-pill); border: 1px solid var(--color-border); background: var(--color-bg-alt); cursor: pointer; }
@@ -103,7 +103,7 @@ label.pf-check, .field label.pf-check { display: inline-flex; align-items: cente
 .csv-preview-table th, .csv-preview-table td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--color-border); vertical-align: top; }
 .csv-preview-table th { position: sticky; top: 0; background: var(--color-bg-alt); z-index: var(--a-z-raised); }
 .csv-preview-table tr.is-error { background: var(--a-danger-bg); }
-.csv-preview-table tr.is-skip { opacity: 0.6; }
+.csv-preview-table tr.is-skip td { color: var(--color-fg-soft); }
 .csv-status { font-weight: 700; font-size: var(--a-text-xs); }
 .csv-status.is-error, .csv-error { color: var(--color-destructive); }
 .csv-warning { color: var(--a-warning-fg); }

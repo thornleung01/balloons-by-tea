@@ -291,6 +291,17 @@ const fail = (m) => { failures++; console.log("FAIL " + m); };
           await page.evaluate(() => { adminConfirm({ title: "Delete product?", message: "This cannot be undone.", confirmLabel: "Delete", danger: true }); });
           await page.waitForTimeout(300);
           await inspect(page, errs, "dialog-toasts", ".aui-backdrop, .aui-toasts");
+          // Modals from the products tab: CSV import and the photo library picker.
+          for (const [name, sel] of [["modal-csv", "#importProductsCsvBtn"], ["modal-library", "#openPhotoLibraryBtn"]]) {
+            await page.keyboard.press("Escape");
+            await page.evaluate(() => { document.querySelectorAll(".aui-backdrop").forEach((n) => n.remove()); document.querySelectorAll(".aui-toast").forEach((n) => n.remove()); adminNavigate("products"); });
+            await page.waitForTimeout(250);
+            const clicked = await page.evaluate((sel) => { const b = document.querySelector(sel); if (!b) return false; b.click(); return true; }, sel);
+            if (!clicked) { fail(label + " " + name + ": trigger " + sel + " not found"); continue; }
+            await page.waitForTimeout(500);
+            await inspect(page, errs, name, ".modal.open");
+            await page.evaluate(() => document.querySelectorAll(".modal.open").forEach((m) => m.classList.remove("open")));
+          }
         }
       }
       await page.close();

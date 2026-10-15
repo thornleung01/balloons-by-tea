@@ -135,7 +135,7 @@ body.admin-body {
   min-height: 52px; border-radius: var(--a-radius-xs); padding: 4px 2px; font-variant-numeric: tabular-nums;
   color: var(--color-fg);
 }
-.ac-heat-label { font-size: var(--a-text-2xs); opacity: 0.85; }
+.ac-heat-label { font-size: var(--a-text-2xs); }
 .ac-heat-value { font-size: var(--a-text-base); font-weight: 700; }
 .ac-heat-0 { background: var(--ac-heat-0); color: var(--a-seq-0-fg); }
 .ac-heat-1 { background: var(--ac-heat-1); color: var(--a-seq-1-fg); }

@@ -185,7 +185,7 @@ body.order-drawer-open { overflow: hidden; }
 .orders-cal-weekday { font-size: var(--a-text-2xs); font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: var(--color-fg-faint); text-align: center; padding: 6px 0; border-right: 1px solid var(--color-border); border-bottom: 1px solid var(--color-border); background: var(--color-bg-alt); }
 .orders-cal-cell { min-height: 104px; padding: 4px; border-right: 1px solid var(--color-border); border-bottom: 1px solid var(--color-border); background: var(--color-surface-solid); display: flex; flex-direction: column; gap: 3px; min-width: 0; }
 .orders-cal-cell.is-other-month { background: var(--color-bg); }
-.orders-cal-cell.is-other-month .orders-cal-daynum { color: var(--color-fg-faint); opacity: 0.6; }
+.orders-cal-cell.is-other-month .orders-cal-daynum { color: var(--color-fg-faint); }
 .orders-cal-cell.is-past { background: var(--color-bg); }
 .orders-cal-cell.is-today { box-shadow: inset 0 0 0 2px var(--color-accent); }
 .orders-cal-cell.is-blocked { background: repeating-linear-gradient(135deg, var(--color-bg-alt), var(--color-bg-alt) 6px, var(--color-surface-solid) 6px, var(--color-surface-solid) 12px); }
@@ -209,7 +209,7 @@ body.order-drawer-open { overflow: hidden; }
 .orders-cal-chip:focus-visible { outline: var(--a-ring-w) solid var(--a-focus); outline-offset: 1px; }
 .orders-cal-chip.status-contacted { border-left-color: var(--soft-yellow); }
 .orders-cal-chip.status-quoted { border-left-color: var(--baby-blue); }
-.orders-cal-chip.status-fulfilled { border-left-color: var(--color-success); opacity: 0.75; }
+.orders-cal-chip.status-fulfilled { border-left-color: var(--color-success); }
 .orders-cal-time { font-weight: 700; white-space: nowrap; }
 .orders-cal-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; flex: 1; }
 .orders-cal-due { color: var(--color-destructive); font-weight: 700; white-space: nowrap; }
@@ -217,7 +217,7 @@ body.order-drawer-open { overflow: hidden; }
 .orders-cal-agenda { display: none; }
 .orders-cal-agenda-day { border: 1px solid var(--color-border); border-radius: var(--radius-sm); padding: 10px 12px; margin-bottom: 8px; background: var(--color-surface-solid); }
 .orders-cal-agenda-day.is-today { border-color: var(--color-accent); }
-.orders-cal-agenda-day.is-past { opacity: 0.7; }
+.orders-cal-agenda-day.is-past { background: var(--color-bg); }
 .orders-cal-agenda-head { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; margin-bottom: 8px; }
 .orders-cal-agenda-head .orders-cal-print { margin-left: auto; font-size: var(--a-text-xs); }
 .orders-cal-agenda .orders-cal-chips { max-height: none; }
