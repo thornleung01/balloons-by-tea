@@ -410,10 +410,10 @@
       const list = plan.columns.map((c) => `  ${columnLabel(c)}: back to ${formatValue(c, entry.changed[c][0])}`).join("\n");
       let message = `Undo this change to ${target}?\n\n${list}`;
       if (changedSince.length) message += `\n\nCareful: ${changedSince.map(columnLabel).join(", ")} ${changedSince.length === 1 ? "has" : "have"} been changed again since then. Undoing will overwrite the newer value.`;
-      if (!confirm(message)) return;
+      if (!(await adminConfirm({ title: `Undo this change to ${target}?`, message: message.replace(/^Undo this change to [^\n]*\n\n/, ""), confirmLabel: "Undo change", danger: changedSince.length > 0 }))) return;
     } else {
       if (current) { say("Something with the same id exists again, so there's nothing to put back.", "error"); return; }
-      if (!confirm(`Put ${target} back exactly as it was before it was deleted?`)) return;
+      if (!(await adminConfirm({ title: `Restore ${target}?`, message: `Put ${target} back exactly as it was before it was deleted?`, confirmLabel: "Put it back" }))) return;
     }
 
     btn.disabled = true;
@@ -436,7 +436,7 @@
   async function prune() {
     const client = getSupabaseClient();
     const days = Number($("activityPruneDays").value);
-    if (!confirm(`Delete all activity entries older than ${days} days? This only removes history, not your shop data.`)) return;
+    if (!(await adminConfirm({ title: "Delete old activity history?", message: `Delete all activity entries older than ${days} days? This only removes history, not your shop data.`, confirmLabel: "Delete history", danger: true }))) return;
     setStatus("activityPruneStatus", "Deleting...", "");
     const { data, error } = await client.rpc("audit_log_prune", { keep_days: days });
     if (error) {

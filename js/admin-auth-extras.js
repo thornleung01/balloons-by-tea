@@ -480,7 +480,7 @@
     }
 
     async function removeFactor(factorId) {
-      if (!confirm("Turn off 2-step login? Your account will be protected by the password alone.")) return;
+      if (!(await adminConfirm({ title: "Turn off 2-step login?", message: "Your account will be protected by the password alone.", confirmLabel: "Turn off", danger: true }))) return;
       setStatus(statusEl, "Removing...", "");
       const { error } = await client.auth.mfa.unenroll({ factorId });
       if (error) setStatus(statusEl, `Couldn't remove it: ${error.message}`, "error");
@@ -554,7 +554,7 @@
     });
 
     $("signOutOthersBtn").addEventListener("click", async () => {
-      if (!confirm("Log out every other device and browser? You'll stay logged in here.")) return;
+      if (!(await adminConfirm({ title: "Log out other devices?", message: "Log out every other device and browser? You'll stay logged in here.", confirmLabel: "Log them out" }))) return;
       const s = $("signOutOthersStatus");
       setStatus(s, "Logging out other devices...", "");
       const { error } = await client.auth.signOut({ scope: "others" });
@@ -603,7 +603,7 @@
         if (!looksLikeEmail(email)) { setStatus($("teamStatus"), "Enter their login email.", "error"); return; }
         const role = $("teamRole").value;
         const name = $("teamName").value.trim();
-        if (role === "owner" && !confirm(`Make ${email} an OWNER? Owners can do everything, including deleting data and changing the team.`)) return;
+        if (role === "owner" && !(await adminConfirm({ title: `Make ${email} an owner?`, message: `Make ${email} an OWNER? Owners can do everything, including deleting data and changing the team.`, confirmLabel: "Make owner", danger: true }))) return;
         await setTeamRole(client, email, role, name, `${email} added as ${role}.`);
         $("teamEmail").value = "";
         $("teamName").value = "";
@@ -659,12 +659,12 @@
       const email = row.dataset.email;
       const select = row.querySelector(".team-role-select");
       if (select) select.addEventListener("change", async () => {
-        if (select.value === "owner" && !confirm(`Make ${email} an OWNER? Owners can do everything.`)) { select.value = "staff"; return; }
+        if (select.value === "owner" && !(await adminConfirm({ title: `Make ${email} an owner?`, message: `Make ${email} an OWNER? Owners can do everything.`, confirmLabel: "Make owner", danger: true }))) { select.value = "staff"; return; }
         await setTeamRole(client, email, select.value, undefined, `${email} is now ${select.value}.`);
       });
       const remove = row.querySelector(".team-remove-btn");
       if (remove) remove.addEventListener("click", async () => {
-        if (!confirm(`Remove ${email} from the team? Their login will still exist in Supabase but won't be able to see or change anything here.`)) return;
+        if (!(await adminConfirm({ title: `Remove ${email} from the team?`, message: `Their login will still exist in Supabase but won't be able to see or change anything here.`, confirmLabel: "Remove from team", danger: true }))) return;
         await setTeamRole(client, email, "none", undefined, `${email} removed from the team.`);
       });
     });
