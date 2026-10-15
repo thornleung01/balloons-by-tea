@@ -1,0 +1,130 @@
+/* Safety & access: login extras, Security/Team cards, Activity tab,
+   Restore from backup, backup reminders, and the staff-role lockdown.
+   Scripts: js/admin-auth-extras.js, js/admin-audit.js, js/admin-backup.js,
+   js/admin-restore.js. Guide: docs/admin-safety.md. */
+
+/* ===== Login extras ===== */
+.login-link-btn {
+  display: block; margin: var(--space-2) auto 0; padding: 4px 8px;
+  background: none; border: 0; cursor: pointer;
+  font: inherit; font-size: 0.85rem; color: var(--color-accent); text-decoration: underline;
+}
+.login-link-btn:hover { color: var(--color-accent-hover); }
+.mfa-code-input { font-size: 1.4rem; letter-spacing: 0.35em; text-align: center; max-width: 12em; font-variant-numeric: tabular-nums; }
+.password-meter { margin-top: var(--space-1); font-size: 0.8rem; color: var(--color-fg-soft); }
+.password-meter-bar { display: block; height: 5px; border-radius: 3px; background: var(--color-bg-alt); overflow: hidden; margin-bottom: 4px; }
+.password-meter-bar > span { display: block; height: 100%; background: var(--color-destructive); transition: width 160ms var(--ease, ease); }
+.password-meter[data-score="2"] .password-meter-bar > span { background: #c98a00; }
+.password-meter[data-score="3"] .password-meter-bar > span,
+.password-meter[data-score="4"] .password-meter-bar > span { background: var(--color-success); }
+
+/* ===== Settings: Security and Team cards ===== */
+.safety-section { margin-top: var(--space-5, 40px); padding-top: var(--space-4); border-top: 1px solid var(--color-border); }
+.safety-section h2 { margin-bottom: var(--space-3); }
+.safety-block { margin-bottom: var(--space-4); }
+.safety-block h3, .team-add h3, .restore-section h3 { font-size: 1rem; margin: 0 0 var(--space-1); }
+.safety-help { font-size: 0.85rem; color: var(--color-fg-soft); line-height: 1.5; margin: 0 0 var(--space-2); }
+.safety-actions { display: flex; flex-wrap: wrap; gap: var(--space-2); }
+.mfa-on strong { color: var(--color-success); }
+.mfa-off strong { color: var(--color-destructive); }
+.mfa-factors { list-style: none; margin: 0 0 var(--space-2); padding: 0; }
+.mfa-factors li { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); padding: 6px 0; border-bottom: 1px solid var(--color-border); font-size: 0.9rem; }
+.mfa-enroll { margin: var(--space-2) 0; padding: var(--space-3); border: 1px solid var(--color-border); border-radius: var(--radius-md); background: var(--color-bg-alt); }
+.mfa-steps { margin: 0 0 var(--space-2); padding-left: 1.3em; font-size: 0.9rem; line-height: 1.5; }
+.mfa-steps li { margin-bottom: var(--space-2); }
+.mfa-qr-wrap { margin: var(--space-2) 0; width: 196px; height: 196px; padding: 8px; background: #fff; border-radius: var(--radius-sm); }
+.mfa-qr-wrap img { display: block; width: 180px; height: 180px; }
+.mfa-secret { display: inline-block; word-break: break-all; user-select: all; font-size: 0.85rem; padding: 2px 6px; background: var(--color-surface-solid); border-radius: 4px; }
+.team-table { width: 100%; border-collapse: collapse; font-size: 0.88rem; margin-bottom: var(--space-3); }
+.team-table th, .team-table td { text-align: left; padding: 8px; border-bottom: 1px solid var(--color-border); vertical-align: middle; }
+.team-table small { color: var(--color-fg-faint); }
+.team-add-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: var(--space-2); }
+.role-notice { margin: 0 0 var(--space-3); padding: var(--space-2) var(--space-3); border-radius: var(--radius-md); background: var(--color-accent-tint); border: 1px solid var(--color-border); font-size: 0.88rem; }
+
+/* ===== Activity tab ===== */
+.activity-filters { display: flex; flex-wrap: wrap; gap: var(--space-2) var(--space-3); margin-bottom: var(--space-3); }
+.activity-filters label { display: flex; flex-direction: column; gap: 2px; font-size: 0.78rem; color: var(--color-fg-faint); }
+.activity-filters input[type="date"] { min-height: 38px; }
+.activity-list { list-style: none; margin: 0; padding: 0; }
+.activity-item { border-bottom: 1px solid var(--color-border); }
+.activity-item summary { display: flex; align-items: baseline; gap: var(--space-2); padding: 10px 4px; cursor: pointer; list-style: none; }
+.activity-item summary::-webkit-details-marker { display: none; }
+.activity-item summary:hover { background: var(--color-bg-alt); }
+.activity-dot { flex: 0 0 8px; height: 8px; border-radius: 50%; background: var(--color-accent); transform: translateY(-1px); }
+.activity-delete .activity-dot { background: var(--color-destructive); }
+.activity-insert .activity-dot { background: var(--color-success); }
+.activity-text { flex: 1; font-size: 0.9rem; line-height: 1.4; overflow-wrap: anywhere; }
+.activity-item time { flex: none; font-size: 0.78rem; color: var(--color-fg-faint); white-space: nowrap; }
+.activity-body { padding: 4px 4px var(--space-3) 20px; }
+.activity-meta { font-size: 0.78rem; color: var(--color-fg-faint); margin: 0 0 var(--space-2); }
+.activity-diff { width: 100%; border-collapse: collapse; font-size: 0.82rem; margin-bottom: var(--space-2); }
+.activity-diff th, .activity-diff td { text-align: left; padding: 5px 8px; border-bottom: 1px solid var(--color-border); vertical-align: top; }
+.activity-diff code { white-space: pre-wrap; overflow-wrap: anywhere; font-size: 0.8rem; }
+.activity-pager { display: flex; align-items: center; justify-content: center; gap: var(--space-3); margin: var(--space-3) 0; font-size: 0.85rem; color: var(--color-fg-soft); }
+.activity-retention { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); padding-top: var(--space-3); border-top: 1px solid var(--color-border); font-size: 0.85rem; }
+.activity-undo-status { display: inline-block; margin: 0 0 0 var(--space-2); }
+@media (max-width: 600px) {
+  .activity-item summary { flex-wrap: wrap; }
+  .activity-item time { flex-basis: 100%; padding-left: 16px; }
+}
+
+/* ===== Backup reminders and Restore ===== */
+.backup-last { font-size: 0.88rem; font-weight: 600; margin: 0 0 var(--space-1); }
+.backup-nudge { font-size: 0.85rem; color: var(--color-destructive); margin: 0 0 var(--space-2); }
+.backup-nudge-bar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--space-2); margin: 0 0 var(--space-3); padding: var(--space-2) var(--space-3); border: 1px solid var(--color-destructive); border-radius: var(--radius-md); font-size: 0.88rem; background: var(--color-surface-solid); }
+.restore-section { margin-top: var(--space-4); padding-top: var(--space-3); border-top: 1px dashed var(--color-border); }
+.restore-table th, .restore-table td { white-space: nowrap; }
+.restore-table td:first-child, .restore-table th:first-child { text-align: left; white-space: normal; }
+.restore-table td:not(:first-child), .restore-table th:not(:first-child) { text-align: right; }
+.restore-table { display: block; overflow-x: auto; }
+.restore-unavailable { text-align: left !important; color: var(--color-fg-faint); white-space: normal !important; }
+.restore-only-now { color: var(--color-fg-soft); }
+.restore-modes { border: 1px solid var(--color-border); border-radius: var(--radius-md); margin: var(--space-3) 0; padding: var(--space-2) var(--space-3); }
+.restore-modes label { display: block; margin: 6px 0; font-size: 0.88rem; line-height: 1.4; }
+.restore-danger { border: 2px solid var(--color-destructive); color: var(--color-destructive); border-radius: var(--radius-md); padding: var(--space-2) var(--space-3); margin: var(--space-2) 0; font-size: 0.88rem; font-weight: 600; }
+.restore-danger ul { font-weight: 400; margin: var(--space-1) 0 0; padding-left: 1.2em; word-break: break-all; }
+.restore-progress { margin-top: var(--space-2); font-size: 0.88rem; color: var(--color-fg-soft); }
+.restore-result { margin-top: var(--space-3); }
+.restore-file code { word-break: break-all; }
+
+/* ===== Staff role =====
+   js/admin-auth-extras.js puts role-staff on <body> for staff logins. This
+   is only tidying: the database refuses staff writes to everything below
+   anyway (supabase-migrations/30-safety.sql). Nav buttons are found by the
+   data-tab / data-group attributes js/admin-core.js puts on them. */
+body.role-staff [data-tab="analytics"],
+body.role-staff [data-tab="delivery"],
+body.role-staff [data-tab="collections"],
+body.role-staff [data-tab="library"],
+body.role-staff [data-tab="gallery"],
+body.role-staff [data-tab="nav"],
+body.role-staff [data-tab="faq"],
+body.role-staff [data-tab="settings"],
+body.role-staff [data-tab="activity"],
+body.role-staff .admin-nav-group[data-group="site"],
+body.role-staff .admin-bottom-btn[data-group="site"],
+body.role-staff #ovAddProductBtn,
+body.role-staff #ovBlockDateBtn,
+/* Products: read-only list */
+body.role-staff #productsPanel #itemForm,
+body.role-staff #productsPanel > .admin-card:first-child,
+body.role-staff #productsPanel .edit-btn,
+body.role-staff #productsPanel .duplicate-btn,
+body.role-staff #productsPanel .delete-btn,
+body.role-staff #productsPanel .toggle-switch,
+body.role-staff #productsPanel .lock-toggle,
+body.role-staff #productsPanel .bulk-select-row,
+body.role-staff #productsPanel .admin-item-select,
+/* Orders: no deleting, no photo cleanup */
+body.role-staff .delete-order-btn,
+body.role-staff #orderBulkDeleteBtn,
+body.role-staff #cleanupOrderPhotosBtn,
+body.role-staff .order-photo-tools,
+/* Anything an owner-only script marks */
+body.role-staff [data-owner-only],
+body.role-staff .safety-section,
+body.role-staff .restore-section,
+body.role-staff #backupAdmin,
+body.role-staff #backupNudgeBar {
+  display: none !important;
+}

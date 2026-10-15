@@ -707,6 +707,16 @@ async function enterDashboard() {
     showLoginView();
     return;
   }
+  // Extra login steps from js/admin-auth-extras.js (set-new-password after
+  // a reset link, the 2-step login code). A gate that returns false has
+  // shown its own screen and calls enterDashboard() again when it's done.
+  for (const gate of (window.adminLoginGates || [])) {
+    if (!(await gate(client, session))) return;
+  }
+  // Per-login setup that must finish before the dashboard shows (e.g. the
+  // team role, so staff never see owner-only buttons flash up). A failing
+  // hook never blocks the login.
+  await Promise.allSettled((window.adminSessionHooks || []).map((fn) => Promise.resolve().then(() => fn(client, session))));
   const who = document.getElementById("whoAmI");
   who.textContent = session.user.email;
   show(who);
@@ -731,6 +741,8 @@ function showLoginView() {
   hide(document.getElementById("logoutBtn"));
   hide(document.getElementById("whoAmI"));
   show(document.getElementById("loginView"));
+  // Lets js/admin-auth-extras.js reset its extra login screens.
+  (window.adminLoginViewHooks || []).forEach((fn) => { try { fn(); } catch (e) { console.error(e); } });
 }
 
 /* ===== Photo preview modal — reuses the public site's lightbox CSS

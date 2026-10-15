@@ -14,6 +14,7 @@
 <link rel="stylesheet" href="css/admin-content.css"/>
 <link rel="stylesheet" href="css/admin-shell.css"/>
 <link rel="stylesheet" href="css/admin-notifications.css"/>
+<link rel="stylesheet" href="css/admin-safety.css"/>
 </head>
 <body class="admin-body">
 
@@ -59,7 +60,7 @@
 
   <!-- Login -->
   <div id="loginView" class="login-wrap" hidden>
-    <div class="admin-card login-card">
+    <div class="admin-card login-card" id="loginCard">
       <h1>Admin Login</h1>
       <p>Sign in to add, edit, or hide products.</p>
       <form id="loginForm" novalidate>
@@ -73,6 +74,54 @@
         </div>
         <div class="form-status error" id="loginError"></div>
         <button type="submit" class="btn btn-primary btn-block">Log in</button>
+        <button type="button" class="login-link-btn" id="forgotPasswordBtn">Forgot password?</button>
+      </form>
+    </div>
+
+    <!-- Login extras: js/admin-auth-extras.js -->
+    <div class="admin-card login-card" id="forgotPasswordCard" hidden>
+      <h1>Reset password</h1>
+      <p>Enter your admin email and we'll send you a link to choose a new password.</p>
+      <form id="forgotPasswordForm" novalidate>
+        <div class="field">
+          <label for="forgotEmail">Email</label>
+          <input id="forgotEmail" name="email" type="email" required autocomplete="username"/>
+        </div>
+        <div class="form-status" id="forgotStatus" role="status" aria-live="polite"></div>
+        <button type="submit" class="btn btn-primary btn-block" id="forgotSendBtn">Send reset link</button>
+        <button type="button" class="login-link-btn" data-back-to-login>Back to log in</button>
+      </form>
+    </div>
+
+    <div class="admin-card login-card" id="mfaStepCard" hidden>
+      <h1>Enter your code</h1>
+      <p>Open your authenticator app and type the 6-digit code for Balloons by Tea admin.</p>
+      <form id="mfaStepForm" novalidate>
+        <div class="field">
+          <label for="mfaStepCode">6-digit code</label>
+          <input id="mfaStepCode" name="code" type="text" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" autocomplete="one-time-code" required class="mfa-code-input"/>
+        </div>
+        <div class="form-status" id="mfaStepStatus" role="status" aria-live="polite"></div>
+        <button type="submit" class="btn btn-primary btn-block" id="mfaStepBtn">Verify</button>
+        <button type="button" class="login-link-btn" id="mfaStepCancelBtn">Use a different account</button>
+      </form>
+    </div>
+
+    <div class="admin-card login-card" id="newPasswordCard" hidden>
+      <h1>Choose a new password</h1>
+      <p>Pick something long that you don't use anywhere else.</p>
+      <form id="newPasswordForm" novalidate>
+        <div class="field">
+          <label for="newPassword">New password</label>
+          <input id="newPassword" name="password" type="password" required autocomplete="new-password" minlength="10"/>
+          <div class="password-meter" id="newPasswordMeter" aria-live="polite"></div>
+        </div>
+        <div class="field">
+          <label for="newPasswordConfirm">Type it again</label>
+          <input id="newPasswordConfirm" name="confirm" type="password" required autocomplete="new-password"/>
+        </div>
+        <div class="form-status" id="newPasswordStatus" role="status" aria-live="polite"></div>
+        <button type="submit" class="btn btn-primary btn-block" id="newPasswordBtn">Save new password</button>
       </form>
     </div>
   </div>
@@ -627,6 +676,9 @@
       <!-- Filled in by js/admin-backup.js -->
       <section class="backup-section" id="backupAdmin" data-settings-title="Backup"></section>
     </div>
+
+    <!-- Activity log: rendered by js/admin-audit.js -->
+    <div id="activityPanel" class="admin-card" hidden></div>
   </div>
 
 </main>
@@ -658,7 +710,10 @@
 <script src="js/admin-content-alt.js"></script>
 
 <script src="js/admin-notifications.js"></script>
+<script src="js/admin-auth-extras.js"></script>
+<script src="js/admin-audit.js"></script>
 <script src="js/admin-backup.js"></script>
+<script src="js/admin-restore.js"></script>
 <script src="js/admin-availability.js"></script>
 <script src="js/admin-delivery-areas.js"></script>
 <script src="js/admin-gallery.js"></script>
