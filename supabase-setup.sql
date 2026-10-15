@@ -427,14 +427,14 @@ do $guard$
 begin
   if pg_catalog.to_regprocedure('public.admin_role()') is null then
     execute $fn$
-      create or replace function is_admin()
-      returns boolean
-      language sql
-      stable
-      set search_path = ''
-      as $body$
-        select lower(auth.email()) = lower('amandatea02@outlook.com');
-      $body$
+create or replace function is_admin()
+returns boolean
+language sql
+stable
+set search_path = ''
+as $body$
+  select lower(auth.email()) = lower('amandatea02@outlook.com');
+$body$
     $fn$;
   end if;
 end
