@@ -2736,3 +2736,33 @@ html.pd-lock { overflow: hidden; }
   .pd.open .pd-panel { transform: none; }
   .pd-track { scroll-behavior: auto; }
 }
+
+/* ==========================================================================
+   Admin settings preview ribbon (js/site-content.js, only on ?preview=1
+   with an unsaved draft from admin.html's Settings "Preview" button)
+   ========================================================================== */
+.settings-preview-ribbon {
+  position: fixed;
+  z-index: 90;
+  left: 50%;
+  top: 10px;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 8px 8px 16px;
+  border-radius: var(--radius-pill);
+  background: var(--brown);
+  color: #fff;
+  font-size: 0.85rem;
+  box-shadow: 0 8px 24px rgba(74, 48, 40, 0.28);
+  max-width: calc(100vw - 32px);
+}
+.settings-preview-ribbon a {
+  color: var(--brown);
+  background: #fff;
+  border-radius: var(--radius-pill);
+  padding: 4px 12px;
+  font-weight: 600;
+  white-space: nowrap;
+}

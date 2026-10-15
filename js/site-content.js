@@ -24,17 +24,219 @@ async function loadSiteContent() {
     const settingsMap = {};
     (settingsRes.data || []).forEach((row) => { settingsMap[row.key] = row.value; });
 
+    // Admin "Preview" (unsaved settings) — only with ?preview=1.
+    const previewDraft = readSettingsPreviewDraft();
+    if (previewDraft) Object.assign(settingsMap, previewDraft);
+
     window.SITE_SETTINGS = settingsMap;
     window.SITE_COLLECTIONS = collectionsRes.error ? [] : (collectionsRes.data || []);
     window.SITE_NAV_ITEMS = navRes.error ? [] : (navRes.data || []);
     window.SITE_FAQ_ITEMS = faqRes.error ? [] : (faqRes.data || []);
+
+    applySeoMeta(settingsMap);
+    if (previewDraft) showSettingsPreviewRibbon();
 
     console.info("[Balloons by Tea] Loaded live site content from Supabase.");
     return true;
   } catch (err) {
     console.warn("[Balloons by Tea] Could not load live site content, using the built-in page content instead.", err);
     return false;
+  } finally {
+    // Independent of the settings result: alt text and the ?edit=1 entry
+    // point each degrade to "do nothing" on their own.
+    initPhotoAlt(client);
+    startEditModeFromUrl();
   }
+}
+
+/* ===== Admin preview of unsaved settings =====
+   admin.html's Settings "Preview" button (js/admin-content-ui.js) writes
+   { savedAt, values } to localStorage under this key and opens a page with
+   ?preview=1. Without that parameter, or with a draft older than 2 hours,
+   nothing changes. */
+const SETTINGS_PREVIEW_STORAGE_KEY_PUBLIC = "aura-settings-preview";
+
+function isSettingsPreviewRequested() {
+  try { return new URLSearchParams(location.search).get("preview") === "1"; } catch (e) { return false; }
+}
+
+function readSettingsPreviewDraft() {
+  if (!isSettingsPreviewRequested()) return null;
+  try {
+    const raw = localStorage.getItem(SETTINGS_PREVIEW_STORAGE_KEY_PUBLIC);
+    if (!raw) return null;
+    const draft = JSON.parse(raw);
+    if (!draft || typeof draft.values !== "object" || !draft.savedAt || Date.now() - draft.savedAt > 2 * 60 * 60 * 1000) return null;
+    const values = {};
+    Object.keys(draft.values).forEach((k) => {
+      if (typeof draft.values[k] === "string") values[k] = draft.values[k];
+    });
+    return values;
+  } catch (e) {
+    return null;
+  }
+}
+
+function showSettingsPreviewRibbon() {
+  if (document.getElementById("settingsPreviewRibbon")) return;
+  const ribbon = document.createElement("div");
+  ribbon.id = "settingsPreviewRibbon";
+  ribbon.className = "settings-preview-ribbon";
+  ribbon.setAttribute("role", "status");
+  const label = document.createElement("strong");
+  label.textContent = "Preview — not saved";
+  const exit = document.createElement("a");
+  const url = new URL(location.href);
+  url.searchParams.delete("preview");
+  exit.href = url.pathname + url.search + url.hash;
+  exit.textContent = "Exit preview";
+  ribbon.append(label, exit);
+  document.body.appendChild(ribbon);
+}
+
+/* ===== Page-level SEO (admin Settings → SEO & sharing) =====
+   site_settings keys seo_<page>_title / seo_<page>_description and
+   seo_og_image override the static <title>/<meta> tags when set. The
+   static tags in each HTML file stay as the fallback, and are all a
+   crawler that doesn't run JavaScript will ever see. */
+const SEO_PAGE_KEYS = {
+  "index": "index", "all-products": "all_products", "anniversary": "anniversary", "birthday": "birthday",
+  "kids": "kids", "other-occasions": "other_occasions", "category": "category", "gallery": "gallery",
+  "custom-order": "custom_order", "about": "about", "faq": "faq"
+};
+
+function currentSeoPageKey() {
+  const file = decodeURIComponent(location.pathname.split("/").pop() || "");
+  const base = file.replace(/\.html?$/i, "") || "index";
+  return SEO_PAGE_KEYS[base] || null;
+}
+
+function setMetaTag(attr, name, content) {
+  let tag = document.head.querySelector(`meta[${attr}="${name}"]`);
+  if (!tag) {
+    tag = document.createElement("meta");
+    tag.setAttribute(attr, name);
+    document.head.appendChild(tag);
+  }
+  tag.setAttribute("content", content);
+}
+
+function applySeoMeta(s) {
+  if (!s) return;
+  const key = currentSeoPageKey();
+  const title = key ? String(s[`seo_${key}_title`] || "").trim() : "";
+  const description = key ? String(s[`seo_${key}_description`] || "").trim() : "";
+  const ogImage = String(s.seo_og_image || "").trim();
+  if (title) {
+    document.title = title;
+    setMetaTag("property", "og:title", title);
+    setMetaTag("name", "twitter:title", title);
+  }
+  if (description) {
+    setMetaTag("name", "description", description);
+    setMetaTag("property", "og:description", description);
+    setMetaTag("name", "twitter:description", description);
+  }
+  if (ogImage && !ogImage.startsWith("data:")) {
+    let abs = ogImage;
+    try { abs = new URL(ogImage, location.href).href; } catch (e) { /* keep as-is */ }
+    setMetaTag("property", "og:image", abs);
+    setMetaTag("name", "twitter:image", abs);
+  }
+}
+
+/* ===== Photo alt text (photo_meta table) =====
+   window.photoAlt(url, fallback) returns the owner's alt text for a photo
+   URL, or `fallback`. Fetched once per tab and cached in sessionStorage
+   for 10 minutes. Images already on the page, and any rendered later
+   (product cards, product detail, gallery, hero, lightbox), get their alt
+   filled in automatically; with no row for a photo — or no photo_meta
+   table at all — the existing alt stays exactly as it is. */
+const PHOTO_ALT_CACHE_KEY = "photoAltMap:v1";
+const PHOTO_ALT_CACHE_MS = 10 * 60 * 1000;
+let photoAltMap = null;
+
+function photoAltUrlKey(url) {
+  const raw = String(url || "").trim();
+  if (!raw || raw.startsWith("data:") || raw.startsWith("blob:")) return "";
+  try {
+    const u = new URL(raw, location.href);
+    return u.origin + u.pathname;
+  } catch (e) {
+    return raw.split("#")[0].split("?")[0];
+  }
+}
+
+window.photoAlt = function photoAlt(url, fallback) {
+  const key = photoAltUrlKey(url);
+  const alt = key && photoAltMap ? photoAltMap.get(key) : "";
+  return alt || (fallback == null ? "" : fallback);
+};
+
+/* Purely decorative images (thumbnail strips, related-product art) keep
+   alt="" on purpose; everything else gets the owner's alt when it has one. */
+const PHOTO_ALT_SKIP = ".pd-thumb, .pd-related-art, [aria-hidden='true']";
+
+function applyPhotoAltTo(img) {
+  if (!photoAltMap || !photoAltMap.size || img.closest(PHOTO_ALT_SKIP)) return;
+  const alt = photoAltMap.get(photoAltUrlKey(img.getAttribute("src")));
+  if (alt && img.getAttribute("alt") !== alt) img.setAttribute("alt", alt);
+}
+
+function applyPhotoAltWithin(root) {
+  if (root.tagName === "IMG") applyPhotoAltTo(root);
+  else if (root.querySelectorAll) root.querySelectorAll("img").forEach(applyPhotoAltTo);
+}
+
+let photoAltStarted = false;
+async function initPhotoAlt(client) {
+  if (photoAltStarted) return;
+  photoAltStarted = true;
+  let rows = null;
+  try {
+    const cached = JSON.parse(sessionStorage.getItem(PHOTO_ALT_CACHE_KEY) || "null");
+    if (cached && Array.isArray(cached.rows) && Date.now() - cached.at < PHOTO_ALT_CACHE_MS) rows = cached.rows;
+  } catch (e) { /* storage unavailable or corrupt: fetch instead */ }
+  if (!rows && client) {
+    try {
+      const { data, error } = await client.from("photo_meta").select("url,alt").not("alt", "is", null).limit(5000);
+      rows = error ? [] : (data || []).filter((r) => r.alt && String(r.alt).trim()).map((r) => [r.url, String(r.alt).trim()]);
+      try { sessionStorage.setItem(PHOTO_ALT_CACHE_KEY, JSON.stringify({ at: Date.now(), rows })); } catch (e) { /* ignore */ }
+    } catch (e) {
+      rows = [];
+    }
+  }
+  photoAltMap = new Map();
+  (rows || []).forEach(([url, alt]) => { const k = photoAltUrlKey(url); if (k) photoAltMap.set(k, alt); });
+  if (!photoAltMap.size) return;
+  applyPhotoAltWithin(document.body);
+  new MutationObserver((mutations) => {
+    mutations.forEach((m) => {
+      if (m.type === "attributes") applyPhotoAltTo(m.target);
+      else m.addedNodes.forEach((n) => { if (n.nodeType === 1) applyPhotoAltWithin(n); });
+    });
+  }).observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ["src"] });
+}
+
+/* ===== "Edit on page" entry point =====
+   admin.html links to e.g. index.html?edit=1. js/edit-mode.js only builds
+   its toggle button once it has confirmed an admin session, so wait for
+   that button and switch edit mode on; for anyone else nothing appears
+   and this gives up quietly. */
+function startEditModeFromUrl() {
+  let wanted = false;
+  try { wanted = new URLSearchParams(location.search).get("edit") === "1"; } catch (e) { return; }
+  if (!wanted) return;
+  let tries = 0;
+  const timer = setInterval(() => {
+    const btn = document.getElementById("editModeToggle");
+    if (btn) {
+      clearInterval(timer);
+      if (btn.getAttribute("aria-pressed") !== "true") btn.click();
+    } else if (++tries > 40) {
+      clearInterval(timer);
+    }
+  }, 250);
 }
 
 /* ===== Optimized built-in artwork =====
