@@ -401,8 +401,8 @@ onAdminInit(() => {
     btn.textContent = e.detail.saving ? "Saving..." : "Save";
   });
   document.getElementById("settingsSaveBarBtn").addEventListener("click", submitSettingsForm);
-  document.getElementById("settingsDiscardBtn").addEventListener("click", () => {
-    if (!confirm("Discard all unsaved changes in Settings?")) return;
+  document.getElementById("settingsDiscardBtn").addEventListener("click", async () => {
+    if (!(await adminConfirm({ title: "Discard unsaved changes?", message: "Discard all unsaved changes in Settings?", confirmLabel: "Discard changes", danger: true }))) return;
     discardSettingsChanges();
   });
   const isMac = /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent || "");

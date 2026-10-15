@@ -595,9 +595,9 @@ function openSettingsHistory() {
     title: "Settings history",
     getCurrent: () => fetchSettingsSnapshot(getSupabaseClient()),
     diff: describeSettingsDiff,
-    beforeRestore: () => {
+    beforeRestore: async () => {
       if (!settingsFormIsDirty()) return true;
-      if (!confirm("You have unsaved changes in Settings. Restoring will throw them away. Continue?")) return false;
+      if (!(await adminConfirm({ title: "Discard unsaved changes?", message: "You have unsaved changes in Settings. Restoring will throw them away. Continue?", confirmLabel: "Discard and restore", danger: true }))) return false;
       discardSettingsChanges();
       return true;
     },

@@ -146,7 +146,7 @@ function closeAltTextEditor() {
 async function openAltTextEditor(url, { fallback = "", onSaved = null, returnFocus = null } = {}) {
   if (photoMetaAvailable === null) await loadPhotoMeta();
   if (photoMetaAvailable === false) {
-    alert("Alt text isn't switched on yet. Run supabase-migrations/60-content.sql in the Supabase SQL Editor, then reload this page.");
+    await adminAlert("Alt text isn't switched on yet. Run supabase-migrations/60-content.sql in the Supabase SQL Editor, then reload this page.", { title: "Alt text not set up" });
     return;
   }
   const modal = ensureAltTextModal();
@@ -304,7 +304,7 @@ function ensureLibraryAltToggle() {
   btn.addEventListener("click", async () => {
     if (photoMetaAvailable === null) await loadPhotoMeta();
     if (photoMetaAvailable === false) {
-      alert("Alt text isn't switched on yet. Run supabase-migrations/60-content.sql in the Supabase SQL Editor, then reload this page.");
+      await adminAlert("Alt text isn't switched on yet. Run supabase-migrations/60-content.sql in the Supabase SQL Editor, then reload this page.", { title: "Alt text not set up" });
       return;
     }
     libraryAltFilterOn = !libraryAltFilterOn;

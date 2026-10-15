@@ -188,7 +188,7 @@
       const found = rowFor(del);
       if (!found) return;
       const name = found.item.caption ? `"${found.item.caption}"` : "this photo";
-      if (!confirm(`Remove ${name} from the gallery? The photo file itself stays in your Library.`)) return;
+      if (!(await adminConfirm({ title: `Remove ${name} from the gallery?`, message: "The photo file itself stays in your Library.", confirmLabel: "Remove from gallery", danger: true }))) return;
       del.disabled = true;
       const { error } = await mustAffect(getSupabaseClient().from(TABLE).delete().eq("id", found.item.id));
       if (error) {
