@@ -30,11 +30,26 @@ alter table products add column if not exists images text[] default '{}';
 
 alter table products enable row level security;
 
-drop policy if exists "Public can read products" on products;
-create policy "Public can read products"
-  on products for select
-  to anon, authenticated
-  using (true);
+-- Re-run safety: supabase-migrations/40-products.sql replaces this policy
+-- with one that hides trashed / not-yet-launched products (its condition
+-- mentions deleted_at). If that version is already in place, leave it alone
+-- so re-running this file cannot make trashed products public again.
+do $guard$
+begin
+  if not exists (
+    select 1 from pg_catalog.pg_policies
+    where schemaname = 'public' and tablename = 'products'
+      and policyname = 'Public can read products'
+      and qual like '%deleted_at%'
+  ) then
+    drop policy if exists "Public can read products" on products;
+    create policy "Public can read products"
+      on products for select
+      to anon, authenticated
+      using (true);
+  end if;
+end
+$guard$;
 
 drop policy if exists "Authenticated can manage products" on products;
 create policy "Authenticated can manage products"
@@ -403,14 +418,27 @@ create policy "Authenticated can delete site images"
 -- set search_path = '' follows Supabase's own hardening guidance for
 -- functions referenced inside RLS policies; auth.email() is already
 -- schema-qualified so this changes nothing about how the function runs.
-create or replace function is_admin()
-returns boolean
-language sql
-stable
-set search_path = ''
-as $$
-  select lower(auth.email()) = lower('amandatea02@outlook.com');
-$$;
+-- Re-run safety: supabase-migrations/30-safety.sql redefines is_admin() to
+-- honour team roles + 2-step login (it creates public.admin_role()). Once
+-- that exists, re-running this file must NOT put the single-email version
+-- back, so the original definition is only installed when admin_role() is
+-- absent (a fresh project, or one that never ran 30-safety.sql).
+do $guard$
+begin
+  if pg_catalog.to_regprocedure('public.admin_role()') is null then
+    execute $fn$
+      create or replace function is_admin()
+      returns boolean
+      language sql
+      stable
+      set search_path = ''
+      as $body$
+        select lower(auth.email()) = lower('amandatea02@outlook.com');
+      $body$
+    $fn$;
+  end if;
+end
+$guard$;
 
 -- Products — tighten the one "manage" (all) policy.
 drop policy if exists "Authenticated can manage products" on products;
@@ -611,8 +639,21 @@ alter table faq_items add constraint faq_items_sort_order_check check (sort_orde
 -- fields a checkout always fills).
 alter table orders drop constraint if exists orders_kind_check;
 alter table orders add constraint orders_kind_check check (kind in ('checkout', 'custom')) not valid;
-alter table orders drop constraint if exists orders_status_check;
-alter table orders add constraint orders_status_check check (status in ('new', 'contacted', 'fulfilled', 'cancelled')) not valid;
+-- Re-run safety: supabase-migrations/10-orders-v2.sql widens this check to
+-- also allow 'quoted'. Keep that version if it is already in place.
+do $guard$
+begin
+  if not exists (
+    select 1 from pg_catalog.pg_constraint
+    where conrelid = 'public.orders'::regclass
+      and conname = 'orders_status_check'
+      and pg_catalog.pg_get_constraintdef(oid) like '%quoted%'
+  ) then
+    alter table orders drop constraint if exists orders_status_check;
+    alter table orders add constraint orders_status_check check (status in ('new', 'contacted', 'fulfilled', 'cancelled')) not valid;
+  end if;
+end
+$guard$;
 
 -- analytics_events: trackEvent() (js/analytics.js) always passes a
 -- non-empty string literal event_name and a session_id that's either a
