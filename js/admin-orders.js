@@ -1,38 +1,78 @@
-/* Admin "Orders" tab: list with status filter/search/sort, private admin
-   notes, customer inspiration photos (orders.attachments) and their
-   cleanup, bulk actions, and CSV export. Uses helpers from
-   js/admin-core.js. */
+/* Admin "Orders" tab: a compact, server-paged order list (status, payment,
+   search, date filters pushed into the Supabase query), a slide-over
+   detail drawer per order (contact, items, payment editor, status, photos,
+   private notes, timeline), bulk actions, CSV export, and live updates via
+   Supabase Realtime. Uses helpers from js/admin-core.js.
+
+   Companion files (loaded after this one, see admin.html):
+     js/admin-orders-messages.js  message templates (window.AdminOrderMessages)
+     js/admin-orders-print.js     work order / day sheet (window.AdminOrderPrint)
+     js/admin-orders-calendar.js  month calendar (window.AdminOrderCalendar)
+   They call the plain helper functions below (formatOrderMoney,
+   orderEventIso, openOrderDrawer, logOrderEvent, ...), which are global
+   like every other top-level admin function.
+
+   Orders v2 (supabase-migrations/10-orders-v2.sql) adds items, numeric
+   totals, event_on, payments, the Quoted status and order_events. Until it
+   has been run, ordersSchemaV2 is false and everything falls back to the
+   old free-text columns, with a notice at the top of the tab. */
 
 /* ===== Orders ===== */
 
+const ORDER_STATUSES = ["new", "contacted", "quoted", "fulfilled", "cancelled"];
+const ORDER_PAYMENT_STATUSES = ["unpaid", "deposit_paid", "paid", "refunded"];
+const ORDER_PAYMENT_LABELS = { unpaid: "Unpaid", deposit_paid: "Deposit paid", paid: "Paid", refunded: "Refunded" };
+const ORDERS_PAGE_SIZE = 50;
+const ORDERS_MIGRATION_FILE = "supabase-migrations/10-orders-v2.sql";
+const ORDERS_CURRENCY = "$";
+
 let ordersStatusFilter = "all";
-const ORDER_STATUSES = ["new", "contacted", "fulfilled", "cancelled"];
-// Search/sort/"upcoming only" are applied client-side to ordersAllCache
-// (the last full fetch), so typing in the search box re-renders without
-// another round trip.
-let ordersAllCache = [];
+let ordersPaymentFilter = "all";
 let ordersSearchQuery = "";
 let ordersSortMode = "newest";
 let ordersUpcomingOnly = false;
-// Unsaved admin-note text per order id, so a re-render (status change,
-// search keystroke, filter click) doesn't wipe a half-typed note.
+let ordersDateFrom = "";
+let ordersDateTo = "";
+let ordersPage = 0;
+let ordersTotalMatching = 0;
+// The rows of the current page, as last fetched.
+let ordersAllCache = [];
+// null = not checked yet; then true/false. See detectOrdersSchema().
+let ordersSchemaV2 = null;
+let ordersHasAdminNotes = null;
+// Bumped on every list fetch so a slow, older response can't overwrite a
+// newer one (fast typing in the search box).
+let ordersFetchSeq = 0;
+// Unsaved admin-note text per order id, so a re-render doesn't wipe a
+// half-typed note.
 const orderNoteDrafts = new Map();
 // Note text currently being saved per order id — blur and the Save button
 // can both fire for one edit, and the second shouldn't send it again.
 const orderNoteSavesInFlight = new Map();
-// Separate from selectedProductIds (Products tab) so the two bulk-selection
-// features never collide — each tab's checkboxes/bulk bar only ever touch
-// their own Set. IDs as strings, matching every other data-id comparison
-// in this file.
+// Separate from selectedProductIds (Products tab). IDs as strings. Kept
+// across pages, so a selection can span several pages.
 let selectedOrderIds = new Set();
-// The most recently rendered (filtered/searched/sorted) order list, kept so
-// "select all" and the CSV export can act on exactly what's on screen
-// without re-fetching — mirrors how renderProductList() scopes "select
-// all" to its own visible/filtered `items` array.
+// The rows currently on screen, for "select all on this page".
 let ordersVisibleCache = [];
+
+// Detail drawer state.
+let orderDrawerOrder = null;
+let orderDrawerOpener = null;
+let orderDrawerDirty = false;
+
+/* ----- Small formatting helpers (also used by the companion files) ----- */
 
 function orderKindLabel(kind) {
   return kind === "custom" ? "Custom order" : "Checkout";
+}
+
+function orderStatusLabel(status) {
+  const s = status || "new";
+  return s.charAt(0).toUpperCase() + s.slice(1);
+}
+
+function orderPaymentLabel(status) {
+  return ORDER_PAYMENT_LABELS[status] || ORDER_PAYMENT_LABELS.unpaid;
 }
 
 function formatOrderDate(iso) {
@@ -42,15 +82,62 @@ function formatOrderDate(iso) {
   return d.toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
 }
 
-// Shown when a write touches something the live database doesn't have yet
-// because the latest supabase-setup.sql hasn't been run.
-const ORDERS_SQL_HINT = "run it in the Supabase SQL Editor";
+function ordersLocalIso(d) {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
 
-/* True when a Supabase error means a column doesn't exist yet (the latest
-   supabase-setup.sql hasn't been run) — PostgREST PGRST204 ("Could not
-   find the 'x' column ... in the schema cache") or Postgres 42703
-   (undefined column), with the message text as a fallback. Column-level
-   counterpart of isMissingTableError() in supabase-config.js. */
+function ordersTodayIso() {
+  return ordersLocalIso(new Date());
+}
+
+function ordersNextIso(iso) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso || "");
+  if (!m) return iso;
+  const d = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]) + 1);
+  return ordersLocalIso(d);
+}
+
+/* "Sat, Oct 18" (plus the year when it isn't this year). */
+function friendlyOrderDay(iso) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso || "");
+  if (!m) return iso || "";
+  const d = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+  const opts = { weekday: "short", month: "short", day: "numeric" };
+  if (d.getFullYear() !== new Date().getFullYear()) opts.year = "numeric";
+  return d.toLocaleDateString("en-US", opts);
+}
+
+/* "14:30" -> "2:30 PM"; anything else ("2-4pm") is shown as typed. */
+function formatOrderTime(text) {
+  const t = String(text || "").trim();
+  const m = /^(\d{1,2}):(\d{2})$/.exec(t);
+  if (!m) return t;
+  const h = Number(m[1]);
+  if (h > 23) return t;
+  return `${h % 12 || 12}:${m[2]} ${h < 12 ? "AM" : "PM"}`;
+}
+
+function orderAmountNumber(value) {
+  if (value === null || value === undefined || value === "") return null;
+  const n = Number(value);
+  return isFinite(n) ? n : null;
+}
+
+function formatOrderMoney(value) {
+  const n = orderAmountNumber(value);
+  if (n === null) return "";
+  const cents = Math.round(n * 100) % 100 !== 0;
+  return ORDERS_CURRENCY + n.toLocaleString("en-US", { minimumFractionDigits: cents ? 2 : 0, maximumFractionDigits: 2 });
+}
+
+// Shown when a write touches something the live database doesn't have yet.
+const ORDERS_SQL_HINT = "run it in the Supabase SQL Editor";
+const ORDERS_V2_HINT = `needs ${ORDERS_MIGRATION_FILE} — ${ORDERS_SQL_HINT}`;
+
+/* True when a Supabase error means a column doesn't exist yet — PostgREST
+   PGRST204 ("Could not find the 'x' column ... in the schema cache") or
+   Postgres 42703 (undefined column), with the message text as a fallback.
+   Column-level counterpart of isMissingTableError() in supabase-config.js. */
 function isMissingColumnError(error, column) {
   if (!error) return false;
   const msg = error.message || "";
@@ -59,13 +146,14 @@ function isMissingColumnError(error, column) {
   return Boolean(column) && msg.includes(column) && /could not find the .*column|column .* does not exist/i.test(msg);
 }
 
-/* Friendlier text for a failed status write. Until the latest
-   supabase-setup.sql is run, the live orders_status_check constraint
-   only allows new/contacted/fulfilled, so "cancelled" fails with 23514. */
+/* Friendlier text for a failed status write. Before the latest SQL, the
+   live orders_status_check constraint doesn't allow "cancelled" (old
+   setup) or "quoted" (before the orders v2 migration), so those fail with
+   23514. */
 function orderStatusErrorMessage(error, status) {
-  if (status === "cancelled" && (error.code === "23514" || /orders_status_check/.test(error.message || ""))) {
-    return `The Cancelled status needs the latest supabase-setup.sql — ${ORDERS_SQL_HINT}.`;
-  }
+  const isCheck = error && (error.code === "23514" || /orders_status_check/.test(error.message || ""));
+  if (status === "quoted" && isCheck) return `The Quoted status ${ORDERS_V2_HINT}.`;
+  if (status === "cancelled" && isCheck) return `The Cancelled status needs the latest supabase-setup.sql — ${ORDERS_SQL_HINT}.`;
   return error.message;
 }
 
@@ -77,11 +165,15 @@ function orderRef(order) {
   return m ? m[1].toUpperCase() : "";
 }
 
+/* summary without its leading "Ref: ..." line. */
+function orderSummaryBody(order) {
+  return String(order.summary || "").replace(/^\s*Ref:\s*AUR-[A-Z0-9]+\s*\n?/i, "").trim();
+}
+
 /* event_date is free text — 'YYYY-MM-DD' from checkout, 'YYYY-MM-DD HH:MM'
    from custom orders — but older rows or hand edits can hold anything.
    Returns a local-time Date, or null for empty/unparseable values,
-   including impossible dates like 2026-02-30 that new Date() would
-   silently roll over into March. */
+   including impossible dates like 2026-02-30. */
 function parseOrderEventDate(text) {
   const m = /^\s*(\d{4})-(\d{2})-(\d{2})(?:[ T](\d{1,2}):(\d{2}))?\s*$/.exec(text || "");
   if (!m) return null;
@@ -92,54 +184,82 @@ function parseOrderEventDate(text) {
   return date;
 }
 
+/* The order's event day as 'YYYY-MM-DD': event_on when the v2 column has
+   it, otherwise parsed from the legacy event_date text. "" when unknown. */
+function orderEventIso(order) {
+  if (order && order.event_on) return String(order.event_on).slice(0, 10);
+  const d = parseOrderEventDate(order && order.event_date);
+  return d ? ordersLocalIso(d) : "";
+}
+
+/* event_time, or the "HH:MM" tail of a legacy custom-order event_date. */
+function orderEventTime(order) {
+  if (order && order.event_time) return String(order.event_time);
+  const m = /^\s*\d{4}-\d{2}-\d{2}[ T](\d{1,2}:\d{2})\s*$/.exec((order && order.event_date) || "");
+  return m ? m[1] : "";
+}
+
+/* "Sat, Oct 18 · 2:00 PM", or the raw legacy text when it isn't a date. */
+function orderEventLabel(order) {
+  const iso = orderEventIso(order);
+  const time = formatOrderTime(orderEventTime(order));
+  if (!iso) return String(order.event_date || "").trim();
+  return [friendlyOrderDay(iso), time].filter(Boolean).join(" · ");
+}
+
 // Compared by calendar day, so an event earlier today still counts as
 // upcoming. Empty/unparseable dates never do.
 function isUpcomingOrder(order) {
-  const date = parseOrderEventDate(order.event_date);
-  if (!date) return false;
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  return date >= today;
+  const iso = orderEventIso(order);
+  return Boolean(iso) && iso >= ordersTodayIso();
 }
 
-function orderCreatedTime(order) {
-  const t = new Date(order.created_at || "").getTime();
-  return isNaN(t) ? 0 : t;
+function orderItems(order) {
+  return Array.isArray(order && order.items) ? order.items.filter((l) => l && typeof l === "object") : [];
 }
 
-/* "newest" (the default, same as the fetch order), "oldest", or "event"
-   (soonest event date first; empty/unparseable dates last, newest first
-   among themselves). Returns a new array. */
-function sortOrders(list, mode) {
-  const byNewest = (a, b) => orderCreatedTime(b.order) - orderCreatedTime(a.order);
-  const keyed = list.map((order) => ({ order, event: mode === "event" ? parseOrderEventDate(order.event_date) : null }));
-  keyed.sort((a, b) => {
-    if (mode === "oldest") return -byNewest(a, b);
-    if (mode === "event") {
-      if (a.event && b.event) return (a.event - b.event) || byNewest(a, b);
-      if (a.event) return -1;
-      if (b.event) return 1;
-    }
-    return byNewest(a, b);
-  });
-  return keyed.map((k) => k.order);
+function orderItemAddonsText(line) {
+  const addons = Array.isArray(line.addons) ? line.addons : [];
+  return addons.map((a) => (a && typeof a === "object" ? a.name : a)).filter(Boolean).join(", ");
 }
 
-/* Every whitespace-separated search word must appear somewhere in the
-   order (case-insensitive). A word made only of digits/phone punctuation
-   also matches the phone's bare digits, so "4165551234" finds
-   "(416) 555-1234". admin_notes is undefined until the column exists,
-   which the || "" covers. */
-function orderMatchesSearch(order, words) {
-  if (!words.length) return true;
-  const text = [order.name, order.phone, order.email, order.address, order.notes, order.summary, order.admin_notes]
-    .map((v) => String(v || "")).join("\n").toLowerCase();
-  const phoneDigits = String(order.phone || "").replace(/\D/g, "");
-  return words.every((word) => {
-    if (text.includes(word)) return true;
-    const digits = word.replace(/\D/g, "");
-    return /^[\d\s()+\-.]+$/.test(word) && digits.length >= 3 && phoneDigits.includes(digits);
-  });
+/* One line per item: "2 x Pastel arch (Large) + LED lights". Falls back to
+   the summary text for orders without structured items. */
+function orderItemsText(order) {
+  const items = orderItems(order);
+  if (!items.length) return orderSummaryBody(order);
+  return items.map((l) => {
+    const variant = l.variant ? ` (${typeof l.variant === "object" ? (l.variant.name || l.variant.label || "") : l.variant})` : "";
+    const addons = orderItemAddonsText(l);
+    return `${l.qty || 1} x ${l.name || "Item"}${variant}${addons ? ` + ${addons}` : ""}`;
+  }).join("\n");
+}
+
+function orderTotalAmount(order) {
+  return orderAmountNumber(order && order.total_amount);
+}
+
+/* Total minus what's been paid, or null when there's no numeric total. */
+function orderBalance(order) {
+  const total = orderTotalAmount(order);
+  if (total === null) return null;
+  const paid = orderAmountNumber(order.amount_paid) || 0;
+  return Math.max(0, Math.round((total - paid) * 100) / 100);
+}
+
+function orderHasBalanceDue(order) {
+  if (!ordersSchemaV2 || !order) return false;
+  if ((order.status || "new") === "cancelled") return false;
+  if (order.payment_status === "paid" || order.payment_status === "refunded") return false;
+  const balance = orderBalance(order);
+  return balance !== null && balance > 0;
+}
+
+/* The total shown in the list: numeric when there is one, else the old
+   text ("$120", "Budget: 300"). */
+function orderTotalLabel(order) {
+  const total = orderTotalAmount(order);
+  return total !== null ? formatOrderMoney(total) : String(order.total || "");
 }
 
 /* wa.me wants the full international number as bare digits. 10 digits is
@@ -155,12 +275,12 @@ function whatsAppNumber(phone) {
 
 // Built with DOM APIs (no innerHTML) since name/phone/summary are
 // customer-supplied.
-function buildWhatsAppLink(order) {
+function buildWhatsAppLink(order, text) {
   const number = whatsAppNumber(order.phone);
   if (!number) return null;
   const firstName = String(order.name || "").trim().split(/\s+/)[0];
   const ref = orderRef(order);
-  const message = `Hi ${firstName || "there"}! It's Balloons by Tea, following up on your ${ref ? `order ${ref}` : "balloon order"}.`;
+  const message = text || `Hi ${firstName || "there"}! It's Balloons by Tea, following up on your ${ref ? `order ${ref}` : "balloon order"}.`;
   const a = document.createElement("a");
   a.className = "order-whatsapp-link";
   a.href = `https://wa.me/${number}?text=${encodeURIComponent(message)}`;
@@ -170,8 +290,342 @@ function buildWhatsAppLink(order) {
   return a;
 }
 
+/* The order with this id from the drawer or the current page, if loaded. */
+function findLoadedOrder(id) {
+  const key = String(id);
+  if (orderDrawerOrder && String(orderDrawerOrder.id) === key) return orderDrawerOrder;
+  return ordersAllCache.find((o) => String(o.id) === key) || null;
+}
+
+/* Applies a saved change to every loaded copy of an order. */
+function patchLoadedOrder(id, changes) {
+  const key = String(id);
+  ordersAllCache.forEach((o) => { if (String(o.id) === key) Object.assign(o, changes); });
+  if (orderDrawerOrder && String(orderDrawerOrder.id) === key) Object.assign(orderDrawerOrder, changes);
+}
+
+/* ----- Schema detection & notices ----- */
+
+/* Works out once per page load whether the orders v2 migration (and the
+   older admin_notes column) exist, with two tiny probes. An unrelated
+   failure (offline) leaves it unknown so the next refresh tries again. */
+async function detectOrdersSchema() {
+  if (ordersSchemaV2 !== null && ordersHasAdminNotes !== null) return;
+  const client = getSupabaseClient();
+  const [v2, notes] = await Promise.all([
+    ordersSchemaV2 === null ? client.from("orders").select("payment_status,event_on,items").limit(1) : Promise.resolve(null),
+    ordersHasAdminNotes === null ? client.from("orders").select("admin_notes").limit(1) : Promise.resolve(null)
+  ]);
+  if (v2) {
+    if (!v2.error) ordersSchemaV2 = true;
+    else if (isMissingColumnError(v2.error)) ordersSchemaV2 = false;
+  }
+  if (notes) {
+    if (!notes.error) ordersHasAdminNotes = true;
+    else if (isMissingColumnError(notes.error, "admin_notes")) ordersHasAdminNotes = false;
+  }
+  renderOrdersNotices();
+  const payFilter = document.getElementById("ordersPaymentFilter");
+  if (payFilter) payFilter.hidden = !ordersSchemaV2;
+}
+
+let ordersLiveState = "off"; // off | connecting | live | unavailable
+let ordersNewOrderNotices = []; // [{ id, name }]
+
+function renderOrdersNotices() {
+  const el = document.getElementById("ordersNotices");
+  if (!el) return;
+  const parts = [];
+  if (ordersSchemaV2 === false) {
+    parts.push(`<p class="orders-notice">Payments, the Quoted status, real event dates for the calendar and the order timeline ${escapeHtml(ORDERS_V2_HINT)}. Everything else works as before.</p>`);
+  }
+  ordersNewOrderNotices.forEach((n) => {
+    parts.push(`<p class="orders-notice orders-notice-new">New order from <strong>${escapeHtml(n.name || "a customer")}</strong>
+      <button type="button" class="orders-link-btn" data-notice-open="${escapeHtml(String(n.id))}">Open</button>
+      <button type="button" class="orders-link-btn" data-notice-dismiss="${escapeHtml(String(n.id))}" aria-label="Dismiss">Dismiss</button></p>`);
+  });
+  if (ordersLiveState === "live") {
+    parts.push(`<p class="orders-live-indicator"><span class="orders-live-dot" aria-hidden="true"></span>Live: new orders appear automatically</p>`);
+  }
+  el.innerHTML = parts.join("");
+}
+
+/* ----- Server-side list query ----- */
+
+/* Characters that would break PostgREST's or=(...) filter syntax or act as
+   wildcards are dropped from search words. */
+function orderSearchWords() {
+  return ordersSearchQuery.toLowerCase().split(/\s+/)
+    .map((w) => w.replace(/[,()"'\\%*:]/g, ""))
+    .filter(Boolean)
+    .slice(0, 6);
+}
+
+/* Adds every active filter except paging/sort to a query. `skipStatus`
+   leaves the status filter off (used for the per-status counts). */
+function applyOrderFilters(query, { skipStatus = false, skipPayment = false } = {}) {
+  let q = query;
+  if (!skipStatus && ordersStatusFilter !== "all") q = q.eq("status", ordersStatusFilter);
+  if (!skipPayment && ordersSchemaV2 && ordersPaymentFilter !== "all") q = applyPaymentFilter(q, ordersPaymentFilter);
+  const columns = ["name", "phone", "email", "address", "notes", "summary"];
+  if (ordersHasAdminNotes) columns.push("admin_notes");
+  orderSearchWords().forEach((word) => {
+    const ors = columns.map((c) => `${c}.ilike.%${word}%`);
+    // "4165551234" should find "(416) 555-1234": match the digits in order
+    // with anything between them.
+    const digits = word.replace(/\D/g, "");
+    if (/^[\d\s()+\-.]+$/.test(word) && digits.length >= 3) ors.push(`phone.ilike.%${digits.split("").join("%")}%`);
+    q = q.or(ors.join(","));
+  });
+  const today = ordersTodayIso();
+  const dateCol = ordersSchemaV2 ? "event_on" : "event_date";
+  if (ordersUpcomingOnly) q = q.gte(dateCol, today);
+  if (ordersDateFrom) q = q.gte(dateCol, ordersDateFrom);
+  if (ordersDateTo) q = ordersSchemaV2 ? q.lte("event_on", ordersDateTo) : q.lt("event_date", ordersNextIso(ordersDateTo));
+  return q;
+}
+
+/* "Balance due" = still owes money: unpaid or deposit paid, has a total,
+   not cancelled. (The exact balance is checked per row; the database
+   can't compare total_amount with amount_paid in a filter.) */
+function applyPaymentFilter(query, filter) {
+  if (filter === "balance_due") {
+    return query.in("payment_status", ["unpaid", "deposit_paid"]).neq("status", "cancelled").gt("total_amount", 0);
+  }
+  return query.eq("payment_status", filter);
+}
+
+function applyOrderSort(query) {
+  if (ordersSortMode === "oldest") return query.order("created_at", { ascending: true });
+  if (ordersSortMode === "event") {
+    const col = ordersSchemaV2 ? "event_on" : "event_date";
+    return query.order(col, { ascending: true, nullsFirst: false }).order("created_at", { ascending: false });
+  }
+  return query.order("created_at", { ascending: false });
+}
+
+function buildOrdersPageQuery() {
+  const client = getSupabaseClient();
+  // select("*") rather than a column list so loading keeps working on a
+  // database without the newer columns.
+  let q = client.from("orders").select("*", { count: "exact" });
+  q = applyOrderSort(applyOrderFilters(q));
+  const from = ordersPage * ORDERS_PAGE_SIZE;
+  return q.range(from, from + ORDERS_PAGE_SIZE - 1);
+}
+
+/* Per-status and per-payment counts for the filter pills, plus the tab
+   badge (new orders). Head-only count queries, so no rows are downloaded.
+   The counts ignore search/date filters: they answer "how many orders are
+   New", not "how many match what I typed". */
+async function refreshOrderCounts() {
+  const client = getSupabaseClient();
+  const head = () => client.from("orders").select("id", { count: "exact", head: true });
+  const statusKeys = ["all", ...ORDER_STATUSES];
+  const payKeys = ordersSchemaV2 ? ["balance_due", "unpaid", "deposit_paid", "paid"] : [];
+  const results = await Promise.all([
+    ...statusKeys.map((s) => (s === "all" ? head() : head().eq("status", s))),
+    ...payKeys.map((p) => applyPaymentFilter(head(), p))
+  ]);
+  results.slice(0, statusKeys.length).forEach((res, i) => {
+    const el = document.querySelector(`#ordersFilter .orders-filter-count[data-count-for="${statusKeys[i]}"]`);
+    if (el) el.textContent = res.error || res.count == null ? "" : `(${res.count})`;
+  });
+  results.slice(statusKeys.length).forEach((res, i) => {
+    const el = document.querySelector(`#ordersPaymentFilter .orders-filter-count[data-pay-count-for="${payKeys[i]}"]`);
+    if (el) el.textContent = res.error || res.count == null ? "" : `(${res.count})`;
+  });
+  const newRes = results[statusKeys.indexOf("new")];
+  const badge = document.getElementById("ordersBadge");
+  if (badge && newRes && !newRes.error) {
+    if (newRes.count > 0) {
+      badge.textContent = String(newRes.count);
+      show(badge);
+    } else {
+      hide(badge);
+    }
+  }
+}
+
+/* Re-fetches the current page (and the counts). Called on tab entry, by
+   every filter/search/page change, after each save, and (debounced) by
+   Realtime. opts.skipCounts avoids the count queries for pure paging. */
+async function refreshOrderList(opts) {
+  const options = opts || {};
+  const client = getSupabaseClient();
+  const listEl = document.getElementById("orderList");
+  if (!client || !listEl) return;
+  await detectOrdersSchema();
+  startOrdersRealtime();
+  if (!options.skipCounts) refreshOrderCounts().catch(() => {});
+
+  const seq = ++ordersFetchSeq;
+  let { data, error, count } = await buildOrdersPageQuery();
+  if (error && ordersHasAdminNotes && isMissingColumnError(error, "admin_notes")) {
+    ordersHasAdminNotes = false;
+    ({ data, error, count } = await buildOrdersPageQuery());
+  }
+  if (seq !== ordersFetchSeq) return;
+
+  if (error) {
+    // Asking for a page past the end (rows deleted elsewhere) is a 416.
+    if (ordersPage > 0 && (error.code === "PGRST103" || /range/i.test(error.message || ""))) {
+      ordersPage = 0;
+      return refreshOrderList({ skipCounts: true });
+    }
+    listEl.innerHTML = `<p class="form-status error">Couldn't load orders: ${escapeHtml(error.message)}</p>`;
+    return;
+  }
+
+  ordersAllCache = data || [];
+  ordersTotalMatching = typeof count === "number" ? count : ordersAllCache.length;
+  if (!ordersAllCache.length && ordersPage > 0 && ordersTotalMatching > 0) {
+    ordersPage = Math.max(0, Math.ceil(ordersTotalMatching / ORDERS_PAGE_SIZE) - 1);
+    return refreshOrderList({ skipCounts: true });
+  }
+
+  renderOrderList();
+  renderOrdersPager();
+  checkOrderPhotosSchema();
+  if (ordersView === "calendar" && window.AdminOrderCalendar && !options.skipCalendar) window.AdminOrderCalendar.refresh();
+}
+
+/* ----- List rendering ----- */
+
+function orderStatusPill(status) {
+  const s = ORDER_STATUSES.includes(status) ? status : "new";
+  return `<span class="order-pill status-pill status-${s}">${escapeHtml(orderStatusLabel(s))}</span>`;
+}
+
+function orderPaymentPill(order) {
+  if (!ordersSchemaV2) return "";
+  const p = ORDER_PAYMENT_STATUSES.includes(order.payment_status) ? order.payment_status : "unpaid";
+  return `<span class="order-pill pay-pill pay-${p}">${escapeHtml(orderPaymentLabel(p))}</span>`;
+}
+
+function orderBalancePill(order) {
+  if (!orderHasBalanceDue(order)) return "";
+  return `<span class="order-pill balance-pill" title="Balance due">Due ${escapeHtml(formatOrderMoney(orderBalance(order)))}</span>`;
+}
+
+function renderOrderList() {
+  const listEl = document.getElementById("orderList");
+  // The legacy schema can't filter "upcoming" exactly in the query (free
+  // text dates), so finish the job here.
+  let visible = ordersAllCache;
+  if (ordersUpcomingOnly && !ordersSchemaV2) visible = visible.filter(isUpcomingOrder);
+  ordersVisibleCache = visible;
+
+  if (!visible.length) {
+    const filtered = orderSearchWords().length || ordersUpcomingOnly || ordersDateFrom || ordersDateTo || ordersPaymentFilter !== "all";
+    const message = filtered
+      ? "No orders match your search and filters."
+      : `No orders ${ordersStatusFilter === "all" ? "yet" : "with this status"}.`;
+    listEl.innerHTML = `<p class="empty-note">${message}</p>`;
+    syncOrderBulkSelectionUI([]);
+    return;
+  }
+
+  listEl.innerHTML = visible.map((order) => {
+    const status = order.status || "new";
+    const id = escapeHtml(String(order.id));
+    const ref = orderRef(order);
+    const eventLabel = orderEventLabel(order);
+    const photos = orderAttachmentPaths(order).length;
+    return `
+    <div class="order-row order-row-compact status-${escapeHtml(status)}" data-id="${id}">
+      <input type="checkbox" class="order-select" data-select-id="${id}" aria-label="Select order from ${escapeHtml(order.name || "customer")}" ${selectedOrderIds.has(String(order.id)) ? "checked" : ""}/>
+      <button type="button" class="order-row-main" data-open-id="${id}" aria-label="Open order from ${escapeHtml(order.name || "customer")}">
+        <span class="order-row-line1">
+          <span class="status-dot" aria-hidden="true"></span>
+          <strong class="order-row-name">${escapeHtml(order.name || "(no name)")}</strong>
+          ${ref ? `<span class="order-row-ref">${escapeHtml(ref)}</span>` : ""}
+        </span>
+        <span class="order-row-line2">
+          <span class="order-row-event">${eventLabel ? escapeHtml(eventLabel) : "No event date"}</span>
+          <span class="order-kind-tag">${escapeHtml(orderKindLabel(order.kind))}</span>
+          ${order.fulfillment === "pickup" ? `<span class="order-kind-tag">Pick-up</span>` : ""}
+          ${photos ? `<span class="order-kind-tag">${photos} photo${photos === 1 ? "" : "s"}</span>` : ""}
+        </span>
+      </button>
+      <span class="order-row-pills">${orderStatusPill(status)}${orderPaymentPill(order)}${orderBalancePill(order)}</span>
+      <span class="order-row-total">${escapeHtml(orderTotalLabel(order))}</span>
+    </div>`;
+  }).join("");
+
+  listEl.querySelectorAll(".order-select").forEach((box) => {
+    box.addEventListener("change", () => {
+      if (box.checked) selectedOrderIds.add(box.dataset.selectId);
+      else selectedOrderIds.delete(box.dataset.selectId);
+      syncOrderBulkSelectionUI(ordersVisibleCache);
+    });
+  });
+  syncOrderBulkSelectionUI(visible);
+}
+
+function renderOrdersPager() {
+  const el = document.getElementById("ordersPager");
+  if (!el) return;
+  const pages = Math.max(1, Math.ceil(ordersTotalMatching / ORDERS_PAGE_SIZE));
+  if (ordersTotalMatching <= ORDERS_PAGE_SIZE && ordersPage === 0) {
+    el.innerHTML = ordersTotalMatching ? `<span class="orders-pager-info">${ordersTotalMatching} order${ordersTotalMatching === 1 ? "" : "s"}</span>` : "";
+    return;
+  }
+  const from = ordersPage * ORDERS_PAGE_SIZE + 1;
+  const to = Math.min(ordersTotalMatching, from + ORDERS_PAGE_SIZE - 1);
+  el.innerHTML = `
+    <button type="button" class="orders-export-btn" data-page="prev" ${ordersPage === 0 ? "disabled" : ""}>&lsaquo; Newer</button>
+    <span class="orders-pager-info">${from}–${to} of ${ordersTotalMatching} · page ${ordersPage + 1} of ${pages}</span>
+    <button type="button" class="orders-export-btn" data-page="next" ${ordersPage >= pages - 1 ? "disabled" : ""}>Older &rsaquo;</button>`;
+}
+
+function resetOrdersPagingAndRefresh() {
+  ordersPage = 0;
+  refreshOrderList({ skipCounts: true });
+}
+
+/* ----- Status & delete ----- */
+
+async function handleOrderStatusChange(id, status) {
+  const client = getSupabaseClient();
+  const { error } = await mustAffect(client.from("orders").update({ status }).eq("id", id));
+  if (error) {
+    alert("Couldn't update status: " + orderStatusErrorMessage(error, status));
+    if (orderDrawerOrder && String(orderDrawerOrder.id) === String(id)) renderOrderDrawer();
+    return false;
+  }
+  patchLoadedOrder(id, { status });
+  await refreshOrderList();
+  if (orderDrawerOrder && String(orderDrawerOrder.id) === String(id)) {
+    renderOrderDrawerHeader();
+    loadOrderTimeline(orderDrawerOrder);
+  }
+  return true;
+}
+
+async function handleDeleteOrder(id) {
+  const order = findLoadedOrder(id);
+  const photoCount = order ? orderAttachmentPaths(order).length : 0;
+  const photoNote = photoCount ? ` Its ${photoCount === 1 ? "photo" : `${photoCount} photos`} will be deleted too.` : "";
+  if (!confirm(`Delete this order?${photoNote} This can't be undone.`)) return false;
+  const client = getSupabaseClient();
+  const { data, error } = await mustAffect(client.from("orders").delete().eq("id", id));
+  if (error) {
+    alert("Couldn't delete: " + error.message);
+    return false;
+  }
+  selectedOrderIds.delete(String(id));
+  orderNoteDrafts.delete(String(id));
+  const photoProblem = await removeOrderPhotoFiles(data || []);
+  await refreshOrderList();
+  if (photoProblem) alert("The order was deleted, but " + photoProblem);
+  return true;
+}
+
+/* ----- Private admin notes ----- */
+
 function setOrderNoteStatus(id, message, kind) {
-  const el = document.querySelector(`#orderList .order-row[data-id="${CSS.escape(id)}"] .order-admin-notes-status`);
+  const el = document.querySelector(`.order-admin-notes[data-notes-for="${CSS.escape(id)}"] .order-admin-notes-status`);
   if (!el) return;
   el.textContent = message;
   el.className = "form-status order-admin-notes-status" + (kind ? " " + kind : "");
@@ -179,11 +633,9 @@ function setOrderNoteStatus(id, message, kind) {
 
 /* Private per-order notes (orders.admin_notes). Saves on blur and on the
    Save button; the in-flight map stops the blur+click pair from saving
-   the same text twice. Feedback is looked up by id when it's shown
-   rather than captured, because the list may have re-rendered while the
-   save was in flight. */
+   the same text twice. */
 async function saveOrderAdminNote(id, value, explicit) {
-  const cached = ordersAllCache.find((o) => String(o.id) === id);
+  const cached = findLoadedOrder(id);
   const saved = (cached && cached.admin_notes) || "";
   if (value === saved) {
     orderNoteDrafts.delete(id);
@@ -203,8 +655,7 @@ async function saveOrderAdminNote(id, value, explicit) {
       : "Couldn't save note: " + error.message, "error");
     return;
   }
-  const current = ordersAllCache.find((o) => String(o.id) === id);
-  if (current) current.admin_notes = value;
+  patchLoadedOrder(id, { admin_notes: value });
   if (orderNoteDrafts.get(id) === value) orderNoteDrafts.delete(id);
   const textarea = document.getElementById(`orderAdminNotes-${id}`);
   if (textarea && textarea.value !== value) setOrderNoteStatus(id, "Unsaved changes", "");
@@ -216,6 +667,7 @@ function buildOrderAdminNotes(order) {
   const saved = order.admin_notes || "";
   const wrap = document.createElement("div");
   wrap.className = "order-admin-notes";
+  wrap.dataset.notesFor = id;
 
   const label = document.createElement("label");
   label.htmlFor = `orderAdminNotes-${id}`;
@@ -224,8 +676,8 @@ function buildOrderAdminNotes(order) {
   const textarea = document.createElement("textarea");
   textarea.id = `orderAdminNotes-${id}`;
   textarea.className = "order-admin-notes-input";
-  textarea.rows = 2;
-  textarea.placeholder = "Deposit paid, colour changes, follow-up reminders...";
+  textarea.rows = 3;
+  textarea.placeholder = "Colour changes, follow-up reminders, set-up details...";
   textarea.value = orderNoteDrafts.has(id) ? orderNoteDrafts.get(id) : saved;
 
   const actions = document.createElement("div");
@@ -242,7 +694,7 @@ function buildOrderAdminNotes(order) {
   actions.append(saveBtn, status);
 
   textarea.addEventListener("input", () => {
-    const current = ordersAllCache.find((o) => String(o.id) === id);
+    const current = findLoadedOrder(id);
     const savedNow = (current && current.admin_notes) || "";
     if (textarea.value === savedNow) orderNoteDrafts.delete(id);
     else orderNoteDrafts.set(id, textarea.value);
@@ -255,181 +707,468 @@ function buildOrderAdminNotes(order) {
   return wrap;
 }
 
-function updateOrderFilterCounts(orders) {
-  document.querySelectorAll("#ordersFilter .orders-filter-count").forEach((el) => {
-    const key = el.dataset.countFor;
-    const count = key === "all" ? orders.length : orders.filter((o) => (o.status || "new") === key).length;
-    el.textContent = `(${count})`;
+/* ----- Timeline (order_events) ----- */
+
+let orderEventsAvailable = null; // null unknown, then true/false
+
+/* Records something in the order's timeline. Never throws; returns the
+   Supabase error (or null). Silently skipped before the migration. */
+async function logOrderEvent(orderId, { kind, from_value = "", to_value = "", note = "" }) {
+  if (orderEventsAvailable === false || ordersSchemaV2 === false) return null;
+  try {
+    const client = getSupabaseClient();
+    const { data: { session } } = await client.auth.getSession();
+    const row = {
+      order_id: orderId,
+      actor_email: (session && session.user && session.user.email) || "",
+      kind: String(kind || "note").slice(0, 40),
+      from_value: String(from_value || "").slice(0, 200),
+      to_value: String(to_value || "").slice(0, 200),
+      note: String(note || "").slice(0, 2000)
+    };
+    const { error } = await client.from("order_events").insert(row);
+    if (error && isMissingTableError(error, "order_events")) orderEventsAvailable = false;
+    return error || null;
+  } catch (err) {
+    return err;
+  }
+}
+
+function describeOrderEvent(ev) {
+  const from = ev.from_value || "";
+  const to = ev.to_value || "";
+  switch (ev.kind) {
+    case "status": return `Status: ${orderStatusLabel(from)} → ${orderStatusLabel(to)}`;
+    case "payment": return `Payment: ${orderPaymentLabel(from)} → ${orderPaymentLabel(to)}`;
+    case "amount_paid": return `Amount paid: ${formatOrderMoney(from) || ORDERS_CURRENCY + "0"} → ${formatOrderMoney(to) || ORDERS_CURRENCY + "0"}`;
+    case "message": {
+      const label = window.AdminOrderMessages ? window.AdminOrderMessages.templateLabel(to) : to;
+      const channel = { whatsapp: "WhatsApp", email: "email", copy: "copied to clipboard" }[from] || from;
+      return `Message sent: ${label}${channel ? ` (${channel})` : ""}`;
+    }
+    default: return ev.note || ev.kind || "Update";
+  }
+}
+
+async function loadOrderTimeline(order) {
+  const el = document.getElementById("orderDrawerTimeline");
+  if (!el || !order) return;
+  const placed = `<li><span class="order-timeline-what">Order placed${order.source ? ` (came from ${escapeHtml(order.source)})` : ""}</span><span class="order-timeline-when">${escapeHtml(formatOrderDate(order.created_at))}</span></li>`;
+  if (ordersSchemaV2 === false || orderEventsAvailable === false) {
+    el.innerHTML = `<ul class="order-timeline">${placed}</ul><p class="field-note">The full timeline (status, payment and message history) ${escapeHtml(ORDERS_V2_HINT)}.</p>`;
+    return;
+  }
+  const { data, error } = await getSupabaseClient()
+    .from("order_events").select("*").eq("order_id", order.id)
+    .order("created_at", { ascending: false }).limit(200);
+  if (!orderDrawerOrder || String(orderDrawerOrder.id) !== String(order.id)) return;
+  if (error) {
+    if (isMissingTableError(error, "order_events")) {
+      orderEventsAvailable = false;
+      return loadOrderTimeline(order);
+    }
+    el.innerHTML = `<ul class="order-timeline">${placed}</ul><p class="form-status error">Couldn't load the timeline: ${escapeHtml(error.message)}</p>`;
+    return;
+  }
+  orderEventsAvailable = true;
+  const rows = (data || []).map((ev) => {
+    const who = ev.actor_email && ev.actor_email !== "system" ? ` · ${escapeHtml(ev.actor_email)}` : "";
+    const note = ev.kind === "message" && ev.note ? `<span class="order-timeline-note">${escapeHtml(ev.note)}</span>` : "";
+    return `<li><span class="order-timeline-what">${escapeHtml(describeOrderEvent(ev))}</span>${note}<span class="order-timeline-when">${escapeHtml(formatOrderDate(ev.created_at))}${who}</span></li>`;
+  }).join("");
+  el.innerHTML = `<ul class="order-timeline">${rows}${placed}</ul>`;
+}
+
+/* ----- Detail drawer ----- */
+
+function ensureOrderDrawer() {
+  let wrap = document.getElementById("orderDrawer");
+  if (wrap) return wrap;
+  wrap = document.createElement("div");
+  wrap.id = "orderDrawer";
+  wrap.className = "order-drawer-wrap";
+  wrap.hidden = true;
+  wrap.innerHTML = `
+    <div class="order-drawer-scrim" data-close-order-drawer></div>
+    <aside class="order-drawer" role="dialog" aria-modal="true" aria-labelledby="orderDrawerTitle" tabindex="-1">
+      <div class="order-drawer-head" id="orderDrawerHead"></div>
+      <div class="order-drawer-body" id="orderDrawerBody"></div>
+    </aside>`;
+  document.body.appendChild(wrap);
+  wrap.querySelector("[data-close-order-drawer]").addEventListener("click", () => closeOrderDrawer());
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && !wrap.hidden && !document.querySelector("#adminPhotoPreview.open")) closeOrderDrawer();
+  });
+  return wrap;
+}
+
+/* Opens the drawer for an order id (fetched fresh, so it also works for
+   orders from the calendar that aren't on the current list page). */
+async function openOrderDrawer(id, opener) {
+  const wrap = ensureOrderDrawer();
+  if (orderDrawerDirty && orderDrawerOrder && String(orderDrawerOrder.id) !== String(id)
+      && !confirm("You have unsaved changes on the open order. Discard them?")) return;
+  orderDrawerOpener = opener || document.activeElement;
+  orderDrawerDirty = false;
+  const cached = findLoadedOrder(id);
+  orderDrawerOrder = cached ? { ...cached } : { id, name: "Loading..." };
+  wrap.hidden = false;
+  document.body.classList.add("order-drawer-open");
+  renderOrderDrawer();
+  wrap.querySelector(".order-drawer").focus();
+  const { data, error } = await getSupabaseClient().from("orders").select("*").eq("id", id).maybeSingle();
+  if (!orderDrawerOrder || String(orderDrawerOrder.id) !== String(id)) return;
+  if (error || !data) {
+    if (!cached) {
+      document.getElementById("orderDrawerBody").innerHTML = `<p class="form-status error">${error ? "Couldn't load this order: " + escapeHtml(error.message) : "This order no longer exists."}</p>`;
+    }
+    return;
+  }
+  orderDrawerOrder = data;
+  if (!orderDrawerDirty) renderOrderDrawer();
+}
+
+function closeOrderDrawer(force) {
+  const wrap = document.getElementById("orderDrawer");
+  if (!wrap || wrap.hidden) return;
+  if (!force && orderDrawerDirty && !confirm("Close without saving your changes to this order?")) return;
+  wrap.hidden = true;
+  document.body.classList.remove("order-drawer-open");
+  orderDrawerOrder = null;
+  orderDrawerDirty = false;
+  if (orderDrawerOpener && document.body.contains(orderDrawerOpener)) {
+    try { orderDrawerOpener.focus(); } catch (e) { /* ignore */ }
+  }
+  orderDrawerOpener = null;
+}
+
+function renderOrderDrawerHeader() {
+  const head = document.getElementById("orderDrawerHead");
+  const order = orderDrawerOrder;
+  if (!head || !order) return;
+  const ref = orderRef(order);
+  head.innerHTML = `
+    <div class="order-drawer-title-wrap">
+      <h2 id="orderDrawerTitle">${escapeHtml(order.name || "(no name)")}</h2>
+      <div class="order-drawer-sub">
+        ${ref ? `<span>${escapeHtml(ref)}</span>` : ""}
+        <span>${escapeHtml(orderKindLabel(order.kind))}</span>
+        ${order.created_at ? `<span>Placed ${escapeHtml(formatOrderDate(order.created_at))}</span>` : ""}
+      </div>
+      <div class="order-drawer-pills">${orderStatusPill(order.status || "new")}${orderPaymentPill(order)}${orderBalancePill(order)}</div>
+    </div>
+    <div class="order-drawer-head-actions">
+      <button type="button" class="orders-export-btn" id="orderDrawerPrint">Print work order</button>
+      <button type="button" class="icon-btn order-drawer-close" id="orderDrawerClose" aria-label="Close order">&times;</button>
+    </div>`;
+  head.querySelector("#orderDrawerClose").addEventListener("click", () => closeOrderDrawer());
+  head.querySelector("#orderDrawerPrint").addEventListener("click", () => {
+    if (window.AdminOrderPrint) window.AdminOrderPrint.printOrder(orderDrawerOrder);
   });
 }
 
-async function refreshOrderList() {
-  const client = getSupabaseClient();
-  const listEl = document.getElementById("orderList");
-  // select("*") rather than a column list so loading keeps working on a
-  // database that doesn't have admin_notes yet.
-  const { data, error } = await client
-    .from("orders")
-    .select("*")
-    .order("created_at", { ascending: false });
-
-  if (error) {
-    listEl.innerHTML = `<p class="form-status error">Couldn't load orders: ${escapeHtml(error.message)}</p>`;
-    return;
-  }
-
-  ordersAllCache = data || [];
-
-  const badge = document.getElementById("ordersBadge");
-  const newCount = ordersAllCache.filter((o) => (o.status || "new") === "new").length;
-  if (newCount > 0) {
-    badge.textContent = String(newCount);
-    show(badge);
-  } else {
-    hide(badge);
-  }
-
-  // Drop any selected ids that no longer exist at all (e.g. deleted by
-  // another admin tab/session) so stale ids don't silently pile up in the
-  // Set. Checked against the full fetch, not the filtered list, so a
-  // selection made under one filter is still intact after switching to
-  // another filter and back — selection is deliberately NOT cleared just
-  // because refreshOrderList() re-ran (it re-runs on every filter click).
-  const allIds = new Set(ordersAllCache.map((o) => String(o.id)));
-  [...selectedOrderIds].forEach((id) => { if (!allIds.has(id)) selectedOrderIds.delete(id); });
-  [...orderNoteDrafts.keys()].forEach((id) => { if (!allIds.has(id)) orderNoteDrafts.delete(id); });
-
-  renderOrderList();
-  checkOrderPhotosSchema();
+function moneyInputValue(v) {
+  const n = orderAmountNumber(v);
+  return n === null ? "" : String(n);
 }
 
-/* Applies the status filter, search, "upcoming only" and sort to
-   ordersAllCache and renders the result. No fetch, so it's cheap enough
-   to run on every (debounced) search keystroke. */
-function renderOrderList() {
-  const listEl = document.getElementById("orderList");
-  updateOrderFilterCounts(ordersAllCache);
-
-  const words = ordersSearchQuery.trim().toLowerCase().split(/\s+/).filter(Boolean);
-  let visible = ordersAllCache
-    .filter((o) => ordersStatusFilter === "all" || (o.status || "new") === ordersStatusFilter)
-    .filter((o) => orderMatchesSearch(o, words));
-  if (ordersUpcomingOnly) visible = visible.filter(isUpcomingOrder);
-  visible = sortOrders(visible, ordersSortMode);
-  ordersVisibleCache = visible;
-
-  if (!visible.length) {
-    const message = words.length || ordersUpcomingOnly
-      ? "No orders match your search and filters."
-      : `No orders ${ordersStatusFilter === "all" ? "yet" : "with this status"}.`;
-    listEl.innerHTML = `<p class="empty-note">${message}</p>`;
-    syncOrderBulkSelectionUI([]);
+function renderOrderDrawer() {
+  const order = orderDrawerOrder;
+  const body = document.getElementById("orderDrawerBody");
+  if (!order || !body) return;
+  renderOrderDrawerHeader();
+  if (order.name === "Loading..." && !order.created_at) {
+    body.innerHTML = `<p class="empty-note">Loading...</p>`;
     return;
   }
+  const id = String(order.id);
+  const status = order.status || "new";
+  const v2 = Boolean(ordersSchemaV2);
+  const items = orderItems(order);
+  const eventIso = orderEventIso(order);
+  const eventTime = orderEventTime(order);
+  const total = orderTotalAmount(order);
+  const mapsUrl = order.address && !/^pick-up|^address to be coordinated/i.test(order.address)
+    ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(order.address)}` : "";
 
-  listEl.innerHTML = visible.map((order) => {
-    const status = order.status || "new";
-    return `
-    <div class="order-row status-${escapeHtml(status)}" data-id="${escapeHtml(String(order.id))}">
-      <div class="order-row-head">
-        <div class="order-row-title">
-          <input type="checkbox" class="order-select" data-select-id="${order.id}" aria-label="Select order from ${escapeHtml(order.name || "customer")}" ${selectedOrderIds.has(String(order.id)) ? "checked" : ""}/>
-          <span class="status-dot" aria-hidden="true"></span>
-          <span class="order-kind-tag">${escapeHtml(orderKindLabel(order.kind))}</span>
-          <strong>${escapeHtml(order.name || "(no name)")}</strong>
-        </div>
-        <span class="order-date">${escapeHtml(formatOrderDate(order.created_at))}</span>
+  const itemsHtml = items.length ? `
+    <table class="order-items-table">
+      <thead><tr><th>Item</th><th class="num">Qty</th><th class="num">Price</th><th class="num">Total</th></tr></thead>
+      <tbody>${items.map((l) => {
+        const variant = l.variant ? (typeof l.variant === "object" ? (l.variant.name || l.variant.label || "") : l.variant) : "";
+        const addons = Array.isArray(l.addons) ? l.addons.filter(Boolean) : [];
+        return `<tr>
+          <td>${escapeHtml(l.name || "Item")}
+            ${variant ? `<div class="order-item-sub">${escapeHtml(variant)}</div>` : ""}
+            ${addons.map((a) => `<div class="order-item-sub">+ ${escapeHtml(typeof a === "object" ? a.name || "" : a)}${typeof a === "object" && orderAmountNumber(a.price) ? ` (${escapeHtml(formatOrderMoney(a.price))})` : ""}</div>`).join("")}
+          </td>
+          <td class="num">${escapeHtml(String(l.qty || 1))}</td>
+          <td class="num">${escapeHtml(formatOrderMoney(l.unit_price))}</td>
+          <td class="num">${escapeHtml(formatOrderMoney(l.line_total))}</td>
+        </tr>`;
+      }).join("")}</tbody>
+      ${total !== null ? `<tfoot><tr><td colspan="3">Total</td><td class="num">${escapeHtml(formatOrderMoney(total))}</td></tr></tfoot>` : ""}
+    </table>`
+    : (orderSummaryBody(order) ? `<div class="order-field order-summary-text">${escapeHtml(orderSummaryBody(order))}</div>` : `<p class="field-note">No items listed.</p>`);
+
+  const paymentHtml = v2 ? `
+    <section class="order-drawer-section" id="orderDrawerPayment">
+      <h3>Payment</h3>
+      ${order.kind === "custom" && order.total ? `<p class="field-note">Customer's budget: ${escapeHtml(order.total)}</p>` : ""}
+      <div class="order-money-grid">
+        <label>Total<input type="number" inputmode="decimal" min="0" step="0.01" id="odTotal" value="${escapeHtml(moneyInputValue(order.total_amount))}" placeholder="Not set"/></label>
+        <label>Deposit<input type="number" inputmode="decimal" min="0" step="0.01" id="odDeposit" value="${escapeHtml(moneyInputValue(order.deposit_amount))}" placeholder="None"/></label>
+        <label>Paid so far<input type="number" inputmode="decimal" min="0" step="0.01" id="odPaid" value="${escapeHtml(moneyInputValue(order.amount_paid) || "0")}"/></label>
+        <div class="order-balance-box"><span>Balance due</span><strong id="odBalance"></strong></div>
       </div>
-      <div class="order-contact">
+      <label class="order-inline-field">Payment status
+        <select id="odPayStatus" class="order-status-select">
+          ${ORDER_PAYMENT_STATUSES.map((p) => `<option value="${p}" ${p === (order.payment_status || "unpaid") ? "selected" : ""}>${escapeHtml(orderPaymentLabel(p))}</option>`).join("")}
+        </select>
+      </label>
+      <div class="order-drawer-actions">
+        <button type="button" class="orders-export-btn" data-pay-quick="deposit">Deposit received</button>
+        <button type="button" class="orders-export-btn" data-pay-quick="full">Paid in full</button>
+        <button type="button" class="btn btn-primary order-drawer-save" id="odSavePayment">Save payment</button>
+      </div>
+      <p class="form-status" id="odPaymentStatus" role="status" aria-live="polite"></p>
+    </section>` : `
+    <section class="order-drawer-section">
+      <h3>Total</h3>
+      <p>${escapeHtml(order.total || "Not given")}</p>
+      <p class="field-note">Tracking deposits and payments ${escapeHtml(ORDERS_V2_HINT)}.</p>
+    </section>`;
+
+  const eventHtml = v2 ? `
+    <div class="order-event-grid">
+      <label>Date<input type="date" id="odEventOn" value="${escapeHtml(eventIso)}"/></label>
+      <label>Time<input type="text" id="odEventTime" maxlength="100" value="${escapeHtml(eventTime)}" placeholder="e.g. 14:00 or 2–4pm"/></label>
+      <label>Fulfilment
+        <select id="odFulfillment" class="order-status-select">
+          <option value="delivery" ${order.fulfillment !== "pickup" ? "selected" : ""}>Delivery</option>
+          <option value="pickup" ${order.fulfillment === "pickup" ? "selected" : ""}>Pick-up</option>
+        </select>
+      </label>
+    </div>
+    ${order.event_date && order.event_date.slice(0, 10) !== eventIso ? `<p class="field-note">Customer wrote: ${escapeHtml(order.event_date)}</p>` : ""}
+    <div class="order-drawer-actions">
+      <button type="button" class="orders-export-btn" id="odSaveEvent">Save event details</button>
+      <span class="form-status" id="odEventStatus" role="status" aria-live="polite"></span>
+    </div>`
+    : `<p>${escapeHtml(orderEventLabel(order) || "No date given")}</p>`;
+
+  body.innerHTML = `
+    <section class="order-drawer-section">
+      <h3>Status</h3>
+      <div class="order-status-chips" role="group" aria-label="Order status">
+        ${ORDER_STATUSES.map((s) => `<button type="button" class="orders-filter-btn ${s === status ? "active" : ""}" data-set-status="${s}" aria-pressed="${s === status}" ${s === "quoted" && ordersSchemaV2 === false ? "disabled title=\"Needs the orders v2 SQL\"" : ""}>${escapeHtml(orderStatusLabel(s))}</button>`).join("")}
+      </div>
+    </section>
+
+    <section class="order-drawer-section">
+      <h3>Contact</h3>
+      <div class="order-contact" id="orderDrawerContact">
         ${order.phone ? `<a href="tel:${escapeHtml(order.phone)}">${escapeHtml(order.phone)}</a>` : ""}
         ${order.email ? `<a href="mailto:${escapeHtml(order.email)}">${escapeHtml(order.email)}</a>` : ""}
       </div>
-      ${order.address ? `<div class="order-field"><strong>Address:</strong> ${escapeHtml(order.address)}</div>` : ""}
-      ${order.event_date ? `<div class="order-field"><strong>Date:</strong> ${escapeHtml(order.event_date)}</div>` : ""}
-      ${order.total ? `<div class="order-field"><strong>${escapeHtml(order.total)}</strong></div>` : ""}
-      ${order.summary ? `<div class="order-field order-summary-text">${escapeHtml(order.summary)}</div>` : ""}
-      ${order.notes ? `<div class="order-field order-notes-text">${escapeHtml(order.notes)}</div>` : ""}
-      <div class="order-row-actions">
-        <select class="order-status-select" data-id="${order.id}" aria-label="Order status">
-          ${ORDER_STATUSES.map((s) => `<option value="${s}" ${s === status ? "selected" : ""}>${s.charAt(0).toUpperCase() + s.slice(1)}</option>`).join("")}
-        </select>
-        <button type="button" class="danger delete-order-btn" data-id="${order.id}">Delete</button>
-      </div>
-    </div>
-  `;
-  }).join("");
+      ${order.address ? `<div class="order-field"><strong>Address:</strong> ${escapeHtml(order.address)}${mapsUrl ? ` <a href="${escapeHtml(mapsUrl)}" target="_blank" rel="noopener noreferrer">Map</a>` : ""}</div>` : ""}
+      ${order.source ? `<div class="order-field"><strong>Came from:</strong> ${escapeHtml(order.source)}</div>` : ""}
+    </section>
 
-  // The WhatsApp link and notes editor are added with DOM APIs rather
-  // than the template above, since both put customer/admin text into
-  // attributes and form values.
-  const byId = new Map(visible.map((o) => [String(o.id), o]));
-  listEl.querySelectorAll(".order-row").forEach((row) => {
-    const order = byId.get(row.dataset.id);
-    if (!order) return;
-    const waLink = buildWhatsAppLink(order);
-    if (waLink) row.querySelector(".order-contact").appendChild(waLink);
-    const photos = buildOrderAttachments(order);
-    if (photos) row.insertBefore(photos, row.querySelector(".order-row-actions"));
-    row.insertBefore(buildOrderAdminNotes(order), row.querySelector(".order-row-actions"));
-  });
-  loadOrderAttachmentThumbs();
+    <section class="order-drawer-section">
+      <h3>Event</h3>
+      ${eventHtml}
+    </section>
 
-  listEl.querySelectorAll(".order-status-select").forEach((sel) => {
-    sel.addEventListener("change", () => handleOrderStatusChange(sel.dataset.id, sel.value));
-  });
-  listEl.querySelectorAll(".delete-order-btn").forEach((btn) => {
-    btn.addEventListener("click", () => handleDeleteOrder(btn.dataset.id));
-  });
-  listEl.querySelectorAll(".order-select").forEach((box) => {
-    box.addEventListener("change", () => {
-      if (box.checked) selectedOrderIds.add(box.dataset.selectId);
-      else selectedOrderIds.delete(box.dataset.selectId);
-      syncOrderBulkSelectionUI(ordersVisibleCache);
+    <section class="order-drawer-section">
+      <h3>Items</h3>
+      ${itemsHtml}
+    </section>
+
+    ${paymentHtml}
+
+    <section class="order-drawer-section" id="orderDrawerMessages">
+      <h3>Send a message</h3>
+    </section>
+
+    ${order.notes ? `<section class="order-drawer-section"><h3>Customer notes</h3><div class="order-field order-notes-text">${escapeHtml(order.notes)}</div></section>` : ""}
+
+    <section class="order-drawer-section" id="orderDrawerPhotos" hidden><h3>Inspiration photos</h3></section>
+
+    <section class="order-drawer-section" id="orderDrawerNotes"></section>
+
+    <section class="order-drawer-section">
+      <h3>Timeline</h3>
+      <div id="orderDrawerTimeline"><p class="empty-note">Loading...</p></div>
+    </section>
+
+    <section class="order-drawer-section order-drawer-danger">
+      <button type="button" class="danger delete-order-btn" id="odDelete">Delete order</button>
+    </section>`;
+
+  // Customer text that lands in attributes/values goes through DOM APIs.
+  const waLink = buildWhatsAppLink(order);
+  if (waLink) document.getElementById("orderDrawerContact").appendChild(waLink);
+  const photos = buildOrderAttachments(order);
+  if (photos) {
+    const sec = document.getElementById("orderDrawerPhotos");
+    sec.hidden = false;
+    sec.appendChild(photos);
+    loadOrderAttachmentThumbs(sec);
+  }
+  document.getElementById("orderDrawerNotes").appendChild(buildOrderAdminNotes(order));
+  const msgSec = document.getElementById("orderDrawerMessages");
+  if (window.AdminOrderMessages) window.AdminOrderMessages.buildPanel(msgSec, order);
+  else msgSec.hidden = true;
+
+  body.querySelectorAll("[data-set-status]").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      const next = btn.dataset.setStatus;
+      if (next === (orderDrawerOrder.status || "new")) return;
+      body.querySelectorAll("[data-set-status]").forEach((b) => { b.disabled = true; });
+      const ok = await handleOrderStatusChange(id, next);
+      body.querySelectorAll("[data-set-status]").forEach((b) => {
+        b.disabled = b.dataset.setStatus === "quoted" && ordersSchemaV2 === false;
+        const active = b.dataset.setStatus === (orderDrawerOrder ? orderDrawerOrder.status || "new" : "");
+        b.classList.toggle("active", ok ? active : b.classList.contains("active"));
+        b.setAttribute("aria-pressed", String(b.classList.contains("active")));
+      });
     });
   });
-  syncOrderBulkSelectionUI(visible);
+  document.getElementById("odDelete").addEventListener("click", async () => {
+    if (await handleDeleteOrder(id)) closeOrderDrawer(true);
+  });
+  if (v2) wireOrderDrawerEditors(order);
+  loadOrderTimeline(order);
 }
 
-async function handleOrderStatusChange(id, status) {
-  const client = getSupabaseClient();
-  const { error } = await mustAffect(client.from("orders").update({ status }).eq("id", id));
-  if (error) {
-    alert("Couldn't update status: " + orderStatusErrorMessage(error, status));
-    // Put the dropdown back to the status that's actually saved.
-    renderOrderList();
-    return;
-  }
-  await refreshOrderList();
+function updateDrawerBalance() {
+  const out = document.getElementById("odBalance");
+  if (!out) return;
+  const total = orderAmountNumber(document.getElementById("odTotal").value);
+  const paid = orderAmountNumber(document.getElementById("odPaid").value) || 0;
+  out.textContent = total === null ? "—" : formatOrderMoney(Math.max(0, total - paid)) || ORDERS_CURRENCY + "0";
 }
 
-async function handleDeleteOrder(id) {
-  const order = ordersAllCache.find((o) => String(o.id) === String(id));
-  const photoCount = order ? orderAttachmentPaths(order).length : 0;
-  const photoNote = photoCount ? ` Its ${photoCount === 1 ? "photo" : `${photoCount} photos`} will be deleted too.` : "";
-  if (!confirm(`Delete this order?${photoNote} This can't be undone.`)) return;
-  const client = getSupabaseClient();
-  const { data, error } = await mustAffect(client.from("orders").delete().eq("id", id));
+function wireOrderDrawerEditors(order) {
+  const id = String(order.id);
+  const markDirty = () => { orderDrawerDirty = true; };
+  ["odTotal", "odDeposit", "odPaid", "odPayStatus", "odEventOn", "odEventTime", "odFulfillment"].forEach((fid) => {
+    const el = document.getElementById(fid);
+    if (el) {
+      el.addEventListener("input", markDirty);
+      el.addEventListener("change", markDirty);
+    }
+  });
+  ["odTotal", "odPaid"].forEach((fid) => document.getElementById(fid).addEventListener("input", updateDrawerBalance));
+  updateDrawerBalance();
+
+  document.querySelectorAll("#orderDrawerPayment [data-pay-quick]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const totalEl = document.getElementById("odTotal");
+      const depositEl = document.getElementById("odDeposit");
+      const paidEl = document.getElementById("odPaid");
+      const statusEl = document.getElementById("odPayStatus");
+      const statusOut = document.getElementById("odPaymentStatus");
+      if (btn.dataset.payQuick === "deposit") {
+        if (orderAmountNumber(depositEl.value) === null) {
+          statusOut.textContent = "Enter the deposit amount first.";
+          statusOut.className = "form-status error";
+          depositEl.focus();
+          return;
+        }
+        paidEl.value = depositEl.value;
+        statusEl.value = "deposit_paid";
+      } else {
+        if (orderAmountNumber(totalEl.value) === null) {
+          statusOut.textContent = "Enter the order total first.";
+          statusOut.className = "form-status error";
+          totalEl.focus();
+          return;
+        }
+        paidEl.value = totalEl.value;
+        statusEl.value = "paid";
+      }
+      updateDrawerBalance();
+      saveOrderPayment(id);
+    });
+  });
+  document.getElementById("odSavePayment").addEventListener("click", () => saveOrderPayment(id));
+  document.getElementById("odSaveEvent").addEventListener("click", () => saveOrderEventDetails(id));
+}
+
+function setDrawerStatus(elId, text, kind) {
+  const el = document.getElementById(elId);
+  if (!el) return;
+  el.textContent = text;
+  el.className = "form-status" + (kind ? " " + kind : "");
+}
+
+async function saveOrderPayment(id) {
+  const raw = (fid) => document.getElementById(fid).value.trim();
+  const total = raw("odTotal") === "" ? null : orderAmountNumber(raw("odTotal"));
+  const deposit = raw("odDeposit") === "" ? null : orderAmountNumber(raw("odDeposit"));
+  const paid = raw("odPaid") === "" ? 0 : orderAmountNumber(raw("odPaid"));
+  const payStatus = document.getElementById("odPayStatus").value;
+  const bad = [[raw("odTotal"), total], [raw("odDeposit"), deposit], [raw("odPaid"), paid]]
+    .some(([text, n]) => text !== "" && (n === null || n < 0 || n >= 100000000));
+  if (bad) return setDrawerStatus("odPaymentStatus", "Amounts must be numbers of 0 or more.", "error");
+  const changes = {
+    total_amount: total === null ? null : Math.round(total * 100) / 100,
+    deposit_amount: deposit === null ? null : Math.round(deposit * 100) / 100,
+    amount_paid: Math.round(paid * 100) / 100,
+    payment_status: ORDER_PAYMENT_STATUSES.includes(payStatus) ? payStatus : "unpaid"
+  };
+  const btn = document.getElementById("odSavePayment");
+  btn.disabled = true;
+  setDrawerStatus("odPaymentStatus", "Saving...", "");
+  const { error } = await mustAffect(getSupabaseClient().from("orders").update(changes).eq("id", id));
+  if (document.getElementById("odSavePayment")) document.getElementById("odSavePayment").disabled = false;
   if (error) {
-    alert("Couldn't delete: " + error.message);
-    return;
+    const msg = isMissingColumnError(error) ? `Payments ${ORDERS_V2_HINT}.` : "Couldn't save: " + error.message;
+    return setDrawerStatus("odPaymentStatus", msg, "error");
   }
-  const photoProblem = await removeOrderPhotoFiles(data || []);
-  await refreshOrderList();
-  if (photoProblem) alert("The order was deleted, but " + photoProblem);
+  patchLoadedOrder(id, changes);
+  orderDrawerDirty = false;
+  setDrawerStatus("odPaymentStatus", "Saved", "success");
+  renderOrderDrawerHeader();
+  if (orderDrawerOrder) loadOrderTimeline(orderDrawerOrder);
+  refreshOrderList();
+}
+
+async function saveOrderEventDetails(id) {
+  const iso = document.getElementById("odEventOn").value;
+  const time = document.getElementById("odEventTime").value.trim().slice(0, 100);
+  const fulfillment = document.getElementById("odFulfillment").value === "pickup" ? "pickup" : "delivery";
+  if (iso && !/^\d{4}-\d{2}-\d{2}$/.test(iso)) return setDrawerStatus("odEventStatus", "Pick a valid date.", "error");
+  // Keep the legacy text column in step: fully_booked_dates() (daily
+  // capacity) still counts orders by event_date.
+  const legacyText = iso ? (/^\d{1,2}:\d{2}$/.test(time) ? `${iso} ${time}` : iso) : "";
+  const changes = { event_on: iso || null, event_time: time, fulfillment, event_date: legacyText };
+  setDrawerStatus("odEventStatus", "Saving...", "");
+  const { error } = await mustAffect(getSupabaseClient().from("orders").update(changes).eq("id", id));
+  if (error) {
+    const msg = isMissingColumnError(error) ? `Event details ${ORDERS_V2_HINT}.` : "Couldn't save: " + error.message;
+    return setDrawerStatus("odEventStatus", msg, "error");
+  }
+  patchLoadedOrder(id, changes);
+  orderDrawerDirty = false;
+  setDrawerStatus("odEventStatus", "Saved", "success");
+  refreshOrderList();
 }
 
 /* ----- Order photos (customer inspiration photos) -----
    Custom orders can carry up to 3 photos in orders.attachments: paths in
    the private 'order-uploads' Storage bucket (see js/order-uploads.js and
-   the "Order photo uploads" section of supabase-setup.sql). Only the admin can read them, through
-   short-lived signed URLs. */
+   the "Order photo uploads" section of supabase-setup.sql). Only the admin
+   can read them, through short-lived signed URLs. */
 const ORDER_PHOTOS_BUCKET = "order-uploads";
 const ORDER_PHOTOS_SQL_HINT = "Photo uploads need the latest supabase-setup.sql";
 const ORDER_PHOTO_URL_TTL = 3600; // seconds
 const ORDER_PHOTO_PATH_RE = /^pending\/([0-9a-f-]{36})\/[0-9]\.(jpg|jpeg|png|webp)$/;
 const ORDER_PHOTO_FOLDER_RE = /^[0-9a-f-]{36}$/;
 const ORDER_PHOTO_CLEANUP_AGE_DAYS = 7;
-// path -> { url, expires } so re-renders (every search keystroke) don't re-sign.
+// path -> { url, expires } so re-renders don't re-sign.
 const orderPhotoUrlCache = new Map();
 // path -> error message for photos that couldn't be signed (e.g. missing).
 const orderPhotoUrlErrors = new Map();
@@ -475,6 +1214,7 @@ function buildOrderAttachments(order) {
 }
 
 function applyOrderAttachmentUrls(root) {
+  if (!root) return;
   root.querySelectorAll(".order-attachment[data-path]").forEach((link) => {
     const path = link.dataset.path;
     const cached = orderPhotoUrlCache.get(path);
@@ -499,52 +1239,61 @@ function applyOrderAttachmentUrls(root) {
   });
 }
 
-/* Signs every visible photo that doesn't have a fresh URL yet, in one
-   request. Looks the links up again after the await, since the list may
-   have re-rendered meanwhile. A failed request shows a message on each
-   affected order instead of thumbnails; the order itself is unaffected. */
-async function loadOrderAttachmentThumbs() {
-  const listEl = document.getElementById("orderList");
-  if (!listEl) return;
+/* Signed URLs for these photo paths, using the cache. Resolves to a Map
+   path -> url (missing entries couldn't be signed); never throws. Also
+   used by the printable work order. */
+async function signOrderPhotoUrls(paths) {
   const soon = Date.now() + 5 * 60 * 1000;
-  const need = [...new Set(Array.from(listEl.querySelectorAll(".order-attachment[data-path]"), (a) => a.dataset.path))]
-    .filter((p) => !orderPhotoUrlErrors.has(p) && !((orderPhotoUrlCache.get(p) || {}).expires > soon));
-  if (!need.length) return;
-  const client = getSupabaseClient();
-  let data = null;
+  const need = [...new Set(paths)].filter((p) => !orderPhotoUrlErrors.has(p) && !((orderPhotoUrlCache.get(p) || {}).expires > soon));
   let error = null;
-  try {
-    ({ data, error } = await client.storage.from(ORDER_PHOTOS_BUCKET).createSignedUrls(need, ORDER_PHOTO_URL_TTL));
-  } catch (err) {
-    error = err;
+  if (need.length) {
+    let data = null;
+    try {
+      ({ data, error } = await getSupabaseClient().storage.from(ORDER_PHOTOS_BUCKET).createSignedUrls(need, ORDER_PHOTO_URL_TTL));
+    } catch (err) {
+      error = err;
+    }
+    if (!error) {
+      const expires = Date.now() + ORDER_PHOTO_URL_TTL * 1000;
+      (data || []).forEach((item) => {
+        if (item && item.signedUrl && !item.error) orderPhotoUrlCache.set(item.path, { url: item.signedUrl, expires });
+        else if (item && item.path) orderPhotoUrlErrors.set(item.path, String(item.error || "Couldn't load this photo"));
+      });
+    }
   }
+  const urls = new Map();
+  paths.forEach((p) => { const c = orderPhotoUrlCache.get(p); if (c) urls.set(p, c.url); });
+  return { urls, error };
+}
+
+/* Signs every photo under `root` that doesn't have a fresh URL yet, in one
+   request. A failed request shows a message instead of thumbnails; the
+   order itself is unaffected. */
+async function loadOrderAttachmentThumbs(root) {
+  if (!root) return;
+  const paths = [...new Set(Array.from(root.querySelectorAll(".order-attachment[data-path]"), (a) => a.dataset.path))];
+  if (!paths.length) return;
+  const { error } = await signOrderPhotoUrls(paths);
   if (error) {
     const message = /bucket not found/i.test(error.message || "")
       ? `${ORDER_PHOTOS_SQL_HINT} — ${ORDERS_SQL_HINT}.`
       : `Couldn't load photos: ${error.message || error}`;
-    const needSet = new Set(need);
-    document.querySelectorAll("#orderList .order-attachments").forEach((wrap) => {
-      const links = Array.from(wrap.querySelectorAll(".order-attachment[data-path]"));
-      if (!links.some((a) => needSet.has(a.dataset.path))) return;
-      links.forEach((a) => { if (needSet.has(a.dataset.path)) { a.textContent = "Not loaded"; a.classList.add("is-error"); } });
+    root.querySelectorAll(".order-attachments").forEach((wrap) => {
+      wrap.querySelectorAll(".order-attachment[data-path]").forEach((a) => {
+        if (!orderPhotoUrlCache.has(a.dataset.path)) { a.textContent = "Not loaded"; a.classList.add("is-error"); }
+      });
       const status = wrap.querySelector(".order-attachments-status");
       status.textContent = message;
       status.hidden = false;
     });
     return;
   }
-  const expires = Date.now() + ORDER_PHOTO_URL_TTL * 1000;
-  (data || []).forEach((item) => {
-    if (item && item.signedUrl && !item.error) orderPhotoUrlCache.set(item.path, { url: item.signedUrl, expires });
-    else if (item && item.path) orderPhotoUrlErrors.set(item.path, String(item.error || "Couldn't load this photo"));
-  });
-  applyOrderAttachmentUrls(document.getElementById("orderList"));
+  applyOrderAttachmentUrls(root);
 }
 
 /* Deletes the Storage files of orders that were just deleted. Skips any
-   path another order still uses. Returns null on success, or a sentence
-   describing what went wrong (the files are then left behind and "Clean up
-   unused photos" will find them once they're a week old). */
+   path another loaded order still uses. Returns null on success, or a
+   sentence describing what went wrong. */
 async function removeOrderPhotoFiles(deletedOrders) {
   const deletedIds = new Set(deletedOrders.map((o) => String(o.id)));
   const stillUsed = new Set(ordersAllCache.filter((o) => !deletedIds.has(String(o.id))).flatMap(orderAttachmentPaths));
@@ -573,8 +1322,7 @@ async function removeOrderPhotoFiles(deletedOrders) {
 }
 
 /* Shows the "needs the latest SQL" hint when orders has no attachments
-   column yet. Checked once per page load, from the loaded rows when there
-   are any, otherwise with a one-row probe. */
+   column yet. Checked once per page load. */
 async function checkOrderPhotosSchema() {
   if (orderPhotosSchemaChecked) return;
   orderPhotosSchemaChecked = true;
@@ -605,9 +1353,9 @@ async function listAllOrderPhotoEntries(prefix) {
   }
 }
 
-// Upload folders referenced by any order, fetched fresh (not from the
-// list cache) and paged past PostgREST's 1000-row cap. Throws on any
-// error: "couldn't check" must never be mistaken for "unused".
+// Upload folders referenced by any order, fetched fresh and paged past
+// PostgREST's 1000-row cap. Throws on any error: "couldn't check" must
+// never be mistaken for "unused".
 async function fetchReferencedOrderPhotoFolders() {
   const client = getSupabaseClient();
   const folders = new Set();
@@ -624,9 +1372,8 @@ async function fetchReferencedOrderPhotoFolders() {
 }
 
 /* pending/<folder>/ folders that no order references and whose newest
-   file is over ORDER_PHOTO_CLEANUP_AGE_DAYS old: uploads from abandoned
-   or failed submissions, and photos of deleted orders. A folder with any
-   file whose age can't be read is left alone. */
+   file is over ORDER_PHOTO_CLEANUP_AGE_DAYS old. A folder with any file
+   whose age can't be read is left alone. */
 async function findUnusedOrderPhotoFolders() {
   const referenced = await fetchReferencedOrderPhotoFolders();
   const cutoff = Date.now() - ORDER_PHOTO_CLEANUP_AGE_DAYS * 24 * 60 * 60 * 1000;
@@ -707,12 +1454,10 @@ async function handleCleanupOrderPhotos() {
   }
 }
 
-/* Keeps the orders "select all" checkbox and bulk action bar in sync with
-   selectedOrderIds — same job as syncBulkSelectionUI() does for Products,
-   kept as a separate function (and separate Set) so neither tab's bulk
-   selection can leak into the other's. Takes the currently visible
-   (status-filtered) orders so "select all" only ever covers what's on
-   screen. */
+/* ----- Bulk selection ----- */
+
+/* Keeps the "select all on this page" checkbox and bulk action bar in sync
+   with selectedOrderIds (which can span pages). */
 function syncOrderBulkSelectionUI(visibleOrders) {
   const selectAllBox = document.getElementById("orderSelectAll");
   if (selectAllBox) {
@@ -756,10 +1501,7 @@ async function bulkDeleteOrders() {
   const ids = [...selectedOrderIds];
   if (!ids.length) return;
   const label = ids.length === 1 ? "this order" : `these ${ids.length} orders`;
-  const idSet = new Set(ids);
-  const photoCount = ordersAllCache.filter((o) => idSet.has(String(o.id))).reduce((n, o) => n + orderAttachmentPaths(o).length, 0);
-  const photoNote = photoCount ? ` Their ${photoCount === 1 ? "photo" : `${photoCount} photos`} will be deleted too.` : "";
-  if (!confirm(`Delete ${label}?${photoNote} This can't be undone.`)) return;
+  if (!confirm(`Delete ${label}? Any inspiration photos on them will be deleted too. This can't be undone.`)) return;
   const client = getSupabaseClient();
   const bar = document.getElementById("orderBulkActionBar");
   bar.querySelectorAll("button").forEach((b) => { b.disabled = true; });
@@ -772,23 +1514,19 @@ async function bulkDeleteOrders() {
   const photoProblem = await removeOrderPhotoFiles(data || []);
   bar.querySelectorAll("button").forEach((b) => { b.disabled = false; });
   selectedOrderIds.clear();
+  if (orderDrawerOrder && ids.includes(String(orderDrawerOrder.id))) closeOrderDrawer(true);
   await refreshOrderList();
   if (photoProblem) alert(`The order${ids.length === 1 ? " was" : "s were"} deleted, but ` + photoProblem);
 }
 
-/* CSV field escaping per RFC 4180: wrap in double quotes (and double up
-   any internal quotes) whenever the value contains a comma, quote, or
-   newline — otherwise a customer name/note/address containing a comma
-   would silently split into extra columns. */
+/* ----- CSV export ----- */
+
+/* CSV field escaping per RFC 4180, plus a leading quote on anything that
+   a spreadsheet would run as a formula (order fields come straight from
+   the public forms). Values made only of digits/spaces/()+-. (phone
+   numbers, negative amounts) pass through untouched. */
 function csvEscapeField(value) {
   let str = value === null || value === undefined ? "" : String(value);
-  // Order fields come straight from the public checkout/custom-order
-  // forms, so a "customer" could submit a name like =HYPERLINK(...) that a
-  // spreadsheet would execute as a formula on open. Prefix a single quote
-  // to any cell starting with a formula trigger so it's read as text.
-  // Values made only of digits/spaces/()+-. (phone numbers like
-  // "+852 9123 4567", negative amounts) can't invoke a function, so they
-  // pass through untouched instead of gaining a visible apostrophe.
   if (/^[=+\-@\t\r]/.test(str) && !/^[+\-\d\s().]+$/.test(str)) str = "'" + str;
   if (/[",\r\n]/.test(str)) {
     return `"${str.replace(/"/g, '""')}"`;
@@ -796,55 +1534,214 @@ function csvEscapeField(value) {
   return str;
 }
 
-/* Exports whatever is currently visible in #orderList — i.e. respects the
-   active status filter, search, "upcoming only" and sort, using the same
-   ordersVisibleCache that
-   drives "select all" — as a downloadable CSV. No bulk-selection
-   dependency: exports every filtered/visible row regardless of checkbox
-   state, which is the minimum useful behavior (e.g. "export all New
-   orders" with nothing selected). */
-function exportOrdersCsv() {
-  const rows = ordersVisibleCache;
+/* Every order matching the current filters (status, payment, search,
+   upcoming, event date range) — not just the visible page — fetched 1000
+   at a time. */
+async function fetchAllMatchingOrders() {
+  const client = getSupabaseClient();
+  const all = [];
+  const pageSize = 1000;
+  for (let from = 0; from < 50000; from += pageSize) {
+    const q = applyOrderSort(applyOrderFilters(client.from("orders").select("*"))).range(from, from + pageSize - 1);
+    const { data, error } = await q;
+    if (error) throw error;
+    all.push(...(data || []));
+    if (!data || data.length < pageSize) break;
+  }
+  return ordersUpcomingOnly && !ordersSchemaV2 ? all.filter(isUpcomingOrder) : all;
+}
+
+async function exportOrdersCsv() {
+  const btn = document.getElementById("exportOrdersCsvBtn");
+  btn.disabled = true;
+  const label = btn.textContent;
+  btn.textContent = "Exporting...";
+  let rows;
+  try {
+    rows = await fetchAllMatchingOrders();
+  } catch (err) {
+    alert("Couldn't export: " + (err.message || err));
+    return;
+  } finally {
+    btn.disabled = false;
+    btn.textContent = label;
+  }
   if (!rows.length) {
-    alert("No orders to export for the current filter.");
+    alert("No orders to export for the current filters.");
     return;
   }
 
-  const header = ["Date", "Kind", "Name", "Phone", "Email", "Address", "Event Date", "Total", "Status", "Summary", "Notes", "Admin Notes"];
+  const header = ["Placed", "Ref", "Kind", "Name", "Phone", "Email", "Address", "Event Date", "Event Time", "Fulfilment",
+    "Status", "Payment Status", "Total", "Total Amount", "Deposit", "Amount Paid", "Balance Due", "Source",
+    "Items", "Summary", "Notes", "Admin Notes"];
   const lines = [header.map(csvEscapeField).join(",")];
   rows.forEach((order) => {
+    const balance = orderBalance(order);
     lines.push([
       order.created_at || "",
+      orderRef(order),
       orderKindLabel(order.kind),
       order.name || "",
       order.phone || "",
       order.email || "",
       order.address || "",
-      order.event_date || "",
-      order.total || "",
+      orderEventIso(order) || order.event_date || "",
+      orderEventTime(order),
+      order.fulfillment || "",
       order.status || "new",
-      order.summary || "",
+      order.payment_status || "",
+      order.total || "",
+      orderTotalAmount(order) === null ? "" : orderTotalAmount(order).toFixed(2),
+      orderAmountNumber(order.deposit_amount) === null ? "" : orderAmountNumber(order.deposit_amount).toFixed(2),
+      orderAmountNumber(order.amount_paid) === null ? "" : orderAmountNumber(order.amount_paid).toFixed(2),
+      balance === null ? "" : balance.toFixed(2),
+      order.source || "",
+      orderItems(order).length ? orderItemsText(order) : "",
+      orderSummaryBody(order),
       order.notes || "",
       order.admin_notes || ""
     ].map(csvEscapeField).join(","));
   });
 
-  // Leading BOM so Excel detects UTF-8 — without it, accented or non-Latin
-  // names/notes open as mojibake.
+  // Leading BOM so Excel detects UTF-8.
   const blob = new Blob(["\uFEFF" + lines.join("\r\n")], { type: "text/csv;charset=utf-8;" });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
-  a.download = `orders-export-${new Date().toISOString().slice(0, 10)}.csv`;
+  const range = ordersDateFrom || ordersDateTo ? `-${ordersDateFrom || "start"}-to-${ordersDateTo || "end"}` : "";
+  a.download = `orders-export${range}-${ordersTodayIso()}.csv`;
   document.body.appendChild(a);
   a.click();
   document.body.removeChild(a);
   URL.revokeObjectURL(url);
 }
 
-registerAdminTab("orders", { btnId: "tabOrdersBtn", panelId: "ordersPanel", onEnter: refreshOrderList });
+/* ----- Realtime ----- */
 
-onAdminInit(() => {
+let ordersRealtimeChannel = null;
+let ordersRealtimeFailed = false;
+let ordersRealtimeTimer = null;
+
+/* Subscribes once to inserts/updates/deletes on orders. Realtime still
+   applies RLS, so this only receives rows the admin may read. If Realtime
+   isn't enabled for the table (or the project), the channel errors and we
+   quietly stay on manual refreshes. */
+function startOrdersRealtime() {
+  if (ordersRealtimeChannel || ordersRealtimeFailed) return;
+  const client = getSupabaseClient();
+  if (!client || typeof client.channel !== "function") return;
+  try {
+    ordersLiveState = "connecting";
+    ordersRealtimeChannel = client
+      .channel("admin-orders-live")
+      .on("postgres_changes", { event: "*", schema: "public", table: "orders" }, handleOrdersRealtimeChange)
+      .subscribe((status) => {
+        if (status === "SUBSCRIBED") {
+          ordersLiveState = "live";
+          renderOrdersNotices();
+        } else if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") {
+          ordersRealtimeFailed = true;
+          stopOrdersRealtime("unavailable");
+        }
+      });
+  } catch (err) {
+    ordersRealtimeFailed = true;
+    ordersRealtimeChannel = null;
+    ordersLiveState = "unavailable";
+  }
+}
+
+function stopOrdersRealtime(state) {
+  const client = getSupabaseClient();
+  const channel = ordersRealtimeChannel;
+  ordersRealtimeChannel = null;
+  ordersLiveState = state || "off";
+  if (channel && client) {
+    try { client.removeChannel(channel); } catch (e) { /* ignore */ }
+  }
+  renderOrdersNotices();
+}
+
+function handleOrdersRealtimeChange(payload) {
+  if (payload && payload.eventType === "INSERT" && payload.new) {
+    ordersNewOrderNotices = [{ id: payload.new.id, name: payload.new.name }, ...ordersNewOrderNotices.filter((n) => n.id !== payload.new.id)].slice(0, 3);
+    renderOrdersNotices();
+    // js/admin-notifications.js (sound/title badge); its first call also
+    // switches off that file's polling fallback. It owns document.title.
+    try {
+      if (typeof window.onAdminNewOrder === "function") window.onAdminNewOrder(payload.new);
+    } catch (err) {
+      console.warn("[Orders] onAdminNewOrder failed", err);
+    }
+  }
+  clearTimeout(ordersRealtimeTimer);
+  ordersRealtimeTimer = setTimeout(async () => {
+    await refreshOrderList();
+    // Refresh the open drawer too, unless the owner is mid-edit there.
+    const changedId = payload && (payload.new || payload.old) ? String((payload.new && payload.new.id) || (payload.old && payload.old.id)) : "";
+    if (orderDrawerOrder && changedId === String(orderDrawerOrder.id)) {
+      if (payload.eventType === "DELETE") return;
+      const drawer = document.getElementById("orderDrawer");
+      const editing = orderDrawerDirty || (drawer && drawer.contains(document.activeElement) && /INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName));
+      const { data } = await getSupabaseClient().from("orders").select("*").eq("id", changedId).maybeSingle();
+      if (!data || !orderDrawerOrder || String(orderDrawerOrder.id) !== changedId) return;
+      if (editing) {
+        orderDrawerOrder = { ...orderDrawerOrder, status: data.status, payment_status: data.payment_status };
+        renderOrderDrawerHeader();
+        loadOrderTimeline(orderDrawerOrder);
+      } else {
+        orderDrawerOrder = data;
+        renderOrderDrawer();
+      }
+    }
+  }, 700);
+}
+
+/* ----- View toggle (List | Calendar) ----- */
+
+let ordersView = "list";
+const ORDERS_VIEW_KEY = "admin-orders-view";
+
+function setOrdersView(view) {
+  ordersView = view === "calendar" ? "calendar" : "list";
+  try { localStorage.setItem(ORDERS_VIEW_KEY, ordersView); } catch (e) { /* not persisted */ }
+  document.querySelectorAll("#ordersViewToggle [data-orders-view]").forEach((b) => {
+    const active = b.dataset.ordersView === ordersView;
+    b.classList.toggle("active", active);
+    b.setAttribute("aria-pressed", String(active));
+  });
+  document.getElementById("ordersListView").hidden = ordersView !== "list";
+  const cal = document.getElementById("ordersCalendarView");
+  cal.hidden = ordersView !== "calendar";
+  if (ordersView === "calendar" && window.AdminOrderCalendar) window.AdminOrderCalendar.show(cal);
+}
+
+registerAdminTab("orders", { btnId: "tabOrdersBtn", panelId: "ordersPanel", onEnter: () => {
+  refreshOrderList({ skipCalendar: true });
+  if (ordersView === "calendar" && window.AdminOrderCalendar) {
+    detectOrdersSchema().then(() => window.AdminOrderCalendar.show(document.getElementById("ordersCalendarView")));
+  }
+  if (window.AdminOrderMessages) window.AdminOrderMessages.renderEditor(document.getElementById("orderMessageTemplates"));
+} });
+
+registerAdminDirtyCheck(() => orderDrawerDirty || orderNoteDrafts.size > 0);
+
+onAdminInit((client) => {
+  try {
+    if (localStorage.getItem(ORDERS_VIEW_KEY) === "calendar") ordersView = "calendar";
+  } catch (e) { /* default list */ }
+  document.querySelectorAll("#ordersViewToggle [data-orders-view]").forEach((b) => {
+    b.addEventListener("click", () => setOrdersView(b.dataset.ordersView));
+  });
+  if (ordersView === "calendar") {
+    document.getElementById("ordersListView").hidden = true;
+    document.getElementById("ordersCalendarView").hidden = false;
+    document.querySelectorAll("#ordersViewToggle [data-orders-view]").forEach((b) => {
+      b.classList.toggle("active", b.dataset.ordersView === "calendar");
+      b.setAttribute("aria-pressed", String(b.dataset.ordersView === "calendar"));
+    });
+  }
+
   document.getElementById("ordersFilter").addEventListener("click", (e) => {
     const btn = e.target.closest(".orders-filter-btn");
     if (!btn) return;
@@ -852,29 +1749,70 @@ onAdminInit(() => {
     // Scoped to #ordersFilter — the Analytics range buttons share the
     // .orders-filter-btn class and would otherwise lose their highlight.
     document.querySelectorAll("#ordersFilter .orders-filter-btn").forEach((b) => b.classList.toggle("active", b === btn));
-    refreshOrderList();
+    resetOrdersPagingAndRefresh();
+  });
+  document.getElementById("ordersPaymentFilter").addEventListener("click", (e) => {
+    const btn = e.target.closest(".orders-filter-btn");
+    if (!btn) return;
+    ordersPaymentFilter = btn.dataset.payment;
+    document.querySelectorAll("#ordersPaymentFilter .orders-filter-btn").forEach((b) => b.classList.toggle("active", b === btn));
+    resetOrdersPagingAndRefresh();
   });
   let orderSearchDebounce = null;
   document.getElementById("orderSearch").addEventListener("input", (e) => {
     clearTimeout(orderSearchDebounce);
     orderSearchDebounce = setTimeout(() => {
       ordersSearchQuery = e.target.value;
-      renderOrderList();
-    }, 180);
+      resetOrdersPagingAndRefresh();
+    }, 300);
   });
   document.getElementById("orderSort").addEventListener("change", (e) => {
     ordersSortMode = e.target.value;
-    renderOrderList();
+    resetOrdersPagingAndRefresh();
   });
   document.getElementById("orderUpcomingOnly").addEventListener("change", (e) => {
     ordersUpcomingOnly = e.target.checked;
-    renderOrderList();
+    resetOrdersPagingAndRefresh();
   });
+  const fromEl = document.getElementById("orderDateFrom");
+  const toEl = document.getElementById("orderDateTo");
+  const clearDates = document.getElementById("orderDateClear");
+  const onDates = () => {
+    ordersDateFrom = /^\d{4}-\d{2}-\d{2}$/.test(fromEl.value) ? fromEl.value : "";
+    ordersDateTo = /^\d{4}-\d{2}-\d{2}$/.test(toEl.value) ? toEl.value : "";
+    if (ordersDateFrom) toEl.min = ordersDateFrom; else toEl.removeAttribute("min");
+    clearDates.hidden = !ordersDateFrom && !ordersDateTo;
+    resetOrdersPagingAndRefresh();
+  };
+  fromEl.addEventListener("change", onDates);
+  toEl.addEventListener("change", onDates);
+  clearDates.addEventListener("click", () => { fromEl.value = ""; toEl.value = ""; onDates(); });
+
+  document.getElementById("orderList").addEventListener("click", (e) => {
+    const open = e.target.closest("[data-open-id]");
+    if (open) openOrderDrawer(open.dataset.openId, open);
+  });
+  document.getElementById("ordersPager").addEventListener("click", (e) => {
+    const btn = e.target.closest("[data-page]");
+    if (!btn || btn.disabled) return;
+    ordersPage = Math.max(0, ordersPage + (btn.dataset.page === "next" ? 1 : -1));
+    refreshOrderList({ skipCounts: true }).then(() => {
+      const list = document.getElementById("orderList");
+      if (list && list.getBoundingClientRect().top < 0) list.scrollIntoView({ block: "start" });
+    });
+  });
+  document.getElementById("ordersNotices").addEventListener("click", (e) => {
+    const open = e.target.closest("[data-notice-open]");
+    const dismiss = e.target.closest("[data-notice-dismiss]");
+    const id = open ? open.dataset.noticeOpen : dismiss ? dismiss.dataset.noticeDismiss : null;
+    if (!id) return;
+    ordersNewOrderNotices = ordersNewOrderNotices.filter((n) => String(n.id) !== id);
+    renderOrdersNotices();
+    if (open) openOrderDrawer(id);
+  });
+
   document.getElementById("exportOrdersCsvBtn").addEventListener("click", exportOrdersCsv);
   document.getElementById("orderSelectAll").addEventListener("change", (e) => {
-    // Only the currently visible (status-filtered) rows, not every order
-    // in the table — matches what the checkbox's indeterminate state
-    // reflects, same scoping as Products' itemSelectAll handler.
     document.querySelectorAll("#orderList .order-select").forEach((box) => {
       box.checked = e.target.checked;
       if (e.target.checked) selectedOrderIds.add(box.dataset.selectId);
@@ -883,9 +1821,25 @@ onAdminInit(() => {
     syncOrderBulkSelectionUI(ordersVisibleCache);
   });
   document.getElementById("orderBulkContactedBtn").addEventListener("click", () => bulkUpdateOrderStatus("contacted"));
+  document.getElementById("orderBulkQuotedBtn").addEventListener("click", () => bulkUpdateOrderStatus("quoted"));
   document.getElementById("orderBulkFulfilledBtn").addEventListener("click", () => bulkUpdateOrderStatus("fulfilled"));
   document.getElementById("orderBulkCancelledBtn").addEventListener("click", () => bulkUpdateOrderStatus("cancelled"));
   document.getElementById("orderBulkDeleteBtn").addEventListener("click", bulkDeleteOrders);
   document.getElementById("orderBulkClearBtn").addEventListener("click", clearOrderSelection);
   document.getElementById("cleanupOrderPhotosBtn").addEventListener("click", handleCleanupOrderPhotos);
+
+  const daySheetDate = document.getElementById("orderDaySheetDate");
+  daySheetDate.value = ordersTodayIso();
+  document.getElementById("orderDaySheetBtn").addEventListener("click", () => {
+    if (window.AdminOrderPrint) window.AdminOrderPrint.printDaySheet(daySheetDate.value || ordersTodayIso());
+  });
+
+  // Stop listening when the session ends; the next login starts again.
+  client.auth.onAuthStateChange((event) => {
+    if (event === "SIGNED_OUT") {
+      ordersRealtimeFailed = false;
+      stopOrdersRealtime("off");
+      closeOrderDrawer(true);
+    }
+  });
 });
