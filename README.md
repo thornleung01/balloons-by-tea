@@ -400,6 +400,15 @@ options:
 - **Cloudflare Pages / Vercel**: similarly, just point at this folder with
   no build command.
 
+## 8. Admin upgrades
+
+The admin page has been expanded (overview dashboard, itemised orders and
+payments, calendar, notifications, analytics, product options and trash,
+settings preview and history, backup restore, activity log, staff logins).
+The steps only you can do (database update, email setup, redirect URL) are
+in [`docs/ADMIN-SETUP-CHECKLIST.md`](docs/ADMIN-SETUP-CHECKLIST.md). For new
+projects, run `supabase-all.sql` once; see [`docs/DATABASE.md`](docs/DATABASE.md).
+
 ## File map
 
 ```
