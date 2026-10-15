@@ -10,22 +10,40 @@
 <link rel="stylesheet" href="css/styles.css"/>
 <link rel="stylesheet" href="css/admin.css"/>
 <link rel="stylesheet" href="css/admin-analytics.css"/>
+<link rel="stylesheet" href="css/admin-shell.css"/>
+<link rel="stylesheet" href="css/admin-notifications.css"/>
 </head>
 <body class="admin-body">
 
+<a href="#adminMain" class="skip-link" id="adminSkipLink">Skip to main content</a>
+
 <header class="admin-header">
-  <a href="index.html" class="brand">
-    <img src="images/logo.png" alt="Balloons by Tea" class="brand-logo"/>
+  <a href="index.html" class="brand" id="adminBrandLink">
+    <img src="images/logo.webp" width="432" height="400" alt="Balloons by Tea" class="brand-logo" id="adminBrandLogo"/>
     <span class="brand-mark">Admin</span>
   </a>
   <div class="admin-header-actions">
-    <span id="whoAmI" hidden></span>
-    <a href="index.html" class="btn btn-ghost">View site</a>
+    <span id="whoAmI" class="admin-who" hidden></span>
+    <a href="index.html" class="btn btn-ghost admin-view-site" target="_blank" rel="noopener" aria-label="View site (opens in a new tab)">
+      <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 4h6v6M20 4l-9 9"/><path d="M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/></svg>
+      <span class="admin-view-site-label">View site</span>
+    </a>
     <button type="button" id="logoutBtn" class="btn btn-outline btn-sm" hidden>Log out</button>
   </div>
 </header>
 
-<main class="admin-main">
+<div class="admin-frame">
+
+<!-- Grouped tab navigation: built from the TABS registry by
+     renderAdminNav() in js/admin-core.js — add a tab with
+     registerAdminTab(), not by editing this markup. Desktop: left sidebar
+     with group headings. Phones: the current group's tabs as a chip row,
+     plus the group bar (#adminBottomBar) at the bottom. -->
+<nav class="admin-nav" id="adminNav" aria-label="Admin sections" hidden>
+  <div class="admin-tablist" id="adminTabList" role="tablist" aria-label="Admin sections" aria-orientation="vertical"></div>
+</nav>
+
+<main class="admin-main" id="adminMain" tabindex="-1">
 
   <!-- Shown when js/supabase-config.js hasn't been filled in yet -->
   <div id="notConfiguredView" class="admin-card notice-card" hidden>
@@ -59,20 +77,30 @@
 
   <!-- Dashboard -->
   <div id="dashboardView" hidden>
-    <div class="admin-tabs" role="tablist">
-      <button type="button" class="admin-tab active" id="tabProductsBtn" role="tab" aria-selected="true">Products</button>
-      <button type="button" class="admin-tab" id="tabOrdersBtn" role="tab" aria-selected="false">Orders <span class="admin-tab-badge" id="ordersBadge" hidden>0</span></button>
-      <button type="button" class="admin-tab" id="tabAnalyticsBtn" role="tab" aria-selected="false">Analytics</button>
-      <button type="button" class="admin-tab" id="tabDeliveryBtn" role="tab" aria-selected="false">Delivery</button>
-      <button type="button" class="admin-tab" id="tabCollectionsBtn" role="tab" aria-selected="false">Collections</button>
-      <button type="button" class="admin-tab" id="tabLibraryBtn" role="tab" aria-selected="false">Library</button>
-      <button type="button" class="admin-tab" id="tabGalleryBtn" role="tab" aria-selected="false">Gallery</button>
-      <button type="button" class="admin-tab" id="tabNavBtn" role="tab" aria-selected="false">Nav</button>
-      <button type="button" class="admin-tab" id="tabFaqBtn" role="tab" aria-selected="false">FAQ</button>
-      <button type="button" class="admin-tab" id="tabSettingsBtn" role="tab" aria-selected="false">Settings</button>
-    </div>
+    <!-- Overview (default landing tab): rendered by js/admin-overview.js -->
+    <section id="overviewPanel" class="overview" aria-label="Overview">
+      <div class="overview-head">
+        <div>
+          <h1 class="overview-title" id="overviewTitle">Overview</h1>
+          <p class="overview-date" id="overviewDate"></p>
+        </div>
+        <div class="overview-actions">
+          <button type="button" class="btn btn-primary btn-sm" id="ovAddProductBtn">Add product</button>
+          <button type="button" class="btn btn-outline btn-sm" id="ovBlockDateBtn">Block a date</button>
+          <a href="index.html" class="btn btn-outline btn-sm" target="_blank" rel="noopener">View site</a>
+        </div>
+      </div>
+      <div class="overview-grid" id="overviewGrid">
+        <div class="ov-card ov-stat" id="ovNewOrders"></div>
+        <div class="ov-card ov-stat" id="ovUnpaid" hidden></div>
+        <div class="ov-card ov-stat" id="ovRevenue"></div>
+        <div class="ov-card ov-wide" id="ovEvents"></div>
+        <div class="ov-card" id="ovHeadsUp"></div>
+        <div class="ov-card" id="ovTopProducts"></div>
+      </div>
+    </section>
 
-    <div id="productsPanel" class="admin-grid">
+    <div id="productsPanel" class="admin-grid" hidden>
       <div class="admin-card">
         <h2 id="formTitle">Add Item</h2>
         <form id="itemForm" novalidate>
@@ -480,6 +508,10 @@
   </div>
 
 </main>
+</div>
+
+<!-- Phone group bar (see #adminNav above); built by renderAdminNav(). -->
+<nav class="admin-bottombar" id="adminBottomBar" aria-label="Admin section groups" hidden></nav>
 
 <script src="js/products.js"></script>
 <script>window.COLLECTIONS = COLLECTIONS;</script>
@@ -496,9 +528,11 @@
 <script src="js/admin-orders.js"></script>
 <script src="js/admin-charts.js"></script>
 <script src="js/admin-analytics.js"></script>
+<script src="js/admin-notifications.js"></script>
 <script src="js/admin-backup.js"></script>
 <script src="js/admin-availability.js"></script>
 <script src="js/admin-delivery-areas.js"></script>
 <script src="js/admin-gallery.js"></script>
+<script src="js/admin-overview.js"></script>
 </body>
 </html>
