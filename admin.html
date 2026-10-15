@@ -9,6 +9,7 @@
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Playfair+Display:wght@500;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="css/styles.css"/>
 <link rel="stylesheet" href="css/admin.css"/>
+<link rel="stylesheet" href="css/admin-analytics.css"/>
 <link rel="stylesheet" href="css/admin-shell.css"/>
 <link rel="stylesheet" href="css/admin-notifications.css"/>
 </head>
@@ -252,8 +253,17 @@
           <button type="button" class="orders-filter-btn active" data-range="30">Last 30 days</button>
           <button type="button" class="orders-filter-btn" data-range="90">Last 90 days</button>
           <button type="button" class="orders-filter-btn" data-range="all">All time</button>
+          <button type="button" class="orders-filter-btn" data-range="custom" aria-controls="analyticsCustomRange">Custom range</button>
+          <button type="button" class="orders-export-btn" id="analyticsExportBtn">Export CSV</button>
         </div>
       </div>
+      <form class="analytics-custom-range" id="analyticsCustomRange" hidden>
+        <label for="analyticsFrom">From</label>
+        <input type="date" id="analyticsFrom" required/>
+        <label for="analyticsTo">To</label>
+        <input type="date" id="analyticsTo" required/>
+        <button type="submit" class="orders-filter-btn">Apply</button>
+      </form>
       <div class="analytics-clear-row">
         <label for="analyticsClearRange">Clear old events</label>
         <select id="analyticsClearRange" class="order-status-select">
@@ -516,6 +526,7 @@
 <script src="js/admin-faq.js"></script>
 <script src="js/admin-settings.js"></script>
 <script src="js/admin-orders.js"></script>
+<script src="js/admin-charts.js"></script>
 <script src="js/admin-analytics.js"></script>
 <script src="js/admin-notifications.js"></script>
 <script src="js/admin-backup.js"></script>
