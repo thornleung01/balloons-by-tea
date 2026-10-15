@@ -463,21 +463,8 @@ body.admin-body {
 .bulk-action-bar button:hover { border-color: var(--color-accent); color: var(--color-fg); }
 .bulk-action-bar button.danger:hover { border-color: var(--color-destructive); color: var(--color-destructive); }
 
-/* Tabs */
-.admin-tabs { display: flex; flex-wrap: wrap; gap: var(--space-2) var(--space-3); margin-bottom: var(--space-3); border-bottom: 1px solid var(--color-border); }
-.admin-tab {
-  display: flex; align-items: center; gap: 6px;
-  padding: 10px 4px; margin-bottom: -1px;
-  font-size: 0.95rem; font-weight: 600; color: var(--color-fg-faint);
-  border-bottom: 2px solid transparent;
-}
-.admin-tab:hover { color: var(--color-fg); }
-.admin-tab.active { color: var(--color-fg); border-bottom-color: var(--color-accent); }
-.admin-tab-badge {
-  background: var(--color-destructive); color: #fff;
-  font-size: 0.7rem; font-weight: 700; line-height: 1;
-  padding: 3px 6px; border-radius: var(--radius-pill);
-}
+/* Tabs: the grouped tab navigation (sidebar / phone chips + group bar)
+   lives in css/admin-shell.css. */
 
 /* Orders */
 .orders-head { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: var(--space-2); margin-bottom: var(--space-3); }
