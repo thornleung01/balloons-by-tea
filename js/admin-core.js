@@ -672,7 +672,7 @@ async function handleLogin(e) {
 let loggingOutOnPurpose = false;
 
 async function handleLogout() {
-  if (anyAdminFormDirty() && !confirm("You have unsaved changes. Log out anyway?")) return;
+  if (anyAdminFormDirty() && !(await adminConfirm({ title: "Log out with unsaved changes?", message: "You have unsaved changes that will be lost if you log out.", confirmLabel: "Log out anyway", danger: true }))) return;
   const client = getSupabaseClient();
   loggingOutOnPurpose = true;
   try {
@@ -986,7 +986,7 @@ async function persistSortOrder(table, cache, refresh) {
   const client = getSupabaseClient();
   const results = await Promise.all(cache.map((row, i) => mustAffect(client.from(table).update({ sort_order: i }).eq("id", row.id))));
   const failed = results.filter((r) => r.error);
-  if (failed.length) alert(`Couldn't save the new order (${failed.length} of ${cache.length} rows failed): ${failed[0].error.message}`);
+  if (failed.length) adminToast(`Couldn't save the new order (${failed.length} of ${cache.length} rows failed): ${failed[0].error.message}`, { kind: "error" });
   await refresh();
 }
 

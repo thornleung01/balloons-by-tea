@@ -431,11 +431,11 @@ async function reorderProductWithinCollection(draggedId, targetId, after) {
   const dragged = productsCache.find((p) => String(p.id) === String(draggedId));
   if (!dragged) return;
   if (productExtrasAvailable === false) {
-    alert("Changing the order needs the latest database update. " + PRODUCT_MIGRATION_HINT);
+    adminToast("Changing the order needs the latest database update. " + PRODUCT_MIGRATION_HINT, { kind: "error" });
     return;
   }
   if (itemSearchQuery.trim()) {
-    alert("Clear the search box first, so the whole category is in view while you reorder it.");
+    adminToast("Clear the search box first, so the whole category is in view while you reorder it.", { kind: "info" });
     return;
   }
   const group = sortByManualOrder(productsCache.filter((p) => p.collection === dragged.collection))
@@ -457,9 +457,9 @@ async function reorderProductWithinCollection(draggedId, targetId, after) {
   const failed = results.filter((r) => r.error);
   if (failed.length) {
     const err = failed[0].error;
-    alert(isMissingProductColumnError(err)
+    adminToast(isMissingProductColumnError(err)
       ? "Changing the order needs the latest database update. " + PRODUCT_MIGRATION_HINT
-      : `Couldn't save the new order (${failed.length} of ${changes.length} failed): ${err.message}`);
+      : `Couldn't save the new order (${failed.length} of ${changes.length} failed): ${err.message}`, { kind: "error" });
   }
   await refreshItemList();
 }
@@ -471,7 +471,7 @@ async function moveProductToCollection(id, newSlug) {
   const { error } = await mustAffect(client.from("products").update({ collection: newSlug }).eq("id", id));
   isReassigningCollection = false;
   if (error) {
-    alert("Couldn't move item: " + error.message);
+    adminToast("Couldn't move item: " + error.message, { kind: "error" });
     return;
   }
   await refreshItemList();
@@ -511,7 +511,7 @@ async function bulkSetActive(active) {
   const { error } = await mustAffect(client.from("products").update({ active }).in("id", ids));
   bar.querySelectorAll("button").forEach((b) => { b.disabled = false; });
   if (error) {
-    alert("Couldn't update: " + error.message);
+    adminToast("Couldn't update: " + error.message, { kind: "error" });
     return;
   }
   selectedProductIds.clear();
@@ -532,19 +532,19 @@ function productMatchesSearch(item, query) {
 async function deleteOrTrashProducts(ids, label) {
   const client = getSupabaseClient();
   if (productExtrasAvailable !== false) {
-    if (!confirm(`Move ${label} to the Trash? You can restore it from the Trash tab.`)) return false;
+    if (!(await adminConfirm({ title: `Move ${label} to the Trash?`, message: "You can restore it from the Trash tab.", confirmLabel: "Move to Trash", danger: true }))) return false;
     const { error } = await mustAffect(client.from("products").update({ deleted_at: new Date().toISOString() }).in("id", ids));
     if (!error) return true;
     if (!isMissingProductColumnError(error)) {
-      alert("Couldn't delete: " + error.message);
+      adminToast("Couldn't delete: " + error.message, { kind: "error" });
       return false;
     }
     productExtrasAvailable = false;
   }
-  if (!confirm(`Delete ${label}? This can't be undone.\n\n(${PRODUCT_MIGRATION_HINT})`)) return false;
+  if (!(await adminConfirm({ title: `Delete ${label}?`, message: `This can't be undone.\n\n(${PRODUCT_MIGRATION_HINT})`, confirmLabel: "Delete permanently", danger: true, requireText: ids.length >= 5 ? "DELETE" : undefined }))) return false;
   const { error } = await mustAffect(client.from("products").delete().in("id", ids));
   if (error) {
-    alert("Couldn't delete: " + error.message);
+    adminToast("Couldn't delete: " + error.message, { kind: "error" });
     return false;
   }
   return true;
@@ -569,7 +569,7 @@ async function handleToggleActive(id, active, toggleEl) {
   toggleEl.disabled = true;
   const { error } = await mustAffect(client.from("products").update({ active }).eq("id", id));
   if (error) {
-    alert("Couldn't update: " + error.message);
+    adminToast("Couldn't update: " + error.message, { kind: "error" });
     toggleEl.checked = !active;
     toggleEl.disabled = false;
     return;
@@ -600,12 +600,13 @@ function itemFormState() {
 }
 function markItemFormClean() { itemFormSnapshot = itemFormState(); }
 function itemFormIsDirty() { return itemFormSnapshot !== null && itemFormState() !== itemFormSnapshot; }
-function confirmDiscardItemEdits() {
-  return !itemFormIsDirty() || confirm("You have unsaved changes to this item. Discard them?");
+/* Resolves true when it's safe to replace the form's contents. */
+async function confirmDiscardItemEdits() {
+  return !itemFormIsDirty() || adminConfirm({ title: "Discard unsaved changes?", message: "You have unsaved changes to this item. Discard them?", confirmLabel: "Discard changes", danger: true });
 }
 
-function startEdit(item) {
-  if (!confirmDiscardItemEdits()) return;
+async function startEdit(item) {
+  if (!(await confirmDiscardItemEdits())) return;
   currentEditId = item.id;
   document.getElementById("f-collection").value = item.collection;
   document.getElementById("f-name").value = item.name || "";
@@ -816,7 +817,7 @@ async function handleDuplicateProduct(id) {
   }
   const { error } = await saveProductPayload(client, payload, null);
   if (error) {
-    alert("Couldn't duplicate: " + error.message);
+    adminToast("Couldn't duplicate: " + error.message, { kind: "error" });
     return;
   }
   await refreshItemList();
@@ -838,8 +839,8 @@ registerAdminDirtyCheck(itemFormIsDirty);
 onAdminInit(() => {
   document.getElementById("itemForm").addEventListener("submit", handleSaveItem);
   document.getElementById("f-photo").addEventListener("change", handlePhotoChange);
-  document.getElementById("cancelEditBtn").addEventListener("click", () => {
-    if (confirmDiscardItemEdits()) resetForm();
+  document.getElementById("cancelEditBtn").addEventListener("click", async () => {
+    if (await confirmDiscardItemEdits()) resetForm();
   });
   document.getElementById("openPhotoLibraryBtn").addEventListener("click", openPhotoLibrary);
 

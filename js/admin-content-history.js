@@ -13,7 +13,7 @@
      openContentHistory(kind, handlers)               -> opens the modal
          handlers: { title, getCurrent(): Promise<snapshot>,
                      diff(snapshot, current): [{label, from, to, isImage}],
-                     beforeRestore(): boolean, restore(snapshot): Promise }
+                     beforeRestore(): boolean | Promise<boolean>, restore(snapshot): Promise }
 
    When the table hasn't been created yet everything here quietly does
    nothing, and the History modal explains how to switch it on. */
@@ -216,8 +216,8 @@ async function restoreContentHistoryVersion(row, btn) {
   const ctx = contentHistoryContext;
   if (!ctx) return;
   const when = formatHistoryWhen(row.created_at);
-  if (!confirm(`Restore the version from ${when.abs}? This changes the live site straight away. (You can undo it from this list.)`)) return;
-  if (ctx.handlers.beforeRestore && ctx.handlers.beforeRestore() === false) return;
+  if (!(await adminConfirm({ title: `Restore the version from ${when.abs}?`, message: "This changes the live site straight away. (You can undo it from this list.)", confirmLabel: "Restore this version", danger: true }))) return;
+  if (ctx.handlers.beforeRestore && (await ctx.handlers.beforeRestore()) === false) return;
   const statusEl = document.getElementById("contentHistoryStatus");
   btn.disabled = true;
   btn.textContent = "Restoring...";

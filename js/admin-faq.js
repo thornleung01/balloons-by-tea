@@ -83,10 +83,10 @@ async function refreshFaqList() {
   `).join("");
 
   listEl.querySelectorAll(".edit-btn").forEach((btn) => {
-    btn.addEventListener("click", () => {
+    btn.addEventListener("click", async () => {
       const row = faqCache.find((f) => String(f.id) === btn.dataset.id);
       if (!row) return;
-      if (String(currentFaqEditId) !== String(row.id) && faqFormIsDirty() && !confirm("You have unsaved changes in the FAQ form. Discard them and edit this item instead?")) return;
+      if (String(currentFaqEditId) !== String(row.id) && faqFormIsDirty() && !(await adminConfirm({ title: "Discard unsaved changes?", message: "You have unsaved changes in the FAQ form. Discard them and edit this item instead?", confirmLabel: "Discard and edit", danger: true }))) return;
       startFaqEdit(row);
     });
   });
@@ -173,12 +173,13 @@ async function handleSaveFaq(e) {
 }
 
 async function handleDeleteFaq(id) {
-  if (!confirm("Delete this FAQ item? You can bring it back from History.")) return;
-  const client = getSupabaseClient();
   const row = faqCache.find((f) => String(f.id) === String(id));
+  const questionLabel = row ? `"${String(row.question).slice(0, 80)}"` : "this FAQ item";
+  if (!(await adminConfirm({ title: `Delete ${questionLabel}?`, message: "You can bring it back from History.", confirmLabel: "Delete FAQ item", danger: true }))) return;
+  const client = getSupabaseClient();
   await faqHistoryBeforeWrite();
   const { error } = await mustAffect(client.from("faq_items").delete().eq("id", id));
-  if (error) { alert("Couldn't delete: " + error.message); return; }
+  if (error) { adminToast("Couldn't delete: " + error.message, { kind: "error" }); return; }
   faqHistoryAfterWrite(`Deleted "${row ? String(row.question).slice(0, 80) : "a question"}"`);
   if (String(currentFaqEditId) === String(id)) resetFaqForm(); // number (DB) vs string (data-id)
   await refreshFaqList();
@@ -252,9 +253,9 @@ function openFaqHistory() {
     title: "FAQ history",
     getCurrent: fetchFaqSnapshot,
     diff: describeFaqDiff,
-    beforeRestore: () => {
+    beforeRestore: async () => {
       if (!faqFormIsDirty()) return true;
-      return confirm("You have unsaved changes in the FAQ form. Restoring will clear the form. Continue?");
+      return adminConfirm({ title: "Discard unsaved changes?", message: "You have unsaved changes in the FAQ form. Restoring will clear the form. Continue?", confirmLabel: "Discard and restore", danger: true });
     },
     restore: restoreFaqSnapshot
   });
@@ -266,8 +267,8 @@ registerAdminDirtyCheck(faqFormIsDirty);
 
 onAdminInit(() => {
   document.getElementById("faqForm").addEventListener("submit", handleSaveFaq);
-  document.getElementById("cancelFaqEditBtn").addEventListener("click", () => {
-    if (faqFormIsDirty() && !confirm("Discard your changes to this FAQ item?")) return;
+  document.getElementById("cancelFaqEditBtn").addEventListener("click", async () => {
+    if (faqFormIsDirty() && !(await adminConfirm({ title: "Discard unsaved changes?", message: "Discard your changes to this FAQ item?", confirmLabel: "Discard", danger: true }))) return;
     resetFaqForm();
   });
 

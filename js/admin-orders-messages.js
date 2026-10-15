@@ -180,8 +180,8 @@
     select.value = suggestedTemplate(order);
     textarea.value = "Loading...";
     loadSaved().then(fill);
-    select.addEventListener("change", () => {
-      if (edited && !confirm("Replace your edited message with this template?")) return;
+    select.addEventListener("change", async () => {
+      if (edited && !(await adminConfirm({ title: "Replace your edited message?", message: "Replace your edited message with this template? Your changes to the message will be lost.", confirmLabel: "Replace message", danger: true }))) return;
       fill();
     });
 
@@ -270,10 +270,10 @@
     editorBaseline = editorValues();
 
     container.querySelectorAll("[data-reset-template]").forEach((btn) => {
-      btn.addEventListener("click", () => {
+      btn.addEventListener("click", async () => {
         const t = TEMPLATES.find((x) => x.key === btn.dataset.resetTemplate);
         const el = document.getElementById(`msgtpl-${settingKey(t.key)}`);
-        if (el.value.trim() && !confirm("Replace this template with the built-in wording?")) return;
+        if (el.value.trim() && !(await adminConfirm({ title: "Reset this template?", message: "Replace this template with the built-in wording? Your current wording in this box will be lost.", confirmLabel: "Use built-in wording", danger: true }))) return;
         el.value = t.text;
       });
     });

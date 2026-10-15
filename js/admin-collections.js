@@ -8,6 +8,27 @@
 let collectionsCache = [];
 let currentCollectionEditId = null;
 let currentCollectionPhotoFile = null;
+/* The form's values when it was last loaded/reset — compared against for
+   the unsaved-changes check (same pattern as js/admin-faq.js). */
+let collectionFormSnapshot = null;
+
+function collectionFormValues() {
+  return JSON.stringify([
+    document.getElementById("c-title").value,
+    document.getElementById("c-tagline").value,
+    document.getElementById("c-sort").value,
+    currentCollectionPhotoFile ? [currentCollectionPhotoFile.name, currentCollectionPhotoFile.size] : null
+  ]);
+}
+
+function markCollectionFormClean() {
+  collectionFormSnapshot = collectionFormValues();
+}
+
+function collectionFormIsDirty() {
+  if (collectionFormSnapshot === null) return false;
+  return collectionFormValues() !== collectionFormSnapshot;
+}
 
 function slugify(text) {
   return String(text).toLowerCase().trim()
@@ -23,9 +44,14 @@ async function loadCollectionsCache() {
   collectionsCache = data || [];
   const select = document.getElementById("f-collection");
   if (select) {
+    // Rebuilding the dropdown can change the item form's value (e.g. after a
+    // category is deleted); that isn't an edit, so a clean form stays clean.
+    const itemFormWasClean = typeof itemFormIsDirty === "function" && typeof markItemFormClean === "function"
+      && itemFormSnapshot !== null && !itemFormIsDirty();
     const prev = select.value;
     select.innerHTML = collectionsCache.map((c) => `<option value="${escapeHtml(c.slug)}">${escapeHtml(c.title)}</option>`).join("");
     if ([...select.options].some((o) => o.value === prev)) select.value = prev;
+    if (itemFormWasClean) markItemFormClean();
   }
 }
 
@@ -59,9 +85,12 @@ async function refreshCollectionList() {
   `).join("");
 
   listEl.querySelectorAll(".edit-btn").forEach((btn) => {
-    btn.addEventListener("click", () => {
+    btn.addEventListener("click", async () => {
       const row = collectionsCache.find((c) => String(c.id) === btn.dataset.id);
-      if (row) startCollectionEdit(row);
+      if (!row) return;
+      if (String(currentCollectionEditId) !== String(row.id) && collectionFormIsDirty()
+        && !(await adminConfirm({ title: "Discard unsaved changes?", message: "You have unsaved changes in the category form. Discard them and edit this category instead?", confirmLabel: "Discard and edit", danger: true }))) return;
+      startCollectionEdit(row);
     });
   });
   listEl.querySelectorAll(".delete-btn").forEach((btn) => {
@@ -86,6 +115,7 @@ function startCollectionEdit(row) {
   document.getElementById("collectionFormTitle").textContent = "Edit Category";
   document.getElementById("saveCollectionBtn").textContent = "Update Category";
   show(document.getElementById("cancelCollectionEditBtn"));
+  markCollectionFormClean();
   window.scrollTo({ top: 0, behavior: "smooth" });
 }
 
@@ -98,6 +128,7 @@ function resetCollectionForm() {
   document.getElementById("saveCollectionBtn").textContent = "Add Category";
   hide(document.getElementById("cancelCollectionEditBtn"));
   document.getElementById("collectionFormStatus").textContent = "";
+  markCollectionFormClean();
 }
 
 function handleCollectionPhotoChange(e) {
@@ -161,13 +192,13 @@ async function handleDeleteCollection(id, usedSlugs) {
   const row = collectionsCache.find((c) => String(c.id) === String(id));
   if (!row) return;
   if (usedSlugs.has(row.slug)) {
-    alert(`Can't delete "${row.title}" — it still has products assigned to it. Move or delete those products first.`);
+    await adminAlert(`Can't delete "${row.title}" — it still has products assigned to it. Move or delete those products first.`, { title: "Category in use" });
     return;
   }
-  if (!confirm(`Delete "${row.title}"? This can't be undone.`)) return;
+  if (!(await adminConfirm({ title: `Delete category "${row.title}"?`, message: "This can't be undone.", confirmLabel: "Delete category", danger: true }))) return;
   const client = getSupabaseClient();
   const { error } = await mustAffect(client.from("collections").delete().eq("id", id));
-  if (error) { alert("Couldn't delete: " + error.message); return; }
+  if (error) { adminToast("Couldn't delete: " + error.message, { kind: "error" }); return; }
   if (String(currentCollectionEditId) === String(id)) resetCollectionForm(); // number (DB) vs string (data-id)
   await refreshCollectionList();
 }
@@ -196,10 +227,16 @@ function collectionHrefForAdmin(slug) {
 
 registerAdminTab("collections", { btnId: "tabCollectionsBtn", panelId: "collectionsPanel", onEnter: refreshCollectionList });
 
+registerAdminDirtyCheck(collectionFormIsDirty);
+
 onAdminInit(() => {
   document.getElementById("collectionForm").addEventListener("submit", handleSaveCollection);
   document.getElementById("c-photo").addEventListener("change", handleCollectionPhotoChange);
-  document.getElementById("cancelCollectionEditBtn").addEventListener("click", resetCollectionForm);
+  document.getElementById("cancelCollectionEditBtn").addEventListener("click", async () => {
+    if (collectionFormIsDirty() && !(await adminConfirm({ title: "Discard unsaved changes?", message: "Discard your changes to this category?", confirmLabel: "Discard", danger: true }))) return;
+    resetCollectionForm();
+  });
+  markCollectionFormClean();
   wireClickablePhotoPreview("collectionPhotoPreview");
   wireClickableThumbList("collectionList", (id) => {
     const c = collectionsCache.find((d) => String(d.id) === String(id));

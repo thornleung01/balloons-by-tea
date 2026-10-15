@@ -85,6 +85,55 @@ Quick actions: Add product, Block a date, View site.
   returns to the moved row and its new position is announced. This applies to
   Collections, Nav, FAQ, Gallery and product photos.
 
+## UI helpers: toasts and dialogs
+
+`js/admin-ui.js` (+ `css/admin-ui.css`) loads right after `js/admin-core.js` and
+replaces the browser's `alert()`, `confirm()` and `prompt()`. **Don't call the
+native ones in admin code**; use these. All text is shown with `textContent`, so
+passing a product name or an error message is safe.
+
+```js
+adminToast("Saved.", { kind: "success" });             // 'success' | 'error' | 'info'
+adminToast("Couldn't delete: " + error.message, { kind: "error" });
+adminToast("Item removed", { actionLabel: "Undo", onAction: () => restore() });
+
+if (!(await adminConfirm({
+  title: `Delete "${row.title}"?`,        // name what is being deleted
+  message: "This can't be undone.",
+  confirmLabel: "Delete category",         // say what the button does
+  danger: true,                            // red button, Cancel focused first
+  requireText: count >= 5 ? "DELETE" : undefined, // type-to-confirm for big permanent deletes
+}))) return;
+
+await adminAlert("Something the user must read.", { title: "Heads up" });
+const name = await adminConfirm.input({ title: "New folder", label: "New folder name" }); // string, or null if cancelled
+```
+
+- **Toasts** are for transient results and errors. They stack (max 5), pause
+  while hovered or focused, have a dismiss button, and error toasts use
+  `role="alert"` (others `role="status"`). Default time is 4.5 s (8 s for errors
+  or when there is an action button); `duration: 0` keeps it until dismissed.
+  Returns a function that dismisses it.
+- **`adminConfirm`** returns `Promise<boolean>`, so the calling function must be
+  `async` and use `await`. Writing `if (!adminConfirm(...))` without `await` is
+  always false and would skip the check. Esc, the Cancel button and a click on
+  the backdrop all resolve `false`. Enter confirms, except when `requireText` is
+  set (the button stays disabled until the text matches exactly). Focus is
+  trapped in the dialog and returned to the button that opened it. Dialogs queue
+  one at a time.
+- **`adminAlert`** is for messages that need acknowledging (for example a list of
+  failures). Use a toast for anything that doesn't.
+- If `js/admin-ui.js` ever fails to load, a small inline script in `admin.html`
+  defines the same four functions on top of the native dialogs, so nothing
+  breaks.
+- **Unsaved changes:** forms register with `registerAdminDirtyCheck(fn)` (see
+  `js/admin-faq.js`, `js/admin-collections.js`, `js/admin-nav.js`): take a
+  snapshot whenever the form is loaded, reset or saved, report dirty when the
+  current values differ, and ask via `adminConfirm` before Edit on another row or
+  Cancel throws the changes away. `anyAdminFormDirty()` also guards Log out and
+  closing the tab. Switching tabs deliberately does not prompt, because hidden
+  forms keep what was typed.
+
 ## Branding
 
 The public pages use **"Balloons by Tea"** (titles, logo alt text,

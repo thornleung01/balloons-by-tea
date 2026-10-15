@@ -57,7 +57,7 @@
   function openPrintWindow(title) {
     const w = window.open("", "_blank");
     if (!w) {
-      alert("Your browser blocked the print window. Allow pop-ups for this page and try again.");
+      adminToast("Your browser blocked the print window. Allow pop-ups for this page and try again.", { kind: "error" });
       return null;
     }
     w.document.open();
@@ -193,7 +193,7 @@
 
   async function printDaySheet(iso) {
     if (!/^\d{4}-\d{2}-\d{2}$/.test(iso || "")) {
-      alert("Pick a date for the day sheet first.");
+      adminToast("Pick a date for the day sheet first.", { kind: "info" });
       return;
     }
     const title = `Day sheet — ${friendlyOrderDay(iso)}`;

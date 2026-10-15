@@ -161,7 +161,7 @@
 
   async function handleRemove(fsa, btn) {
     if (!fsa) return;
-    if (!confirm(`Remove ${fsa} from your delivery areas?`)) return;
+    if (!(await adminConfirm({ title: `Remove ${fsa}?`, message: `Remove ${fsa} from your delivery areas?`, confirmLabel: "Remove area", danger: true }))) return;
     btn.disabled = true;
     const client = getSupabaseClient();
     const { error } = await mustAffect(client.from("delivery_areas").delete().eq("fsa", fsa));

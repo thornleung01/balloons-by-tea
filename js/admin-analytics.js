@@ -1217,7 +1217,7 @@ function buildAnalyticsCsv(report) {
 
 function exportAnalyticsCsv() {
   if (!analyticsLastReport) {
-    alert("Nothing to export yet — wait for the analytics to finish loading.");
+    adminToast("Nothing to export yet — wait for the analytics to finish loading.", { kind: "info" });
     return;
   }
   const blob = new Blob(["﻿" + buildAnalyticsCsv(analyticsLastReport)], { type: "text/csv;charset=utf-8;" });
@@ -1234,7 +1234,7 @@ function exportAnalyticsCsv() {
 /* Deletes analytics_events rows older than the cutoff picked in the
    "Clear old events" select. Always counts the exact rows that WOULD be
    deleted first (a head-only, count:"exact" select — no rows fetched) so
-   the confirm() dialog states a real number instead of a vague warning,
+   the confirmation dialog states a real number instead of a vague warning,
    and skips the confirm entirely when there's nothing to delete. The
    button/select are disabled for the whole count+delete round trip so a
    fast double-click can't fire two deletes. */
@@ -1262,7 +1262,7 @@ async function clearOldAnalyticsEvents() {
   if (countError) {
     btn.disabled = false;
     select.disabled = false;
-    alert("Couldn't clear events: " + countError.message);
+    adminToast("Couldn't clear events: " + countError.message, { kind: "error" });
     return;
   }
 
@@ -1273,7 +1273,13 @@ async function clearOldAnalyticsEvents() {
     return;
   }
 
-  const confirmed = confirm(`Delete ${count.toLocaleString()} analytics events older than ${cutoffDateLabel}? This can't be undone.`);
+  const confirmed = await adminConfirm({
+    title: `Delete ${count.toLocaleString()} analytics event${count === 1 ? "" : "s"}?`,
+    message: `This permanently deletes ${count.toLocaleString()} analytics event${count === 1 ? "" : "s"} older than ${cutoffDateLabel}. This can't be undone.`,
+    confirmLabel: "Delete events",
+    danger: true,
+    requireText: count > 100 ? "DELETE" : undefined,
+  });
   if (!confirmed) {
     btn.disabled = false;
     select.disabled = false;
@@ -1294,7 +1300,7 @@ async function clearOldAnalyticsEvents() {
   select.disabled = false;
 
   if (deleteError) {
-    alert("Couldn't clear events: " + deleteError.message);
+    adminToast("Couldn't clear events: " + deleteError.message, { kind: "error" });
     return;
   }
 

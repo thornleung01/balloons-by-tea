@@ -4,6 +4,28 @@
 
 let navCache = [];
 let currentNavEditId = null;
+/* The form's values when it was last loaded/reset — compared against for
+   the unsaved-changes check (same pattern as js/admin-faq.js). */
+let navFormSnapshot = null;
+
+function navFormValues() {
+  return JSON.stringify([
+    document.getElementById("n-label").value,
+    document.getElementById("n-href").value,
+    document.getElementById("n-icon").value,
+    document.getElementById("n-sort").value,
+    document.getElementById("n-visible").checked
+  ]);
+}
+
+function markNavFormClean() {
+  navFormSnapshot = navFormValues();
+}
+
+function navFormIsDirty() {
+  if (navFormSnapshot === null) return false;
+  return navFormValues() !== navFormSnapshot;
+}
 
 async function refreshNavList() {
   const client = getSupabaseClient();
@@ -29,7 +51,7 @@ async function refreshNavList() {
       </div>
       <div class="admin-item-actions">
         <label class="toggle-switch" title="${n.visible === false ? "Hidden, click to show in nav" : "Showing in nav, click to hide"}">
-          <input type="checkbox" class="nav-visible-toggle" data-id="${n.id}" ${n.visible !== false ? "checked" : ""}/>
+          <input type="checkbox" class="nav-visible-toggle" data-id="${n.id}" aria-label="Show &quot;${escapeHtml(n.label)}&quot; in nav"${n.visible !== false ? "checked" : ""}/>
           <span class="toggle-slider"></span>
         </label>
         <button type="button" class="edit-btn" data-id="${n.id}">Edit</button>
@@ -39,9 +61,12 @@ async function refreshNavList() {
   `).join("");
 
   listEl.querySelectorAll(".edit-btn").forEach((btn) => {
-    btn.addEventListener("click", () => {
+    btn.addEventListener("click", async () => {
       const row = navCache.find((n) => String(n.id) === btn.dataset.id);
-      if (row) startNavEdit(row);
+      if (!row) return;
+      if (String(currentNavEditId) !== String(row.id) && navFormIsDirty()
+        && !(await adminConfirm({ title: "Discard unsaved changes?", message: "You have unsaved changes in the nav form. Discard them and edit this item instead?", confirmLabel: "Discard and edit", danger: true }))) return;
+      startNavEdit(row);
     });
   });
   listEl.querySelectorAll(".delete-btn").forEach((btn) => {
@@ -59,7 +84,7 @@ async function handleToggleNavVisible(id, visible, toggleEl) {
   toggleEl.disabled = true;
   const { error } = await mustAffect(client.from("nav_items").update({ visible }).eq("id", id));
   if (error) {
-    alert("Couldn't update: " + error.message);
+    adminToast("Couldn't update: " + error.message, { kind: "error" });
     toggleEl.checked = !visible;
     toggleEl.disabled = false;
     return;
@@ -81,6 +106,7 @@ function startNavEdit(row) {
   document.getElementById("navFormTitle").textContent = "Edit Nav Item";
   document.getElementById("saveNavBtn").textContent = "Update Nav Item";
   show(document.getElementById("cancelNavEditBtn"));
+  markNavFormClean();
   window.scrollTo({ top: 0, behavior: "smooth" });
 }
 
@@ -91,6 +117,7 @@ function resetNavForm() {
   document.getElementById("saveNavBtn").textContent = "Add Nav Item";
   hide(document.getElementById("cancelNavEditBtn"));
   document.getElementById("navFormStatus").textContent = "";
+  markNavFormClean();
 }
 
 async function handleSaveNav(e) {
@@ -140,17 +167,23 @@ async function handleSaveNav(e) {
 async function handleDeleteNav(id) {
   const row = navCache.find((n) => String(n.id) === String(id));
   if (!row || row.key) return;
-  if (!confirm(`Delete "${row.label}"? This can't be undone.`)) return;
+  if (!(await adminConfirm({ title: `Delete nav item "${row.label}"?`, message: "This can't be undone.", confirmLabel: "Delete nav item", danger: true }))) return;
   const client = getSupabaseClient();
   const { error } = await mustAffect(client.from("nav_items").delete().eq("id", id));
-  if (error) { alert("Couldn't delete: " + error.message); return; }
+  if (error) { adminToast("Couldn't delete: " + error.message, { kind: "error" }); return; }
   if (String(currentNavEditId) === String(id)) resetNavForm(); // number (DB) vs string (data-id)
   await refreshNavList();
 }
 
 registerAdminTab("nav", { btnId: "tabNavBtn", panelId: "navPanel", onEnter: refreshNavList });
 
+registerAdminDirtyCheck(navFormIsDirty);
+
 onAdminInit(() => {
   document.getElementById("navForm").addEventListener("submit", handleSaveNav);
-  document.getElementById("cancelNavEditBtn").addEventListener("click", resetNavForm);
+  document.getElementById("cancelNavEditBtn").addEventListener("click", async () => {
+    if (navFormIsDirty() && !(await adminConfirm({ title: "Discard unsaved changes?", message: "Discard your changes to this nav item?", confirmLabel: "Discard", danger: true }))) return;
+    resetNavForm();
+  });
+  markNavFormClean();
 });

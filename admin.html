@@ -16,6 +16,7 @@
 <link rel="stylesheet" href="css/admin-notifications.css"/>
 <link rel="stylesheet" href="css/admin-safety.css"/>
 <link rel="stylesheet" href="css/admin-products.css"/>
+<link rel="stylesheet" href="css/admin-ui.css"/>
 </head>
 <body class="admin-body">
 
@@ -697,6 +698,18 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.3/dist/umd/supabase.min.js" integrity="sha384-dl/4LkSyQ4uEucc48NM6VDZLAjLLq9yMzZ5JLXumBq7Ld33XBof73hseOqPhO89+" crossorigin="anonymous"></script>
 <script src="js/supabase-config.js"></script>
 <script src="js/admin-core.js"></script>
+<script src="js/admin-ui.js"></script>
+<script>
+/* Safety net: if js/admin-ui.js failed to load, fall back to the browser's own dialogs so nothing breaks. */
+(function () {
+  if (typeof window.adminConfirm === "function" && typeof window.adminAlert === "function" && typeof window.adminToast === "function") return;
+  var join = function (a, b) { return (a ? a + "\n\n" : "") + (b || ""); };
+  window.adminConfirm = function (o) { o = o || {}; return Promise.resolve(window.confirm(join(o.title, o.message))); };
+  window.adminConfirm.input = function (o) { o = o || {}; return Promise.resolve(window.prompt(join(o.title, o.message || o.label), o.value || "")); };
+  window.adminAlert = function (m, o) { window.alert(join(o && o.title, m)); return Promise.resolve(); };
+  window.adminToast = function (m, o) { if (o && o.kind === "error") window.alert(m); return function () {}; };
+})();
+</script>
 <script src="js/admin-collections.js"></script>
 <script src="js/admin-products.js"></script>
 <script src="js/admin-library.js"></script>

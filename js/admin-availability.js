@@ -248,7 +248,7 @@
     if (!range || busy) return;
     const count = daysBetween(range.from, range.to) + 1;
     const label = count === 1 ? friendly(range.from) : `${friendly(range.from)} – ${friendly(range.to)} (${count} days)`;
-    if (!confirm(`Unblock ${label}? Customers will be able to order for ${count === 1 ? "it" : "these dates"} again.`)) return;
+    if (!(await adminConfirm({ title: `Unblock ${label}?`, message: `Customers will be able to order for ${count === 1 ? "it" : "these dates"} again.`, confirmLabel: "Unblock" }))) return;
     busy = true;
     btn.disabled = true;
     // Delete by the range itself rather than a list of days from the
