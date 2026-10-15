@@ -30,6 +30,9 @@ let pdCurrent = null; // { item, collection }
 let pdImageIndex = 0;
 let pdQty = 1;
 let pdSavedScrollY = 0;
+let pdVariantName = null;   // chosen size/option name (item.variants), or null
+let pdAddonNames = new Set(); // ticked add-on names (item.addons)
+let pdSavedHead = null;     // { title, description } to restore after an SEO override
 
 const PD_ICONS = {
   share: '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.9" aria-hidden="true"><path d="M12 15V4M8 8l4-4 4 4" stroke-linecap="round" stroke-linejoin="round"/><path d="M5 12v6a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-6" stroke-linecap="round" stroke-linejoin="round"/></svg>'
@@ -125,6 +128,8 @@ function ensureProductDetail() {
             <span class="pd-chip"></span>
             <h2 class="pd-title" id="pdTitle" tabindex="-1"></h2>
             <p class="pd-price"></p>
+            <p class="pd-stock-note" hidden></p>
+            <div class="pd-options" hidden></div>
             <p class="pd-desc"></p>
             <button type="button" class="pd-share">${PD_ICONS.share}<span>Share</span></button>
           </div>
@@ -192,8 +197,18 @@ function renderProductDetail() {
   const hasPhoto = images[0] !== NO_PHOTO_IMAGE;
 
   root.querySelector(".pd-title").textContent = item.name;
-  root.querySelector(".pd-price").textContent = formatPrice(item.price);
   root.querySelector(".pd-chip").textContent = collectionLabel(collection);
+  // Options (sizes + add-ons), sale price and stock — all optional; a
+  // product without them renders exactly as before.
+  pdVariantName = Array.isArray(item.variants) && item.variants.length ? item.variants[0].name : null;
+  pdAddonNames = new Set();
+  renderDetailOptions();
+  renderDetailPrice();
+  const stockNote = root.querySelector(".pd-stock-note");
+  const soldOut = typeof isProductSoldOut === "function" && isProductSoldOut(item);
+  stockNote.hidden = !(soldOut || (typeof item.stock === "number" && item.stock > 0 && item.stock <= 3));
+  stockNote.textContent = soldOut ? "Sold out" : `Only ${item.stock} left`;
+  stockNote.classList.toggle("is-sold-out", soldOut);
 
   const desc = root.querySelector(".pd-desc");
   desc.textContent = String(item.description || "").trim(); // CSS pre-line keeps its line breaks
@@ -240,6 +255,7 @@ function renderProductDetail() {
   syncImageUI();
 
   setDetailQty(1);
+  applyProductSeo(item);
   root.querySelector(".pd-add").classList.remove("added");
   renderRelated();
   root.querySelector(".pd-scroll").scrollTop = 0;
@@ -320,22 +336,172 @@ function renderRelated() {
   });
 }
 
+/* ---------- Options (sizes + add-ons) ---------- */
+
+/* What the current choice costs per unit, and what goes in the cart. */
+function currentDetailChoice() {
+  const item = pdCurrent.item;
+  if (typeof resolveProductOptions !== "function") return { variant: null, addons: [], unitPrice: item.price };
+  return resolveProductOptions(item, pdVariantName, [...pdAddonNames]);
+}
+
+function renderDetailPrice() {
+  const item = pdCurrent.item;
+  const el = pdRoot.querySelector(".pd-price");
+  const variants = Array.isArray(item.variants) ? item.variants : [];
+  const chosen = variants.find((v) => v.name === pdVariantName);
+  const usesOwnPrice = !chosen || chosen.price === null || chosen.price === undefined;
+  const price = typeof variantUnitPrice === "function" ? variantUnitPrice(item, chosen) : item.price;
+  // The struck-through regular price only applies when the option uses
+  // the product's own (sale) price.
+  if (usesOwnPrice && item.regularPrice && item.regularPrice > price) {
+    const was = document.createElement("s");
+    was.className = "pd-price-was";
+    was.textContent = formatPrice(item.regularPrice);
+    was.setAttribute("aria-label", `Was ${formatPrice(item.regularPrice)}`);
+    const now = document.createElement("span");
+    now.className = "pd-price-now";
+    now.textContent = formatPrice(price);
+    el.replaceChildren(was, " ", now);
+  } else {
+    el.textContent = formatPrice(price);
+  }
+}
+
+function renderDetailOptions() {
+  const item = pdCurrent.item;
+  const box = pdRoot.querySelector(".pd-options");
+  box.replaceChildren();
+  const variants = Array.isArray(item.variants) ? item.variants : [];
+  const addons = Array.isArray(item.addons) ? item.addons : [];
+  box.hidden = !variants.length && !addons.length;
+  if (box.hidden) return;
+
+  if (variants.length) {
+    const group = document.createElement("fieldset");
+    group.className = "pd-option-group pd-variants";
+    const legend = document.createElement("legend");
+    legend.textContent = "Size / option";
+    group.appendChild(legend);
+    const list = document.createElement("div");
+    list.className = "pd-variant-list";
+    variants.forEach((v, i) => {
+      const label = document.createElement("label");
+      label.className = "pd-variant";
+      const input = document.createElement("input");
+      input.type = "radio";
+      input.name = "pdVariant";
+      input.value = v.name;
+      input.checked = v.name === pdVariantName || (!pdVariantName && i === 0);
+      input.addEventListener("change", () => {
+        if (!input.checked) return;
+        pdVariantName = v.name;
+        renderDetailPrice();
+        setDetailQty(pdQty);
+      });
+      const name = document.createElement("span");
+      name.className = "pd-variant-name";
+      name.textContent = v.name;
+      const price = document.createElement("span");
+      price.className = "pd-variant-price";
+      price.textContent = formatPrice(typeof variantUnitPrice === "function" ? variantUnitPrice(item, v) : item.price);
+      label.append(input, name, price);
+      list.appendChild(label);
+    });
+    group.appendChild(list);
+    box.appendChild(group);
+  }
+
+  if (addons.length) {
+    const group = document.createElement("fieldset");
+    group.className = "pd-option-group pd-addons";
+    const legend = document.createElement("legend");
+    legend.textContent = "Add-ons";
+    group.appendChild(legend);
+    addons.forEach((a) => {
+      const label = document.createElement("label");
+      label.className = "pd-addon";
+      const input = document.createElement("input");
+      input.type = "checkbox";
+      input.value = a.name;
+      input.addEventListener("change", () => {
+        if (input.checked) pdAddonNames.add(a.name);
+        else pdAddonNames.delete(a.name);
+        setDetailQty(pdQty);
+      });
+      const name = document.createElement("span");
+      name.className = "pd-addon-name";
+      name.textContent = a.name;
+      const price = document.createElement("span");
+      price.className = "pd-addon-price";
+      price.textContent = a.price ? `+${formatPrice(a.price)}` : "Free";
+      label.append(input, name, price);
+      group.appendChild(label);
+    });
+    box.appendChild(group);
+  }
+}
+
+/* ---------- SEO (product-level title/description) ---------- */
+
+/* While a product with its own SEO title/description is open, use them
+   for <title> and the meta description; put the page's own back on
+   close. Products without them leave the page head untouched. */
+function applyProductSeo(item) {
+  const meta = document.querySelector('meta[name="description"]');
+  if (!item.seoTitle && !item.seoDescription) {
+    restoreProductSeo();
+    return;
+  }
+  if (!pdSavedHead) pdSavedHead = { title: document.title, description: meta ? meta.getAttribute("content") : null };
+  document.title = item.seoTitle || pdSavedHead.title;
+  if (meta) meta.setAttribute("content", item.seoDescription || pdSavedHead.description || "");
+}
+
+function restoreProductSeo() {
+  if (!pdSavedHead) return;
+  document.title = pdSavedHead.title;
+  const meta = document.querySelector('meta[name="description"]');
+  if (meta && pdSavedHead.description !== null) meta.setAttribute("content", pdSavedHead.description);
+  pdSavedHead = null;
+}
+
 /* ---------- Quantity + cart ---------- */
+
+function detailQtyMax() {
+  const stock = pdCurrent && pdCurrent.item.stock;
+  return typeof stock === "number" && stock > 0 ? Math.min(PRODUCT_QTY_MAX, stock) : PRODUCT_QTY_MAX;
+}
 
 function setDetailQty(value) {
   const n = Math.floor(Number(value));
-  pdQty = Math.min(PRODUCT_QTY_MAX, Math.max(1, Number.isFinite(n) ? n : 1));
+  const max = detailQtyMax();
+  pdQty = Math.min(max, Math.max(1, Number.isFinite(n) ? n : 1));
+  const soldOut = typeof isProductSoldOut === "function" && isProductSoldOut(pdCurrent.item);
   pdRoot.querySelector(".pd-qty-input").value = String(pdQty);
-  pdRoot.querySelector(".pd-qty-minus").disabled = pdQty <= 1;
-  pdRoot.querySelector(".pd-qty-plus").disabled = pdQty >= PRODUCT_QTY_MAX;
-  pdRoot.querySelector(".pd-add-label").textContent = `Add to cart · ${formatPrice(pdCurrent.item.price * pdQty)}`;
+  pdRoot.querySelector(".pd-qty-input").max = String(max);
+  pdRoot.querySelector(".pd-qty-minus").disabled = soldOut || pdQty <= 1;
+  pdRoot.querySelector(".pd-qty-plus").disabled = soldOut || pdQty >= max;
+  pdRoot.querySelector(".pd-qty-input").disabled = soldOut;
+  const addBtn = pdRoot.querySelector(".pd-add");
+  addBtn.disabled = soldOut;
+  addBtn.classList.toggle("is-sold-out", soldOut);
+  pdRoot.querySelector(".pd-add-label").textContent = soldOut
+    ? "Sold out"
+    : `Add to cart · ${formatPrice(currentDetailChoice().unitPrice * pdQty)}`;
 }
 
 function addDetailToCart() {
   const { item, collection } = pdCurrent;
+  if (typeof isProductSoldOut === "function" && isProductSoldOut(item)) return;
   const btn = pdRoot.querySelector(".pd-add");
-  addToCart({ id: item.id, name: item.name, price: item.price, collection }, pdQty, "detail");
-  showToast(pdQty > 1 ? `${pdQty} x ${item.name} added to cart` : `${item.name} added to cart`);
+  const choice = currentDetailChoice();
+  const product = { id: item.id, name: item.name, price: choice.unitPrice, collection };
+  if (choice.variant) product.variant = choice.variant;
+  if (choice.addons.length) product.addons = choice.addons;
+  addToCart(product, pdQty, "detail");
+  const label = typeof cartLineLabel === "function" ? cartLineLabel(product) : item.name;
+  showToast(pdQty > 1 ? `${pdQty} x ${label} added to cart` : `${label} added to cart`);
   btn.classList.add("added");
   setTimeout(() => btn.classList.remove("added"), 1400);
 }
@@ -455,6 +621,7 @@ function closeProductDetailView() {
   if (!isProductDetailOpen()) return;
   if (typeof closeLightbox === "function") closeLightbox(); // Back while zoomed closes both
   pdRoot.classList.remove("open");
+  restoreProductSeo();
   document.documentElement.classList.remove("pd-lock");
   closeOverlay(pdRoot);
   if (Math.abs(window.scrollY - pdSavedScrollY) > 1) {

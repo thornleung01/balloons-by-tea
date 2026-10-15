@@ -129,19 +129,43 @@
     return item.image ? [item.image] : [];
   }
 
+  /* item.price is already the price a customer pays (the sale price when
+     on sale — see applyProductExtras() in js/catalog.js). A product with
+     several differently priced sizes gets an AggregateOffer with its
+     price range; stock 0 is published as OutOfStock. */
+  function buildOffer(item, url) {
+    const availability = item.stock === 0 ? "https://schema.org/OutOfStock" : "https://schema.org/InStock";
+    const range = typeof productPriceRange === "function" ? productPriceRange(item) : null;
+    if (range && range.low !== range.high) {
+      return {
+        "@type": "AggregateOffer",
+        lowPrice: range.low.toFixed(2),
+        highPrice: range.high.toFixed(2),
+        offerCount: item.variants.length,
+        priceCurrency: "CAD",
+        availability,
+        url
+      };
+    }
+    const price = range ? range.low : Number(item.price) || 0;
+    return {
+      "@type": "Offer",
+      price: price.toFixed(2),
+      priceCurrency: "CAD",
+      availability,
+      url
+    };
+  }
+
   function buildProduct(item) {
+    const url = `${SITE_URL}all-products.html?product=${encodeURIComponent(item.id)}`;
     const product = {
       "@type": "Product",
       name: cleanText(item.name),
-      url: `${SITE_URL}all-products.html?product=${encodeURIComponent(item.id)}`,
-      offers: {
-        "@type": "Offer",
-        price: (Number(item.price) || 0).toFixed(2),
-        priceCurrency: "CAD",
-        availability: "https://schema.org/InStock",
-        url: `${SITE_URL}all-products.html?product=${encodeURIComponent(item.id)}`
-      }
+      url,
+      offers: buildOffer(item, url)
     };
+    if (item.sku) product.sku = cleanText(item.sku);
     // Items without a real photo show a generic placeholder graphic on the
     // site; leave image out rather than publish that as the product photo.
     const images = itemImages(item).map(absoluteUrl).filter(Boolean);

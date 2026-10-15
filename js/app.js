@@ -131,7 +131,10 @@ function showToast(message) {
 /* ==========================================================================
    Product grid (collection pages)
    ========================================================================== */
+/* Whole amounts look exactly as they always did ("$58"); a sale price or
+   option with cents shows them ("$49.99") instead of rounding them away. */
 function formatPrice(n) {
+  if (typeof formatCatalogMoney === "function") return formatCatalogMoney(n, CONFIG.currencySymbol);
   return `${CONFIG.currencySymbol}${n.toFixed(0)}`;
 }
 
@@ -213,6 +216,46 @@ function initBestSellers() {
   renderItemCards(getBestSellers(6), "bestSellersGrid");
 }
 
+/* ----- Product card extras (sale price, sold out, options) -----
+   Each helper returns exactly the markup cards always had when a product
+   has no sale, no stock limit and no options, so the bundled catalog and
+   a database without supabase-migrations/40-products.sql look the same. */
+function productCardPriceMarkup(item) {
+  if (typeof productPriceHtml === "function") return productPriceHtml(item, formatPrice, escapeHtml);
+  return `<span class="price">${formatPrice(item.price)}</span>`;
+}
+
+function itemNeedsOptionChoice(item) {
+  return Array.isArray(item.variants) && item.variants.length > 1;
+}
+
+function itemIsSoldOut(item) {
+  return typeof isProductSoldOut === "function" && isProductSoldOut(item);
+}
+
+function productCardAddButtonMarkup(item) {
+  if (itemIsSoldOut(item)) {
+    return `<button type="button" class="add-btn is-sold-out" disabled aria-label="${escapeHtml(item.name)} is sold out" data-id="${escapeHtml(item.id)}">${ICONS.cart}</button>`;
+  }
+  const choose = itemNeedsOptionChoice(item);
+  const label = choose ? `Choose options for ${escapeHtml(item.name)}` : `Add ${escapeHtml(item.name)} to cart`;
+  return `<button type="button" class="add-btn" aria-label="${label}" data-id="${escapeHtml(item.id)}" data-name="${escapeHtml(item.name)}" data-price="${item.price}" data-collection="${escapeHtml(item._collection)}"${choose ? ' data-choose-options="1"' : ""}>
+            ${ICONS.cart}
+          </button>`;
+}
+
+function productCardStateClass(item) {
+  if (itemIsSoldOut(item)) return " is-sold-out";
+  if (item.regularPrice && item.regularPrice > item.price) return " is-on-sale";
+  return "";
+}
+
+function productCardBadgeMarkup(item) {
+  if (itemIsSoldOut(item)) return `<span class="product-badge product-badge-soldout">Sold out</span>`;
+  if (item.regularPrice && item.regularPrice > item.price) return `<span class="product-badge product-badge-sale">Sale</span>`;
+  return "";
+}
+
 function renderItemCards(items, gridId) {
   const grid = document.getElementById(gridId || "productGrid");
   if (!grid) return;
@@ -223,15 +266,13 @@ function renderItemCards(items, gridId) {
   }
 
   grid.innerHTML = items.map((item) => `
-    <article class="product-card" data-edit-key="${String(item.id).startsWith("sb-") ? "product:" + item.id.slice(3) : ""}">
-      ${productArtMarkup(item)}
+    <article class="product-card${productCardStateClass(item)}" data-edit-key="${String(item.id).startsWith("sb-") ? "product:" + item.id.slice(3) : ""}">
+      ${productCardBadgeMarkup(item)}${productArtMarkup(item)}
       <div class="product-body">
         <h3>${escapeHtml(item.name)}</h3>
         <div class="product-footer">
-          <span class="price">${formatPrice(item.price)}</span>
-          <button type="button" class="add-btn" aria-label="Add ${escapeHtml(item.name)} to cart" data-id="${escapeHtml(item.id)}" data-name="${escapeHtml(item.name)}" data-price="${item.price}" data-collection="${escapeHtml(item._collection)}">
-            ${ICONS.cart}
-          </button>
+          ${productCardPriceMarkup(item)}
+          ${productCardAddButtonMarkup(item)}
         </div>
       </div>
     </article>
@@ -239,12 +280,28 @@ function renderItemCards(items, gridId) {
 
   grid.querySelectorAll(".add-btn").forEach((btn) => {
     btn.addEventListener("click", () => {
-      addToCart({
+      if (btn.disabled) return;
+      // Products with several sizes/options: the card can't know which one
+      // the customer wants, so open the detail view to choose.
+      if (btn.dataset.chooseOptions && typeof openProductDetail === "function") {
+        openProductDetail(btn.dataset.id, { trigger: btn, source: "card", history: "push" });
+        return;
+      }
+      const product = {
         id: btn.dataset.id,
         name: btn.dataset.name,
         price: Number(btn.dataset.price),
         collection: btn.dataset.collection
-      });
+      };
+      // A single size/option (or several, without the detail view loaded):
+      // add the first one, at its own price.
+      const cardItem = items.find((i) => i.id === btn.dataset.id);
+      if (cardItem && Array.isArray(cardItem.variants) && cardItem.variants.length && typeof resolveProductOptions === "function") {
+        const choice = resolveProductOptions(cardItem, null, []);
+        product.variant = choice.variant;
+        product.price = choice.unitPrice;
+      }
+      addToCart(product);
       btn.classList.add("added");
       btn.innerHTML = ICONS.check;
       showToast(`${btn.dataset.name} added to cart`);
@@ -303,6 +360,13 @@ function applyCatalogFilters(resetPage = true) {
   if (sort === "price-asc") items = items.slice().sort((a, b) => a.price - b.price);
   else if (sort === "price-desc") items = items.slice().sort((a, b) => b.price - a.price);
   else if (sort === "alpha") items = items.slice().sort((a, b) => a.name.localeCompare(b.name));
+  // Default order: each collection already comes featured-first, then in
+  // the admin's manual order (sortCatalogItems in js/catalog.js); across
+  // collections, lift featured products to the top too. Stable, and a
+  // no-op when nothing is featured.
+  else items = items.map((item, i) => ({ item, i }))
+    .sort((a, b) => (b.item.featured === true) - (a.item.featured === true) || a.i - b.i)
+    .map((x) => x.item);
 
   if (resetPage) catalogPage = 1;
   const totalPages = Math.max(1, Math.ceil(items.length / PRODUCTS_PER_PAGE));
@@ -525,45 +589,99 @@ function saveCart(cart) {
   updateCartBadge();
 }
 
+/* Cart line format (localStorage "auraBalloonCart"; orders are built from it):
+     { id, name, price, collection, qty,
+       variant?: { name, price },          chosen size/option
+       addons?:  [{ name, price }, ...],   ticked extras
+       key? }                              only on lines with options
+   `price` is the UNIT price the customer pays: the variant's price (or the
+   product's sale-aware price) plus every add-on. The same product with
+   different options is a separate line, told apart by `key`; plain lines
+   (and every cart saved before options existed) have no key and are
+   identified by `id`, exactly as before. */
+function cartLineKey(line) {
+  return (line && line.key) || (line && line.id);
+}
+
+function cartOptionsKey(product) {
+  const parts = [];
+  if (product.variant && product.variant.name) parts.push("v:" + product.variant.name);
+  (Array.isArray(product.addons) ? product.addons : []).map((a) => a.name).sort().forEach((name) => parts.push("a:" + name));
+  return parts.length ? `${product.id}::${parts.join("|")}` : null;
+}
+
+/* "Large, + Helium top-up" — empty for a plain line. */
+function cartLineOptionsText(line) {
+  const parts = [];
+  if (line.variant && line.variant.name) parts.push(line.variant.name);
+  (Array.isArray(line.addons) ? line.addons : []).forEach((a) => { if (a && a.name) parts.push(`+ ${a.name}`); });
+  return parts.join(", ");
+}
+
+/* Product name plus its options, for order summaries: "Arch [Large, + Helium]". */
+function cartLineLabel(line) {
+  const opts = cartLineOptionsText(line);
+  return opts ? `${line.name} [${opts}]` : line.name;
+}
+
 /* qty and source are optional (the product detail view passes both, e.g.
-   3 units from "detail"); a plain card button still adds one. */
+   3 units from "detail"); a plain card button still adds one. A product
+   with options also passes product.variant / product.addons, with
+   product.price already including them (resolveProductOptions in
+   js/catalog.js). */
 function addToCart(product, qty, source) {
   const units = Math.max(1, Math.floor(Number(qty)) || 1);
   const cart = getCart();
-  const existing = cart.find((line) => line.id === product.id);
+  const line = { ...product };
+  const key = cartOptionsKey(line);
+  if (key) line.key = key;
+  else { delete line.key; delete line.variant; delete line.addons; }
+  if (Array.isArray(line.addons) && !line.addons.length) delete line.addons;
+  const existing = cart.find((l) => cartLineKey(l) === cartLineKey(line));
   if (existing) {
     existing.qty += units;
   } else {
-    cart.push({ ...product, qty: units });
+    cart.push({ ...line, qty: units });
   }
   saveCart(cart);
   renderCartDrawer();
   const metadata = { productId: product.id, name: product.name, collection: product.collection };
+  if (line.variant) metadata.variant = line.variant.name;
   if (units > 1) metadata.qty = units;
   if (source) metadata.source = source;
   trackEvent("add_to_cart", metadata);
 }
 
-function setQty(id, qty) {
+/* `key` is cartLineKey(line) — just the product id for a plain line. */
+function setQty(key, qty) {
   let cart = getCart();
   if (qty <= 0) {
-    cart = cart.filter((line) => line.id !== id);
+    cart = cart.filter((line) => cartLineKey(line) !== key);
   } else {
-    const line = cart.find((l) => l.id === id);
-    if (line) line.qty = qty;
+    const line = cart.find((l) => cartLineKey(l) === key);
+    if (line) {
+      // Limited stock (admin "Stock" field): don't let the cart go past it.
+      const item = findItemById(line.id);
+      if (item && typeof item.stock === "number" && item.stock > 0 && qty > item.stock) {
+        qty = item.stock;
+        showToast(`Only ${item.stock} available`);
+      }
+      line.qty = qty;
+    }
   }
   saveCart(cart);
   renderCartDrawer();
 }
 
-function removeFromCart(id) {
-  const cart = getCart().filter((line) => line.id !== id);
+function removeFromCart(key) {
+  const cart = getCart().filter((line) => cartLineKey(line) !== key);
   saveCart(cart);
   renderCartDrawer();
 }
 
 function cartTotal(cart) {
-  return cart.reduce((sum, line) => sum + line.price * line.qty, 0);
+  const total = cart.reduce((sum, line) => sum + line.price * line.qty, 0);
+  return Math.round(total * 100) / 100;
 }
 
 function cartCount(cart) {
@@ -597,11 +715,12 @@ function renderCartDrawer() {
       </div>`;
   } else {
     list.innerHTML = cart.map((line) => `
-      <div class="cart-line" data-id="${escapeHtml(line.id)}">
+      <div class="cart-line" data-id="${escapeHtml(line.id)}" data-key="${escapeHtml(cartLineKey(line))}">
         <div class="cart-line-art"></div>
         <div class="cart-line-body">
           <h4>${escapeHtml(line.name)}</h4>
           <div class="cart-line-collection">${escapeHtml(collectionLabel(line.collection))}</div>
+          ${cartLineOptionsText(line) ? `<div class="cart-line-options">${escapeHtml(cartLineOptionsText(line))}</div>` : ""}
           <div class="cart-line-row">
             <div class="qty-control">
               <button type="button" class="qty-minus" aria-label="Decrease quantity">${ICONS.minus}</button>
@@ -618,20 +737,21 @@ function renderCartDrawer() {
     // Give each cart line its photo, or the shared "no photo yet" placeholder.
     list.querySelectorAll(".cart-line").forEach((el) => {
       const id = el.dataset.id;
+      const key = el.dataset.key;
       const item = findItemById(id);
       const art = el.querySelector(".cart-line-art");
       const src = (item && item.image) || NO_PHOTO_IMAGE;
       art.innerHTML = `<img src="${escapeHtml(src)}" alt=""/>`;
 
       el.querySelector(".qty-minus").addEventListener("click", () => {
-        const line = cart.find((l) => l.id === id);
-        if (line) setQty(id, line.qty - 1);
+        const line = cart.find((l) => cartLineKey(l) === key);
+        if (line) setQty(key, line.qty - 1);
       });
       el.querySelector(".qty-plus").addEventListener("click", () => {
-        const line = cart.find((l) => l.id === id);
-        if (line) setQty(id, line.qty + 1);
+        const line = cart.find((l) => cartLineKey(l) === key);
+        if (line) setQty(key, line.qty + 1);
       });
-      el.querySelector(".remove-btn").addEventListener("click", () => removeFromCart(id));
+      el.querySelector(".remove-btn").addEventListener("click", () => removeFromCart(key));
     });
   }
 
@@ -808,7 +928,7 @@ function attachOrderRef(payload) {
 
 function buildOrderPayload(form) {
   const cart = getCart();
-  const summary = cart.map((l) => `${l.qty} x ${l.name} (${collectionLabel(l.collection)}) - ${formatPrice(l.price * l.qty)}`).join("\n");
+  const summary = cart.map((l) => `${l.qty} x ${cartLineLabel(l)} (${collectionLabel(l.collection)}) - ${formatPrice(l.price * l.qty)}`).join("\n");
   // The postal code has its own field (delivery-area check) but the orders
   // table only has `address` — append it there unless it's already in it.
   const street = form.address.value.trim();
@@ -1077,7 +1197,7 @@ function renderOrderSummary() {
   if (!el) return;
   const cart = getCart();
   el.innerHTML = cart.map((l) => `
-    <div class="order-summary-row"><span>${l.qty} x ${escapeHtml(l.name)}</span><span>${formatPrice(l.price * l.qty)}</span></div>
+    <div class="order-summary-row"><span>${l.qty} x ${escapeHtml(cartLineLabel(l))}</span><span>${formatPrice(l.price * l.qty)}</span></div>
   `).join("") + `<div class="order-summary-row total"><span>Total</span><span>${formatPrice(cartTotal(cart))}</span></div>`;
 }
 
