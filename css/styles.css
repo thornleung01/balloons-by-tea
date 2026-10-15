@@ -2736,3 +2736,64 @@ html.pd-lock { overflow: hidden; }
   .pd.open .pd-panel { transform: none; }
   .pd-track { scroll-behavior: auto; }
 }
+
+/* ==========================================================================
+   Products & catalog extras (sale price, sold out, sizes/add-ons).
+   Only applies to products using these optional fields; everything else
+   renders exactly as before. Markup: productPriceHtml (js/catalog.js),
+   the product card helpers in js/app.js, the options in
+   js/product-detail.js.
+   ========================================================================== */
+.product-card:has(> .product-badge) { position: relative; }
+.product-badge {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  z-index: 1;
+  padding: 4px 10px;
+  border-radius: var(--radius-pill);
+  font-family: var(--font-nav);
+  font-size: 0.72rem;
+  font-weight: 600;
+  pointer-events: none;
+}
+.product-badge-sale { background: var(--color-accent); color: var(--brown); }
+.product-badge-soldout { background: rgba(74, 48, 40, 0.78); color: #fff; }
+.product-card.is-sold-out .product-art img { opacity: 0.6; }
+.price-was, .pd-price-was { font-weight: 500; color: var(--color-fg-faint); text-decoration: line-through; }
+.price-on-sale .price-now, .pd-price-now { color: var(--color-destructive); }
+.add-btn.is-sold-out,
+.add-btn.is-sold-out:hover { background: var(--color-border-input); color: var(--color-fg-faint); cursor: not-allowed; transform: none; }
+.cart-line-options { font-size: 0.75rem; color: var(--color-fg-soft); margin: -4px 0 6px; overflow-wrap: anywhere; }
+
+.pd-stock-note { margin: -8px 0 var(--space-2); font-size: 0.85rem; font-weight: 700; color: var(--color-accent-hover); }
+.pd-stock-note.is-sold-out { color: var(--color-fg-faint); }
+.pd-options { margin: 0 0 var(--space-3); display: flex; flex-direction: column; gap: var(--space-2); }
+.pd-options[hidden] { display: none; }
+.pd-option-group { border: 0; margin: 0; padding: 0; min-width: 0; }
+.pd-option-group legend { padding: 0; margin-bottom: 8px; font-family: var(--font-nav); font-size: 0.9rem; font-weight: 600; color: var(--color-fg); }
+.pd-variant-list { display: flex; flex-wrap: wrap; gap: 8px; }
+.pd-variant {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 0 16px;
+  border: 1.5px solid var(--color-border-input);
+  border-radius: var(--radius-pill);
+  cursor: pointer;
+  font-size: 0.88rem;
+  transition: border-color 150ms var(--ease), background-color 150ms var(--ease);
+}
+.pd-variant input { position: absolute; opacity: 0; width: 1px; height: 1px; pointer-events: none; }
+.pd-variant:hover { border-color: var(--color-accent); }
+.pd-variant:has(input:checked) { border-color: var(--color-accent); background: var(--color-accent-tint); }
+.pd-variant:has(input:focus-visible) { outline: 2px solid var(--color-accent); outline-offset: 2px; }
+.pd-variant-name { font-weight: 600; }
+.pd-variant-price { color: var(--color-fg-soft); font-weight: 700; }
+.pd-addon { display: flex; align-items: center; gap: 10px; min-height: 40px; cursor: pointer; font-size: 0.9rem; }
+.pd-addon input { width: 18px; height: 18px; accent-color: var(--color-accent); flex-shrink: 0; }
+.pd-addon-name { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.pd-addon-price { color: var(--color-fg-soft); font-weight: 700; white-space: nowrap; }
+.pd-add.is-sold-out { opacity: 0.6; cursor: not-allowed; }

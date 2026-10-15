@@ -53,9 +53,16 @@ function buildCollectionsFromSupabaseRows(rows) {
     if (!result[slug]) result[slug] = { title: slug, tagline: "", items: [] };
   });
 
+  const now = Date.now();
   rows.forEach((row) => {
     const slug = String(row.collection || "").trim().toLowerCase();
     if (row.active === false) return;
+    // Trash + scheduling (supabase-migrations/40-products.sql). The
+    // database policy already hides these from visitors; this repeats it
+    // so a logged-in admin browsing the site sees what customers see.
+    // Rows from before that migration have none of these keys.
+    if (row.deleted_at) return;
+    if (!isWithinAvailability(row.available_from, row.available_until, now)) return;
 
     const styleKey = String(row.style || "").trim().toLowerCase();
     const colors =
@@ -67,7 +74,9 @@ function buildCollectionsFromSupabaseRows(rows) {
       ? row.images.map(sanitizeImageUrl).filter(Boolean)
       : [];
 
-    result[slug].items.push({
+    // Sale price, stock, options, featured, sort order, SEO (all optional;
+    // see applyProductExtras() in js/catalog.js).
+    result[slug].items.push(applyProductExtras({
       id: "sb-" + row.id,
       name: row.name || "",
       price: Number(row.price) || 0,
@@ -75,8 +84,12 @@ function buildCollectionsFromSupabaseRows(rows) {
       colors,
       image: sanitizeImageUrl(row.image_url),
       images: images.length ? images : undefined
-    });
+    }, row));
   });
+
+  // Featured first, then the admin's manual order, then created_at (the
+  // query order). Without those columns this keeps the order unchanged.
+  Object.keys(result).forEach((slug) => { result[slug].items = sortCatalogItems(result[slug].items); });
 
   return result;
 }

@@ -44,6 +44,56 @@ let draggedProductId = null;
 // pattern used elsewhere in this file (handleToggleActive, bulkSetActive).
 let isReassigningCollection = false;
 
+/* Products in the Trash (deleted_at set) — shown on the Trash tab
+   (js/admin-products-trash.js), never in the main list. */
+let trashedProductsCache = [];
+/* Whether supabase-migrations/40-products.sql has been run (the products
+   rows carry its columns). null = unknown yet (no rows to look at), in
+   which case saves try the new columns and fall back if they're missing. */
+let productExtrasAvailable = null;
+
+/* Columns added by supabase-migrations/40-products.sql. */
+const PRODUCT_EXTRA_COLUMNS = [
+  "sku", "sale_price", "stock", "tags", "sort_order", "featured", "variants", "addons",
+  "available_from", "available_until", "seo_title", "seo_description", "deleted_at"
+];
+
+/* PostgREST PGRST204 ("Could not find the 'sku' column of 'products' in
+   the schema cache") on writes, Postgres 42703 (undefined column) on
+   filters — i.e. the migration hasn't been run yet. */
+function isMissingProductColumnError(error) {
+  if (!error) return false;
+  if (error.code === "PGRST204" || error.code === "42703") return true;
+  return /could not find the '.*' column|column .* does not exist/i.test(error.message || "");
+}
+
+function stripProductExtras(payload) {
+  const copy = { ...payload };
+  PRODUCT_EXTRA_COLUMNS.forEach((key) => { delete copy[key]; });
+  return copy;
+}
+
+/* Insert (id null) or update one product. If the new columns don't exist
+   yet, retries without them so the basics still save; `extrasDropped`
+   tells the caller to mention the migration. */
+async function saveProductPayload(client, payload, id) {
+  const run = (body) => (id
+    ? mustAffect(client.from("products").update(body).eq("id", id))
+    : client.from("products").insert(body).select());
+  let body = productExtrasAvailable === false ? stripProductExtras(payload) : payload;
+  let { data, error } = await run(body);
+  let extrasDropped = body !== payload;
+  if (error && isMissingProductColumnError(error)) {
+    productExtrasAvailable = false;
+    body = stripProductExtras(payload);
+    extrasDropped = true;
+    ({ data, error } = await run(body));
+  }
+  return { data, error, extrasDropped };
+}
+
+const PRODUCT_MIGRATION_HINT = "Run supabase-migrations/40-products.sql in Supabase to turn on sale prices, stock, options, scheduling, tags, SEO, manual order and the Trash.";
+
 async function refreshItemList() {
   const client = getSupabaseClient();
   const listEl = document.getElementById("itemList");
@@ -58,10 +108,57 @@ async function refreshItemList() {
     return;
   }
 
-  productsCache = data || [];
+  const rows = data || [];
+  if (rows.length) productExtrasAvailable = "deleted_at" in rows[0];
+  productsCache = rows.filter((row) => !row.deleted_at);
+  trashedProductsCache = rows.filter((row) => row.deleted_at);
   selectedProductIds.clear();
   populateItemFilterOptions();
   renderProductList();
+  productReloadHooks.forEach((fn) => fn());
+}
+
+/* Run after every product reload (the Trash tab count, the form's tag
+   suggestions and migration notice — js/admin-products-*.js). */
+const productReloadHooks = [];
+function onProductListReloaded(fn) { productReloadHooks.push(fn); }
+
+/* Status badges for a product row: what a shopper would (not) see. */
+function productListBadges(item) {
+  const badges = [];
+  if (item.active === false) badges.push(["hidden", "Hidden"]);
+  const state = productAvailabilityState(item.available_from, item.available_until);
+  if (state === "scheduled") badges.push(["scheduled", "Scheduled", `Goes live ${formatAdminDateTime(item.available_from)}`]);
+  if (state === "expired") badges.push(["expired", "Expired", `Ended ${formatAdminDateTime(item.available_until)}`]);
+  const sale = toNumberOrNull(item.sale_price);
+  if (sale !== null && sale < Number(item.price)) badges.push(["sale", "Sale"]);
+  if (item.featured) badges.push(["featured", "Featured"]);
+  const stock = toNumberOrNull(item.stock);
+  if (stock === 0) badges.push(["out", "Out of stock"]);
+  else if (stock !== null && stock <= 2) badges.push(["low", `Low stock (${stock})`]);
+  return badges;
+}
+
+function formatAdminDateTime(value) {
+  const d = value ? new Date(value) : null;
+  if (!d || Number.isNaN(d.getTime())) return "";
+  return d.toLocaleString(undefined, { month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" });
+}
+
+function productListPriceText(item) {
+  const fmt = (n) => formatCatalogMoney(n);
+  const sale = toNumberOrNull(item.sale_price);
+  if (sale !== null && sale < Number(item.price)) return `<s>${fmt(item.price)}</s> ${fmt(sale)}`;
+  return fmt(Number(item.price) || 0);
+}
+
+/* Manual order within a collection: sort_order, then the original
+   (created_at) order. Rows from before the migration all count as 0. */
+function sortByManualOrder(items) {
+  return items
+    .map((item, i) => ({ item, i }))
+    .sort((a, b) => (Number(a.item.sort_order) || 0) - (Number(b.item.sort_order) || 0) || a.i - b.i)
+    .map((x) => x.item);
 }
 
 function populateItemFilterOptions() {
@@ -85,7 +182,7 @@ function renderProductList() {
   const query = itemSearchQuery.trim().toLowerCase();
   let items = productsCache.filter((item) => {
     if (itemFilterSlug !== "all" && item.collection !== itemFilterSlug) return false;
-    if (query && !item.name.toLowerCase().includes(query)) return false;
+    if (query && !productMatchesSearch(item, query)) return false;
     return true;
   });
 
@@ -96,13 +193,16 @@ function renderProductList() {
 
   const renderRow = (item) => {
     const viewHref = collectionHrefForAdmin(item.collection);
+    const badges = productListBadges(item);
+    const offSite = item.active === false || productAvailabilityState(item.available_from, item.available_until) !== "live";
     return `
-    <div class="admin-item-row ${item.active === false ? "inactive" : ""}" data-id="${item.id}">
+    <div class="admin-item-row ${offSite ? "inactive" : ""}" data-id="${item.id}">
       <input type="checkbox" class="admin-item-select" data-select-id="${item.id}" aria-label="Select ${escapeHtml(item.name)}" ${selectedProductIds.has(String(item.id)) ? "checked" : ""}/>
       <div class="admin-item-thumb">${item.image_url ? `<img src="${escapeHtml(item.image_url)}" alt=""/>` : ""}${Array.isArray(item.images) && item.images.length > 1 ? `<span class="admin-item-thumb-count">${item.images.length}</span>` : ""}</div>
       <div class="admin-item-body">
         <div class="name">${escapeHtml(item.name)}</div>
-        <div class="meta">$${Number(item.price).toFixed(0)} ${item.active === false ? "&middot; hidden" : ""}</div>
+        <div class="meta">${productListPriceText(item)}${item.sku ? ` &middot; ${escapeHtml(item.sku)}` : ""}</div>
+        ${badges.length ? `<div class="product-badges">${badges.map(([kind, label, title]) => `<span class="product-status-badge is-${kind}"${title ? ` title="${escapeHtml(title)}"` : ""}>${escapeHtml(label)}</span>`).join("")}</div>` : ""}
       </div>
       <div class="admin-item-actions">
         <label class="toggle-switch" title="${item.active === false ? "Hidden, click to show on site" : "Live on site, click to hide"}">
@@ -126,6 +226,8 @@ function renderProductList() {
       if (!bySlug[item.collection]) bySlug[item.collection] = [];
       bySlug[item.collection].push(item);
     });
+    // Each folder in its manual (drag-to-reorder) order.
+    Object.keys(bySlug).forEach((slug) => { bySlug[slug] = sortByManualOrder(bySlug[slug]); });
     const knownSlugs = new Set(collectionsCache.map((c) => c.slug));
     const searching = query.length > 0;
     // With the search box empty and no category filter applied, render a
@@ -162,7 +264,7 @@ function renderProductList() {
     // slug (e.g. a category that was since renamed/deleted) would
     // otherwise silently vanish from the list. Not a valid drop target —
     // there's no slug here to assign — just somewhere for it to show up.
-    const uncategorizedItems = items.filter((item) => !knownSlugs.has(item.collection));
+    const uncategorizedItems = sortByManualOrder(items.filter((item) => !knownSlugs.has(item.collection)));
     if (uncategorizedItems.length) {
       groupsHtml += renderGroup("__uncategorized__", "Uncategorized", uncategorizedItems, false);
     }
@@ -173,7 +275,7 @@ function renderProductList() {
       return;
     }
 
-    listEl.innerHTML = groupsHtml;
+    listEl.innerHTML = `<p class="product-drag-hint">Drag a product onto another one in the same category to change the order shoppers see; drop it on a different category to move it there.</p>` + groupsHtml;
   } else {
     if (!items.length) {
       listEl.innerHTML = `<p class="empty-note">No items match. Try a different search or category.</p>`;
@@ -256,6 +358,42 @@ function wireUpCollectionGroupDrag(listEl) {
     row.addEventListener("dragend", () => {
       row.classList.remove("dragging");
       draggedProductId = null;
+      listEl.querySelectorAll(".drop-before, .drop-after").forEach((el) => el.classList.remove("drop-before", "drop-after"));
+    });
+
+    /* Reordering within the same folder: dropping onto another row of the
+       SAME category puts the dragged product before/after it (by which
+       half of the row the pointer is over). A row in a different
+       category falls through to the folder's own "move here" drop. */
+    const sameFolder = () => {
+      if (draggedProductId === null || draggedProductId === row.dataset.id) return false;
+      const dragged = productsCache.find((p) => String(p.id) === String(draggedProductId));
+      const target = productsCache.find((p) => String(p.id) === row.dataset.id);
+      return !!dragged && !!target && dragged.collection === target.collection;
+    };
+    const dropAfter = (e) => {
+      const rect = row.getBoundingClientRect();
+      return e.clientY > rect.top + rect.height / 2;
+    };
+    row.addEventListener("dragover", (e) => {
+      if (!sameFolder()) return;
+      e.preventDefault();
+      e.stopPropagation();
+      const after = dropAfter(e);
+      row.classList.toggle("drop-after", after);
+      row.classList.toggle("drop-before", !after);
+    });
+    row.addEventListener("dragleave", () => row.classList.remove("drop-before", "drop-after"));
+    row.addEventListener("drop", (e) => {
+      if (!sameFolder()) return;
+      e.preventDefault();
+      e.stopPropagation();
+      row.classList.remove("drop-before", "drop-after");
+      const group = row.closest(".collection-group");
+      if (group) group.classList.remove("drop-target-active");
+      const id = draggedProductId;
+      draggedProductId = null;
+      reorderProductWithinCollection(id, row.dataset.id, dropAfter(e));
     });
   });
 
@@ -283,6 +421,47 @@ function wireUpCollectionGroupDrag(listEl) {
       moveProductToCollection(id, targetSlug);
     });
   });
+}
+
+/* Writes sort_order 0..n-1 for one collection in its new order (only the
+   rows whose number actually changes), then reloads. The public site
+   shows featured products first, then this order. */
+async function reorderProductWithinCollection(draggedId, targetId, after) {
+  if (isReassigningCollection) return;
+  const dragged = productsCache.find((p) => String(p.id) === String(draggedId));
+  if (!dragged) return;
+  if (productExtrasAvailable === false) {
+    alert("Changing the order needs the latest database update. " + PRODUCT_MIGRATION_HINT);
+    return;
+  }
+  if (itemSearchQuery.trim()) {
+    alert("Clear the search box first, so the whole category is in view while you reorder it.");
+    return;
+  }
+  const group = sortByManualOrder(productsCache.filter((p) => p.collection === dragged.collection))
+    .filter((p) => String(p.id) !== String(draggedId));
+  let index = group.findIndex((p) => String(p.id) === String(targetId));
+  if (index === -1) return;
+  if (after) index += 1;
+  group.splice(index, 0, dragged);
+
+  const changes = group
+    .map((p, i) => ({ p, i }))
+    .filter(({ p, i }) => (Number(p.sort_order) || 0) !== i || p.sort_order === undefined);
+  if (!changes.length) return;
+  isReassigningCollection = true;
+  const client = getSupabaseClient();
+  const results = await Promise.all(changes.map(({ p, i }) =>
+    mustAffect(client.from("products").update({ sort_order: i }).eq("id", p.id))));
+  isReassigningCollection = false;
+  const failed = results.filter((r) => r.error);
+  if (failed.length) {
+    const err = failed[0].error;
+    alert(isMissingProductColumnError(err)
+      ? "Changing the order needs the latest database update. " + PRODUCT_MIGRATION_HINT
+      : `Couldn't save the new order (${failed.length} of ${changes.length} failed): ${err.message}`);
+  }
+  await refreshItemList();
 }
 
 async function moveProductToCollection(id, newSlug) {
@@ -339,20 +518,47 @@ async function bulkSetActive(active) {
   await refreshItemList();
 }
 
+/* Search box: name, SKU or tag. */
+function productMatchesSearch(item, query) {
+  if (String(item.name || "").toLowerCase().includes(query)) return true;
+  if (item.sku && String(item.sku).toLowerCase().includes(query)) return true;
+  return Array.isArray(item.tags) && item.tags.some((t) => String(t).toLowerCase().includes(query));
+}
+
+/* Delete = move to the Trash (deleted_at), restorable from the Trash tab.
+   Before supabase-migrations/40-products.sql there's no Trash, so it falls
+   back to the old permanent delete, with the old "can't be undone"
+   confirmation. Returns true if anything was removed. */
+async function deleteOrTrashProducts(ids, label) {
+  const client = getSupabaseClient();
+  if (productExtrasAvailable !== false) {
+    if (!confirm(`Move ${label} to the Trash? You can restore it from the Trash tab.`)) return false;
+    const { error } = await mustAffect(client.from("products").update({ deleted_at: new Date().toISOString() }).in("id", ids));
+    if (!error) return true;
+    if (!isMissingProductColumnError(error)) {
+      alert("Couldn't delete: " + error.message);
+      return false;
+    }
+    productExtrasAvailable = false;
+  }
+  if (!confirm(`Delete ${label}? This can't be undone.\n\n(${PRODUCT_MIGRATION_HINT})`)) return false;
+  const { error } = await mustAffect(client.from("products").delete().in("id", ids));
+  if (error) {
+    alert("Couldn't delete: " + error.message);
+    return false;
+  }
+  return true;
+}
+
 async function bulkDeleteProducts() {
   const ids = [...selectedProductIds];
   if (!ids.length) return;
   const label = ids.length === 1 ? "this item" : `these ${ids.length} items`;
-  if (!confirm(`Delete ${label}? This can't be undone.`)) return;
-  const client = getSupabaseClient();
   const bar = document.getElementById("bulkActionBar");
   bar.querySelectorAll("button").forEach((b) => { b.disabled = true; });
-  const { error } = await mustAffect(client.from("products").delete().in("id", ids));
+  const removed = await deleteOrTrashProducts(ids, label);
   bar.querySelectorAll("button").forEach((b) => { b.disabled = false; });
-  if (error) {
-    alert("Couldn't delete: " + error.message);
-    return;
-  }
+  if (!removed) return;
   if (ids.includes(String(currentEditId))) resetForm();
   selectedProductIds.clear();
   await refreshItemList();
@@ -387,7 +593,9 @@ function itemFormState() {
     collection: v("f-collection"), name: v("f-name"), price: v("f-price"),
     description: v("f-description"), style: v("f-style"),
     active: document.getElementById("f-active").checked,
-    photos: currentPhotoEntries.map((e) => (e.type === "url" ? e.value : `file:${e.value.name}:${e.value.size}`))
+    photos: currentPhotoEntries.map((e) => (e.type === "url" ? e.value : `file:${e.value.name}:${e.value.size}`)),
+    // Sale price, stock, options, visibility, tags, SEO (js/admin-products-form.js).
+    extras: typeof productExtrasFormState === "function" ? productExtrasFormState() : null
   });
 }
 function markItemFormClean() { itemFormSnapshot = itemFormState(); }
@@ -411,6 +619,7 @@ function startEdit(item) {
     ? item.images
     : (item.image_url ? [item.image_url] : []);
   currentPhotoEntries = existingUrls.map((url) => ({ type: "url", value: url }));
+  if (typeof loadProductExtrasIntoForm === "function") loadProductExtrasIntoForm(item);
   renderPhotoGallery();
 
   document.getElementById("formTitle").textContent = "Edit Item";
@@ -425,6 +634,7 @@ function resetForm() {
   currentEditId = null;
   currentPhotoEntries = [];
   document.getElementById("itemForm").reset();
+  if (typeof loadProductExtrasIntoForm === "function") loadProductExtrasIntoForm(null);
   renderPhotoGallery();
   document.getElementById("formTitle").textContent = "Add Item";
   document.getElementById("saveBtn").textContent = "Add Item";
@@ -479,6 +689,7 @@ function renderPhotoGallery() {
   });
 
   wireUpRowReorder(gallery, ".photo-gallery-item", currentPhotoEntries, () => renderPhotoGallery());
+  if (typeof scheduleProductPreview === "function") scheduleProductPreview();
 }
 
 /* Opens the shared lightbox (js/admin-core.js) on the item form's photos. */
@@ -509,6 +720,21 @@ async function handleSaveItem(e) {
     return;
   }
 
+  // Sale price, stock, options, visibility window, tags, SEO.
+  if (typeof collectProductExtrasPayload === "function") {
+    const extras = collectProductExtrasPayload(payload);
+    if (extras.error) {
+      setFormStatus(extras.error, "error");
+      return;
+    }
+    Object.assign(payload, extras.values);
+  }
+  // A new product goes to the end of its category's manual order.
+  if (!currentEditId && productExtrasAvailable !== false) {
+    const inCollection = productsCache.filter((p) => p.collection === payload.collection);
+    payload.sort_order = inCollection.reduce((max, p) => Math.max(max, Number(p.sort_order) || 0), -1) + 1;
+  }
+
   saveBtn.disabled = true;
   setFormStatus("Saving...", null);
 
@@ -532,17 +758,14 @@ async function handleSaveItem(e) {
     payload.images = finalUrls;
     payload.image_url = finalUrls[0] || null;
 
-    let error;
-    if (currentEditId) {
-      ({ error } = await mustAffect(client.from("products").update(payload).eq("id", currentEditId)));
-    } else {
-      ({ error } = await client.from("products").insert(payload));
-    }
+    const { error, extrasDropped } = await saveProductPayload(client, payload, currentEditId);
     if (error) throw error;
 
-    const message = currentEditId ? "Item updated." : "Item added.";
+    let message = currentEditId ? "Item updated." : "Item added.";
+    const usedExtras = typeof productExtrasInUse === "function" && productExtrasInUse(payload);
+    if (extrasDropped && usedExtras) message += " The new fields (sale price, stock, options, schedule, tags, SEO) weren't saved yet. " + PRODUCT_MIGRATION_HINT;
     resetForm();
-    setFormStatus(message, "success");
+    setFormStatus(message, extrasDropped && usedExtras ? "error" : "success");
     await refreshItemList();
   } catch (err) {
     setFormStatus(err.message || "Something went wrong saving this item.", "error");
@@ -553,14 +776,8 @@ async function handleSaveItem(e) {
 
 async function handleDelete(id, allItems) {
   const item = allItems.find((d) => String(d.id) === String(id));
-  const label = item ? item.name : "this item";
-  if (!confirm(`Delete "${label}"? This can't be undone.`)) return;
-  const client = getSupabaseClient();
-  const { error } = await mustAffect(client.from("products").delete().eq("id", id));
-  if (error) {
-    alert("Couldn't delete: " + error.message);
-    return;
-  }
+  const label = item ? `"${item.name}"` : "this item";
+  if (!(await deleteOrTrashProducts([id], label))) return;
   if (String(currentEditId) === String(id)) resetForm(); // number (DB) vs string (data-id)
   await refreshItemList();
 }
@@ -585,7 +802,19 @@ async function handleDuplicateProduct(id) {
     images: item.images,
     image_url: item.image_url
   };
-  const { error } = await client.from("products").insert(payload);
+  // Carry the extras over too (when the migration has been run), except
+  // the SKU — a product code should stay unique, so the copy starts
+  // without one — and the Trash state. Lands right after the original.
+  if ("deleted_at" in item) {
+    Object.assign(payload, {
+      sale_price: item.sale_price, stock: item.stock, tags: item.tags || [],
+      featured: item.featured === true, variants: item.variants || [], addons: item.addons || [],
+      available_from: item.available_from, available_until: item.available_until,
+      seo_title: item.seo_title, seo_description: item.seo_description,
+      sort_order: (Number(item.sort_order) || 0) + 1
+    });
+  }
+  const { error } = await saveProductPayload(client, payload, null);
   if (error) {
     alert("Couldn't duplicate: " + error.message);
     return;
