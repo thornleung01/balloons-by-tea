@@ -8,6 +8,8 @@
    Reads trashedProductsCache, which refreshItemList() in
    js/admin-products.js fills from the same query as the product list. */
 
+ADMIN_ICONS.trash = '<path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13M10 11v6M14 11v6"/>';
+
 const TRASH_PURGE_DAYS = 30;
 const TRASH_DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -26,16 +28,8 @@ function trashSortedRows() {
 }
 
 function updateTrashTabCount() {
-  const btn = document.getElementById("tabTrashBtn");
-  if (!btn) return;
-  let badge = btn.querySelector(".trash-tab-count");
-  if (!badge) {
-    badge = document.createElement("span");
-    badge.className = "admin-tab-badge trash-tab-count";
-    btn.appendChild(badge);
-  }
-  badge.textContent = String(trashedProductsCache.length);
-  badge.hidden = trashedProductsCache.length === 0;
+  // (badge is created by setTabBadge from the registered badgeId)
+  setTabBadge("trash", trashedProductsCache.length);
 }
 
 function renderTrashPanel() {
@@ -138,7 +132,8 @@ async function deleteTrashedForever(ids, label) {
   setTrashStatus(ids.length === 1 ? "Deleted for good." : `Deleted ${ids.length} items for good.`, "success");
 }
 
-registerAdminTab("trash", { btnId: "tabTrashBtn", panelId: "trashPanel", onEnter: renderTrashPanel });
+/* No tab button in admin.html: the grouped nav is built from the registry. */
+registerAdminTab("trash", { panelId: "trashPanel", label: "Trash", group: "catalog", icon: "trash", order: 15, badgeId: "trashBadge", onEnter: renderTrashPanel });
 
 onProductListReloaded(() => {
   updateTrashTabCount();
