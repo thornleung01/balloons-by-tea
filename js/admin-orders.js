@@ -590,7 +590,7 @@ async function handleOrderStatusChange(id, status) {
   const client = getSupabaseClient();
   const { error } = await mustAffect(client.from("orders").update({ status }).eq("id", id));
   if (error) {
-    alert("Couldn't update status: " + orderStatusErrorMessage(error, status));
+    adminToast("Couldn't update status: " + orderStatusErrorMessage(error, status), { kind: "error" });
     if (orderDrawerOrder && String(orderDrawerOrder.id) === String(id)) renderOrderDrawer();
     return false;
   }
@@ -607,18 +607,19 @@ async function handleDeleteOrder(id) {
   const order = findLoadedOrder(id);
   const photoCount = order ? orderAttachmentPaths(order).length : 0;
   const photoNote = photoCount ? ` Its ${photoCount === 1 ? "photo" : `${photoCount} photos`} will be deleted too.` : "";
-  if (!confirm(`Delete this order?${photoNote} This can't be undone.`)) return false;
+  const who = order ? [orderRef(order), order.name].filter(Boolean).join(" — ") : "";
+  if (!(await adminConfirm({ title: who ? `Delete order ${who}?` : "Delete this order?", message: `${photoNote} This can't be undone.`.trim(), confirmLabel: "Delete order", danger: true }))) return false;
   const client = getSupabaseClient();
   const { data, error } = await mustAffect(client.from("orders").delete().eq("id", id));
   if (error) {
-    alert("Couldn't delete: " + error.message);
+    adminToast("Couldn't delete: " + error.message, { kind: "error" });
     return false;
   }
   selectedOrderIds.delete(String(id));
   orderNoteDrafts.delete(String(id));
   const photoProblem = await removeOrderPhotoFiles(data || []);
   await refreshOrderList();
-  if (photoProblem) alert("The order was deleted, but " + photoProblem);
+  if (photoProblem) adminToast("The order was deleted, but " + photoProblem, { kind: "error", duration: 12000 });
   return true;
 }
 
@@ -807,7 +808,7 @@ function ensureOrderDrawer() {
 async function openOrderDrawer(id, opener) {
   const wrap = ensureOrderDrawer();
   if (orderDrawerDirty && orderDrawerOrder && String(orderDrawerOrder.id) !== String(id)
-      && !confirm("You have unsaved changes on the open order. Discard them?")) return;
+      && !(await adminConfirm({ title: "Discard unsaved changes?", message: "You have unsaved changes on the open order. Discard them and open another order?", confirmLabel: "Discard changes", danger: true }))) return;
   orderDrawerOpener = opener || document.activeElement;
   orderDrawerDirty = false;
   const cached = findLoadedOrder(id);
@@ -828,10 +829,23 @@ async function openOrderDrawer(id, opener) {
   if (!orderDrawerDirty) renderOrderDrawer();
 }
 
-function closeOrderDrawer(force) {
+/* async only for the unsaved-changes prompt: with force, or a clean drawer,
+   there is no await, so the drawer still closes synchronously. */
+let orderDrawerClosePrompt = false;
+async function closeOrderDrawer(force) {
   const wrap = document.getElementById("orderDrawer");
   if (!wrap || wrap.hidden) return;
-  if (!force && orderDrawerDirty && !confirm("Close without saving your changes to this order?")) return;
+  if (!force && orderDrawerDirty) {
+    if (orderDrawerClosePrompt) return; // a prompt is already open
+    orderDrawerClosePrompt = true;
+    let ok;
+    try {
+      ok = await adminConfirm({ title: "Close without saving?", message: "Close without saving your changes to this order?", confirmLabel: "Close and discard", danger: true });
+    } finally {
+      orderDrawerClosePrompt = false;
+    }
+    if (!ok || wrap.hidden) return;
+  }
   wrap.hidden = true;
   document.body.classList.remove("order-drawer-open");
   orderDrawerOrder = null;
@@ -1413,7 +1427,13 @@ async function handleCleanupOrderPhotos() {
     const fileCount = candidates.reduce((n, c) => n + c.paths.length, 0);
     const summary = `${fileCount} photo${fileCount === 1 ? "" : "s"} from ${candidates.length} upload${candidates.length === 1 ? "" : "s"}`;
     setOrderPhotoToolsStatus(`Found ${summary} that no order uses.`, "");
-    if (!confirm(`Permanently delete ${summary}? They were uploaded over ${ORDER_PHOTO_CLEANUP_AGE_DAYS} days ago and no order uses them (abandoned forms, or deleted orders). This can't be undone.`)) {
+    if (!(await adminConfirm({
+      title: `Permanently delete ${summary}?`,
+      message: `They were uploaded over ${ORDER_PHOTO_CLEANUP_AGE_DAYS} days ago and no order uses them (abandoned forms, or deleted orders). This can't be undone.`,
+      confirmLabel: "Delete photos",
+      danger: true,
+      requireText: fileCount >= 10 ? "DELETE" : undefined,
+    }))) {
       setOrderPhotoToolsStatus("Nothing was deleted.", "");
       return;
     }
@@ -1448,7 +1468,7 @@ async function handleCleanupOrderPhotos() {
     if (skipped) parts.push(`${skipped} skipped because an order now uses them.`);
     if (failures.length) parts.push("Problems: " + failures.join("; ") + ".");
     setOrderPhotoToolsStatus(parts.join(" "), failures.length ? "error" : "success");
-    if (failures.length) alert("Some photos couldn't be deleted:\n" + failures.join("\n"));
+    if (failures.length) await adminAlert("Some photos couldn't be deleted:\n" + failures.join("\n"), { title: "Some photos were not deleted" });
   } finally {
     btn.disabled = false;
   }
@@ -1490,7 +1510,7 @@ async function bulkUpdateOrderStatus(status) {
   const { error } = await mustAffect(client.from("orders").update({ status }).in("id", ids));
   bar.querySelectorAll("button").forEach((b) => { b.disabled = false; });
   if (error) {
-    alert("Couldn't update: " + orderStatusErrorMessage(error, status));
+    adminToast("Couldn't update: " + orderStatusErrorMessage(error, status), { kind: "error" });
     return;
   }
   selectedOrderIds.clear();
@@ -1501,14 +1521,20 @@ async function bulkDeleteOrders() {
   const ids = [...selectedOrderIds];
   if (!ids.length) return;
   const label = ids.length === 1 ? "this order" : `these ${ids.length} orders`;
-  if (!confirm(`Delete ${label}? Any inspiration photos on them will be deleted too. This can't be undone.`)) return;
+  if (!(await adminConfirm({
+    title: `Delete ${label}?`,
+    message: "Any inspiration photos on them will be deleted too. This can't be undone.",
+    confirmLabel: ids.length === 1 ? "Delete order" : `Delete ${ids.length} orders`,
+    danger: true,
+    requireText: ids.length >= 5 ? "DELETE" : undefined,
+  }))) return;
   const client = getSupabaseClient();
   const bar = document.getElementById("orderBulkActionBar");
   bar.querySelectorAll("button").forEach((b) => { b.disabled = true; });
   const { data, error } = await mustAffect(client.from("orders").delete().in("id", ids));
   if (error) {
     bar.querySelectorAll("button").forEach((b) => { b.disabled = false; });
-    alert("Couldn't delete: " + error.message);
+    adminToast("Couldn't delete: " + error.message, { kind: "error" });
     return;
   }
   const photoProblem = await removeOrderPhotoFiles(data || []);
@@ -1516,7 +1542,7 @@ async function bulkDeleteOrders() {
   selectedOrderIds.clear();
   if (orderDrawerOrder && ids.includes(String(orderDrawerOrder.id))) closeOrderDrawer(true);
   await refreshOrderList();
-  if (photoProblem) alert(`The order${ids.length === 1 ? " was" : "s were"} deleted, but ` + photoProblem);
+  if (photoProblem) adminToast(`The order${ids.length === 1 ? " was" : "s were"} deleted, but ` + photoProblem, { kind: "error", duration: 12000 });
 }
 
 /* ----- CSV export ----- */
@@ -1560,14 +1586,14 @@ async function exportOrdersCsv() {
   try {
     rows = await fetchAllMatchingOrders();
   } catch (err) {
-    alert("Couldn't export: " + (err.message || err));
+    adminToast("Couldn't export: " + (err.message || err), { kind: "error" });
     return;
   } finally {
     btn.disabled = false;
     btn.textContent = label;
   }
   if (!rows.length) {
-    alert("No orders to export for the current filters.");
+    adminToast("No orders to export for the current filters.", { kind: "info" });
     return;
   }
 
