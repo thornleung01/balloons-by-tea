@@ -120,35 +120,103 @@
     return String(kind).charAt(0).toUpperCase() + String(kind).slice(1);
   }
 
-  function cardHead(title, icon, extra) {
-    return `<div class="ov-card-head"><h2>${typeof adminIconSvg === "function" ? adminIconSvg(icon, 18) : ""}<span>${escapeHtml(title)}</span></h2>${extra || ""}</div>`;
+  /* Extra icons for this tab (same 24px stroke family as ADMIN_ICONS in
+     admin-core.js; additive, never overrides an existing name). */
+  const OV_EXTRA_ICONS = {
+    alert: '<path d="M12 3l10 18H2z"/><path d="M12 10v5M12 18h.01"/>',
+    "alert-circle": '<circle cx="12" cy="12" r="9"/><path d="M12 7.5v5M12 16h.01"/>',
+    info: '<circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7.5h.01"/>',
+    calendar: '<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/>',
+    check: '<circle cx="12" cy="12" r="9"/><path d="M8 12.5l2.7 2.7L16 9.5"/>',
+    chevron: '<path d="M9 6l6 6-6 6"/>'
+  };
+  if (typeof ADMIN_ICONS === "object") {
+    Object.keys(OV_EXTRA_ICONS).forEach((k) => { if (!ADMIN_ICONS[k]) ADMIN_ICONS[k] = OV_EXTRA_ICONS[k]; });
+  }
+  function icon(name, size) { return typeof adminIconSvg === "function" ? adminIconSvg(name, size || 18) : ""; }
+
+  function greeting() {
+    const h = new Date().getHours();
+    return h < 12 ? "Good morning" : h < 18 ? "Good afternoon" : "Good evening";
   }
 
-  function cardError(el, title, icon, message) {
+  function cardHead(title, iconName, extra) {
+    return `<div class="ov-card-head"><h2>${icon(iconName, 18)}<span>${escapeHtml(title)}</span></h2>${extra || ""}</div>`;
+  }
+
+  /* Loading placeholders shaped like each card's final layout. */
+  function skeletonFor(shape) {
+    const line = (w) => `<span class="a-skeleton a-skeleton--line ov-sk-${w}"></span>`;
+    if (shape === "list") {
+      return `<div class="ov-sk-list" aria-hidden="true">${[0, 1, 2].map(() => `<div class="ov-sk-row"><span class="a-skeleton a-skeleton--line ov-sk-time"></span><span class="ov-sk-lines">${line("w70")}${line("w40")}</span><span class="a-skeleton a-skeleton--pill"></span></div>`).join("")}</div>`;
+    }
+    if (shape === "bars") {
+      return `<div class="ov-sk-list" aria-hidden="true">${[0, 1, 2, 3].map(() => `<div class="ov-sk-bar">${line("w70")}${line("w40")}</div>`).join("")}</div>`;
+    }
+    return `<div class="ov-sk-stat" aria-hidden="true"><span class="a-skeleton ov-sk-big"></span>${line("w60")}${line("w40")}</div>`;
+  }
+
+  function cardError(el, title, iconName, message) {
     el.hidden = false;
-    el.classList.remove("is-loading");
-    el.innerHTML = `${cardHead(title, icon)}<p class="ov-error">${escapeHtml(message)}</p>`;
+    el.removeAttribute("aria-busy");
+    el.innerHTML = `${cardHead(title, iconName)}
+      <p class="a-inline-error ov-error" role="alert">${escapeHtml(`Couldn't load this card. ${message}`)}</p>
+      <div class="ov-retry"><button type="button" class="btn btn-outline btn-sm" data-ov-retry>Retry</button></div>`;
+    const retry = el.querySelector("[data-ov-retry]");
+    if (retry) retry.addEventListener("click", () => refreshOverviewPanel());
   }
 
-  function cardLoading(el, title, icon) {
-    el.classList.add("is-loading");
-    if (!el.innerHTML.trim()) el.innerHTML = `${cardHead(title, icon)}<p class="ov-muted">Loading…</p>`;
+  function cardLoading(el, title, iconName, shape) {
+    el.setAttribute("aria-busy", "true");
+    el.innerHTML = `${cardHead(title, iconName)}${skeletonFor(shape)}`;
   }
 
   /* Runs one card's renderer; an exception or failed query only affects
-     that card. */
-  async function runCard(seq, id, title, icon, fn) {
+     that card (it gets an inline error and a Retry button). */
+  async function runCard(seq, id, title, iconName, fn, shape) {
     const el = $(id);
     if (!el) return;
-    cardLoading(el, title, icon);
+    cardLoading(el, title, iconName, shape);
     try {
       await fn(el, () => seq === ovRefreshSeq);
     } catch (err) {
       if (seq !== ovRefreshSeq) return;
       console.error(`[overview] ${id}`, err);
-      cardError(el, title, icon, `Couldn't load this card: ${(err && err.message) || err}`);
+      cardError(el, title, iconName, String((err && err.message) || err));
     }
-    el.classList.remove("is-loading");
+    if (seq === ovRefreshSeq) el.removeAttribute("aria-busy");
+  }
+
+  /* Per-day totals for the last `days` days (oldest first), for sparklines. */
+  function dailyTotals(orders, days, valueOf) {
+    const start = addDays(startOfToday(), -(days - 1)).getTime();
+    const out = new Array(days).fill(0);
+    orders.forEach((o) => {
+      if (orderStatus(o) === "cancelled") return;
+      const t = Date.parse(o.created_at || "");
+      if (!Number.isFinite(t) || t < start) return;
+      const i = Math.floor((t - start) / OV_DAY_MS);
+      if (i >= 0 && i < days) out[i] += valueOf(o) || 0;
+    });
+    return out;
+  }
+
+  function sparkHtml(values, color) {
+    if (typeof AdminCharts !== "object" || !values.some((v) => v > 0)) return "";
+    return `<span class="ov-spark" aria-hidden="true">${AdminCharts.sparkline(values, { width: 96, height: 34, color })}</span>`;
+  }
+
+  function badgeHtml(status) {
+    return `<span class="a-badge a-badge--status-${escapeHtml(status)}">${escapeHtml(OV_STATUS_LABELS[status] || status)}</span>`;
+  }
+
+  /* A card's empty state: one title, one sentence, one action. */
+  function emptyHtml(iconName, title, text, action) {
+    return `<div class="a-empty ov-empty">${icon(iconName, 28)}<p class="a-empty-title">${escapeHtml(title)}</p><p class="a-empty-text">${escapeHtml(text)}</p>${action || ""}</div>`;
+  }
+
+  function emptyAction(label, tab, params) {
+    return `<button type="button" class="btn btn-outline btn-sm" ${navAttrs(tab, params)}>${escapeHtml(label)}</button>`;
   }
 
   function wireNavLinks(el) {
@@ -169,7 +237,7 @@
   /* ---------- data (one fetch each, shared by the cards) ---------- */
   async function fetchOrders(client) {
     const { data, error } = await client.from("orders").select("*").order("created_at", { ascending: false }).limit(2000);
-    if (error) throw new Error(isMissingTableError(error, "orders") ? "The orders table doesn't exist yet — run supabase-setup.sql." : error.message);
+    if (error) throw new Error(isMissingTableError(error, "orders") ? "The orders table doesn't exist yet. Run supabase-setup.sql." : error.message);
     return data || [];
   }
 
@@ -191,13 +259,16 @@
       return Number.isFinite(t) && t < min ? t : min;
     }, Infinity);
     const waitingDays = Number.isFinite(oldest) ? Math.floor((Date.now() - oldest) / OV_DAY_MS) : 0;
+    const trend = dailyTotals(orders, 14, () => 1);
+    const received = trend.reduce((a, b) => a + b, 0);
     el.innerHTML = `
       ${cardHead("New orders waiting", "receipt")}
       <button type="button" class="ov-stat-btn" ${navAttrs("orders", { status: "new" })}>
-        <span class="ov-big ${fresh.length ? "is-alert" : ""}">${fresh.length}</span>
+        <span class="ov-stat-top"><span class="ov-big ${fresh.length ? "is-alert" : ""}">${fresh.length}</span>${sparkHtml(trend, "var(--a-chart-2)")}</span>
         <span class="ov-sub">${fresh.length
-          ? (waitingDays >= 1 ? `oldest waiting ${plural(waitingDays, "day")}` : "all from today")
+          ? (waitingDays >= 1 ? `Oldest waiting ${plural(waitingDays, "day")}` : "All from today")
           : "You're all caught up"}</span>
+        <span class="ov-note">${plural(received, "order")} received in the last 14 days</span>
         <span class="ov-link">View new orders &rarr;</span>
       </button>`;
     wireNavLinks(el);
@@ -211,6 +282,7 @@
     let count = 0;
     let sum = 0;
     let unknownTotals = 0;
+    let depositCount = 0;
     orders.forEach((o) => {
       const status = orderStatus(o);
       if (status === "cancelled" || status === "quoted") return;
@@ -219,18 +291,20 @@
       const total = orderAmount(o);
       let paid = Number(o.amount_paid);
       if (!Number.isFinite(paid) || !hasValue(o.amount_paid)) paid = ps === "deposit_paid" ? (Number(o.deposit_amount) || 0) : 0;
-      if (total == null) { count++; unknownTotals++; return; }
+      if (total == null) { count++; unknownTotals++; if (ps === "deposit_paid") depositCount++; return; }
       const due = Math.max(0, total - paid);
       if (due <= 0) return;
       count++;
+      if (ps === "deposit_paid") depositCount++;
       sum += due;
     });
     el.hidden = false;
     el.innerHTML = `
       ${cardHead("Unpaid balances", "receipt")}
       <button type="button" class="ov-stat-btn" ${navAttrs("orders", { payment: "unpaid" })}>
-        <span class="ov-big">${count ? money(sum) : money(0)}</span>
-        <span class="ov-sub">${count ? `across ${plural(count, "order")}${unknownTotals ? ` (${unknownTotals} without a total)` : ""}` : "Nothing outstanding"}</span>
+        <span class="ov-stat-top"><span class="ov-big ${count ? "is-alert" : ""}">${money(count ? sum : 0)}</span></span>
+        <span class="ov-sub">${count ? `Across ${plural(count, "order")}${unknownTotals ? ` (${unknownTotals} without a total)` : ""}` : "Nothing outstanding"}</span>
+        <span class="ov-note">${count ? (depositCount ? `${plural(depositCount, "order")} with a deposit paid` : "No deposits taken yet") : "Cancelled orders and quotes are not counted"}</span>
         <span class="ov-link">View orders &rarr;</span>
       </button>`;
     wireNavLinks(el);
@@ -263,19 +337,27 @@
     let delta = "";
     if (lastToDate > 0) {
       const pct = Math.round(((thisSum - lastToDate) / lastToDate) * 100);
-      const up = pct >= 0;
-      delta = `<span class="ov-delta ${up ? "is-up" : "is-down"}">${up ? "&#9650;" : "&#9660;"} ${Math.abs(pct)}%</span> vs same point last month`;
+      const dir = pct > 0 ? "up" : pct < 0 ? "down" : "flat";
+      const glyph = dir === "up" ? "&#9650;" : dir === "down" ? "&#9660;" : "&#9644;";
+      const word = dir === "up" ? "Up" : dir === "down" ? "Down" : "No change";
+      delta = `<span class="ov-delta is-${dir}"><span aria-hidden="true">${glyph}</span> <span class="a-visually-hidden">${word}</span>${dir === "flat" ? "0%" : `${Math.abs(pct)}%`}</span> vs same point last month`;
     } else if (thisSum > 0) {
       delta = "No priced orders by this point last month";
+    } else {
+      delta = "No priced orders yet this month";
     }
     const monthName = now.toLocaleDateString("en-US", { month: "long" });
     const lastName = lastStart.toLocaleDateString("en-US", { month: "long" });
+    const trend = dailyTotals(orders, 14, (o) => orderAmount(o));
     el.innerHTML = `
-      ${cardHead(`Revenue — ${monthName}`, "chart")}
-      <span class="ov-big">${money(thisSum)}</span>
-      <span class="ov-sub">${plural(thisCount, "order")}${delta ? ` · ${delta}` : ""}</span>
-      <span class="ov-sub">${escapeHtml(lastName)}: ${money(lastSum)}</span>
-      <p class="ov-note">Orders placed, excluding cancelled orders and quotes.${unpriced ? ` ${plural(unpriced, "order")} this month without a fixed price (e.g. custom budgets) not counted.` : ""}</p>`;
+      ${cardHead(`Revenue, ${monthName}`, "chart")}
+      <button type="button" class="ov-stat-btn" ${navAttrs("analytics")}>
+        <span class="ov-stat-top"><span class="ov-big">${money(thisSum)}</span>${sparkHtml(trend, "var(--a-chart-2)")}</span>
+        <span class="ov-sub">${delta}</span>
+        <span class="ov-note">${plural(thisCount, "order")} this month. ${escapeHtml(lastName)}: ${money(lastSum)}.${unpriced ? ` ${plural(unpriced, "order")} without a fixed price not counted.` : ""}</span>
+        <span class="ov-link">See analytics &rarr;</span>
+      </button>`;
+    wireNavLinks(el);
   }
 
   async function renderEvents(el, ordersP, alive) {
@@ -290,27 +372,35 @@
       .sort((a, b) => (a.day - b.day) || orderEventTime(a.o).localeCompare(orderEventTime(b.o)));
     const head = cardHead("Events in the next 7 days", "truck", `<button type="button" class="ov-head-link" ${navAttrs("orders", { sort: "event", upcoming: "1" })}>All upcoming</button>`);
     if (!upcoming.length) {
-      el.innerHTML = `${head}<p class="ov-muted">No events booked for the next 7 days.</p>`;
+      el.innerHTML = `${head}${emptyHtml("calendar", "No events in the next 7 days", "Orders with an event date show up here, soonest first.", emptyAction("Open calendar", "orders", { view: "calendar" }))}`;
       wireNavLinks(el);
       return;
     }
-    el.innerHTML = `${head}
-      <ul class="ov-events">
-        ${upcoming.slice(0, 12).map(({ o, day }) => {
-          const status = orderStatus(o);
-          const time = orderEventTime(o);
-          const ref = orderRefOf(o);
-          return `
+    // Timeline: one heading per day (Today, Tomorrow, then the weekday), the
+    // events of that day under it, each with its time on the left.
+    const LIMIT = 8;
+    let lastKey = "";
+    const rows = upcoming.slice(0, LIMIT).map(({ o, day }) => {
+      const status = orderStatus(o);
+      const time = orderEventTime(o);
+      const ref = orderRefOf(o);
+      const key = isoDay(day);
+      const heading = key === lastKey ? "" : `
+          <li class="ov-day"><span class="ov-day-rel">${escapeHtml(relativeDay(day))}</span><span class="ov-day-date">${escapeHtml(day.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" }))}</span></li>`;
+      lastKey = key;
+      return `${heading}
           <li>
             <button type="button" class="ov-event" ${navAttrs("orders", { search: ref || o.name || "" })}>
-              <span class="ov-event-date"><strong>${escapeHtml(relativeDay(day))}</strong><span>${escapeHtml(day.toLocaleDateString("en-US", { month: "short", day: "numeric" }))}${time ? ` · ${escapeHtml(time)}` : ""}</span></span>
+              <span class="ov-event-time">${time ? escapeHtml(time) : "All day"}</span>
               <span class="ov-event-body"><span class="ov-event-name">${escapeHtml(o.name || "No name")}</span><span class="ov-event-meta">${escapeHtml(kindLabel(o.kind))}${ref ? ` · ${escapeHtml(ref)}` : ""}</span></span>
-              <span class="ov-pill ov-pill-${escapeHtml(status)}">${escapeHtml(OV_STATUS_LABELS[status] || status)}</span>
+              ${badgeHtml(status)}
             </button>
           </li>`;
-        }).join("")}
+    });
+    el.innerHTML = `${head}
+      <ul class="ov-events">${rows.join("")}
       </ul>
-      ${upcoming.length > 12 ? `<p class="ov-note">+${upcoming.length - 12} more</p>` : ""}`;
+      ${upcoming.length > LIMIT ? `<p class="ov-note">Showing ${LIMIT} of ${upcoming.length}. <button type="button" class="ov-head-link" ${navAttrs("orders", { sort: "event", upcoming: "1" })}>See all upcoming</button></p>` : ""}`;
     wireNavLinks(el);
   }
 
@@ -360,15 +450,20 @@
       const missing = [["contact_phone", "phone"], ["contact_email", "email"], ["contact_whatsapp", "WhatsApp link"]]
         .filter(([k]) => !hasValue(settings[k])).map(([, label]) => label);
       if (!missing.length) return;
-      items.push({ level: "warn", text: `Contact info missing in Settings: ${missing.join(", ")}`, tab: "settings" });
+      // All three missing means customers have no way to reach you.
+      items.push({ level: missing.length === 3 ? "danger" : "warn", text: `Contact info missing in Settings: ${missing.join(", ")}`, tab: "settings" });
     })());
 
     await Promise.allSettled(checks);
     if (!alive()) return;
-    items.sort((a, b) => (a.level === b.level ? 0 : a.level === "warn" ? -1 : 1));
+    // Most severe first: danger, then warning, then info.
+    const rank = { danger: 0, warn: 1, info: 2 };
+    items.sort((a, b) => rank[a.level] - rank[b.level]);
+    const icons = { danger: "alert-circle", warn: "alert", info: "info" };
+    const words = { danger: "Urgent", warn: "Warning", info: "Note" };
     const head = cardHead("Heads-up", "help");
     if (!items.length) {
-      el.innerHTML = `${head}<p class="ov-muted ov-ok">All clear for the next two weeks.</p>`;
+      el.innerHTML = `${head}<p class="ov-ok">${icon("check", 18)}<span>All clear for the next two weeks.</span></p>`;
       return;
     }
     el.innerHTML = `${head}
@@ -376,8 +471,9 @@
         ${items.map((it) => `
           <li class="ov-alert ov-alert-${it.level}">
             <button type="button" class="ov-alert-btn" ${navAttrs(it.tab, it.params)}>
-              <span class="ov-alert-dot" aria-hidden="true"></span>
-              <span>${escapeHtml(it.text)}</span>
+              <span class="ov-alert-icon" aria-hidden="true">${icon(icons[it.level], 16)}</span>
+              <span class="ov-alert-text"><span class="a-visually-hidden">${words[it.level]}: </span>${escapeHtml(it.text)}</span>
+              <span class="ov-alert-go" aria-hidden="true">${icon("chevron", 16)}</span>
             </button>
           </li>`).join("")}
       </ul>`;
@@ -427,7 +523,7 @@
     if (!alive()) return;
     const head = cardHead("Top products (30 days)", "box", `<button type="button" class="ov-head-link" ${navAttrs("analytics")}>Analytics</button>`);
     if (!rows || !rows.length) {
-      el.innerHTML = `${head}<p class="ov-muted">${rows ? "No product activity in the last 30 days." : "Not enough data yet — this fills in once orders carry item lists or analytics tracking is set up."}</p>`;
+      el.innerHTML = `${head}${emptyHtml("box", rows ? "No product activity in the last 30 days" : "Not enough data yet", rows ? "Orders and add-to-cart events from the last 30 days will rank here." : "This fills in once orders carry item lists or analytics tracking is set up.", emptyAction("Open analytics", "analytics"))}`;
       wireNavLinks(el);
       return;
     }
@@ -464,7 +560,7 @@
     const client = getSupabaseClient();
     if (!client) return;
     const dateEl = $("overviewDate");
-    if (dateEl) dateEl.textContent = new Date().toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric", year: "numeric" });
+    if (dateEl) dateEl.textContent = `${greeting()} · ${new Date().toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric", year: "numeric" })}`;
 
     const ordersP = fetchOrders(client);
     const settingsP = fetchSettings(client);
@@ -475,12 +571,12 @@
     const alive = () => seq === ovRefreshSeq;
 
     await Promise.allSettled([
-      runCard(seq, "ovNewOrders", "New orders waiting", "receipt", (el) => renderNewOrders(el, ordersP, alive)),
-      runCard(seq, "ovUnpaid", "Unpaid balances", "receipt", (el) => renderUnpaid(el, ordersP, alive)),
-      runCard(seq, "ovRevenue", "Revenue this month", "chart", async (el) => { await ordersP.catch(() => {}); return renderRevenue(el, ordersP, alive); }),
-      runCard(seq, "ovEvents", "Events in the next 7 days", "truck", (el) => renderEvents(el, ordersP, alive)),
-      runCard(seq, "ovHeadsUp", "Heads-up", "help", (el) => renderHeadsUp(el, client, settingsP, alive)),
-      runCard(seq, "ovTopProducts", "Top products (30 days)", "box", (el) => renderTopProducts(el, client, ordersP, alive))
+      runCard(seq, "ovNewOrders", "New orders waiting", "receipt", (el) => renderNewOrders(el, ordersP, alive), "stat"),
+      runCard(seq, "ovUnpaid", "Unpaid balances", "receipt", (el) => renderUnpaid(el, ordersP, alive), "stat"),
+      runCard(seq, "ovRevenue", "Revenue this month", "chart", async (el) => { await ordersP.catch(() => {}); return renderRevenue(el, ordersP, alive); }, "stat"),
+      runCard(seq, "ovEvents", "Events in the next 7 days", "truck", (el) => renderEvents(el, ordersP, alive), "list"),
+      runCard(seq, "ovHeadsUp", "Heads-up", "help", (el) => renderHeadsUp(el, client, settingsP, alive), "bars"),
+      runCard(seq, "ovTopProducts", "Top products (30 days)", "box", (el) => renderTopProducts(el, client, ordersP, alive), "bars")
     ]);
   }
   window.refreshOverviewPanel = refreshOverviewPanel;
@@ -529,6 +625,8 @@
       if (typeof ordersUpcomingOnly !== "undefined") ordersUpcomingOnly = on;
     }
     if (p.payment && typeof window.setOrdersPaymentFilter === "function") window.setOrdersPaymentFilter(p.payment);
+    // { view: "calendar" | "list" }: the Orders tab's List | Calendar toggle.
+    if (p.view && typeof setOrdersView === "function") setOrdersView(p.view);
   });
 
   // Products: { action: "new" } — focus the empty Add Item form.

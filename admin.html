@@ -144,16 +144,20 @@
         <div class="overview-actions">
           <button type="button" class="btn btn-primary btn-sm" id="ovAddProductBtn">Add product</button>
           <button type="button" class="btn btn-outline btn-sm" id="ovBlockDateBtn">Block a date</button>
-          <a href="index.html" class="btn btn-outline btn-sm" target="_blank" rel="noopener">View site</a>
+          <a href="index.html" class="btn btn-ghost btn-sm" target="_blank" rel="noopener">View site</a>
         </div>
       </div>
-      <div class="overview-grid" id="overviewGrid">
+      <div class="overview-stats" id="overviewStats">
         <div class="ov-card ov-stat" id="ovNewOrders"></div>
         <div class="ov-card ov-stat" id="ovUnpaid" hidden></div>
         <div class="ov-card ov-stat" id="ovRevenue"></div>
-        <div class="ov-card ov-wide" id="ovEvents"></div>
-        <div class="ov-card" id="ovHeadsUp"></div>
-        <div class="ov-card" id="ovTopProducts"></div>
+      </div>
+      <div class="overview-grid" id="overviewGrid">
+        <div class="ov-card" id="ovEvents"></div>
+        <div class="overview-side">
+          <div class="ov-card" id="ovHeadsUp"></div>
+          <div class="ov-card" id="ovTopProducts"></div>
+        </div>
       </div>
     </section>
 
