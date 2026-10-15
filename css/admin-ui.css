@@ -2,7 +2,7 @@
 
 /* ----- Toasts ----- */
 .aui-toasts {
-  position: fixed; z-index: 1200; right: 16px; bottom: 16px;
+  position: fixed; z-index: var(--a-z-toast); right: 16px; bottom: 16px;
   display: flex; flex-direction: column; gap: 8px;
   width: min(380px, calc(100vw - 32px));
   pointer-events: none;
@@ -11,63 +11,63 @@
   pointer-events: auto;
   display: flex; align-items: flex-start; gap: 10px;
   padding: 12px 12px 12px 14px;
-  background: var(--color-surface-solid, #fff); color: var(--color-fg, #4A3028);
-  border: 1px solid var(--color-border, #F1E5DD); border-left: 4px solid var(--color-fg-soft, #806B64);
-  border-radius: var(--radius-md, 14px);
-  box-shadow: 0 6px 24px rgba(74, 48, 40, 0.18);
-  font-size: 0.92rem; line-height: 1.4;
+  background: var(--a-surface-raised); color: var(--color-fg);
+  border: 1px solid var(--color-border); border-left: 4px solid var(--color-fg-soft);
+  border-radius: var(--radius-md);
+  box-shadow: var(--a-elev-2);
+  font-size: var(--a-text-base); line-height: 1.4;
   animation: aui-in 160ms ease-out;
 }
-.aui-toast-success { border-left-color: var(--color-success, #4F9E6E); }
-.aui-toast-error { border-left-color: var(--color-destructive, #D64545); }
-.aui-toast-info { border-left-color: var(--baby-blue, #B9DCF3); }
+.aui-toast-success { border-left-color: var(--color-success); }
+.aui-toast-error { border-left-color: var(--color-destructive); }
+.aui-toast-info { border-left-color: var(--baby-blue); }
 .aui-toast-msg { flex: 1; min-width: 0; overflow-wrap: anywhere; white-space: pre-wrap; }
 .aui-toast-action {
   flex: none; padding: 4px 12px; min-height: 36px;
-  background: none; border: 1px solid var(--color-accent, #FF7F7F); border-radius: var(--radius-pill, 999px);
-  color: var(--color-fg, #4A3028); font: inherit; font-weight: 700; cursor: pointer;
+  background: none; border: 1px solid var(--color-accent); border-radius: var(--radius-pill);
+  color: var(--color-fg); font: inherit; font-weight: 700; cursor: pointer;
 }
-.aui-toast-action:hover { background: var(--color-accent-tint, rgba(255, 127, 127, 0.1)); }
+.aui-toast-action:hover { background: var(--color-accent-tint); }
 .aui-toast-close {
   flex: none; width: 36px; height: 36px; margin: -8px -6px -8px 0;
   background: none; border: 0; border-radius: 50%; cursor: pointer;
-  color: var(--color-fg-soft, #806B64); font-size: 1.3rem; line-height: 1;
+  color: var(--color-fg-soft); font-size: 1.3rem; line-height: 1;
 }
-.aui-toast-close:hover { background: var(--color-bg-alt, #FFF5E3); }
+.aui-toast-close:hover { background: var(--color-bg-alt); }
 .aui-toast button:focus-visible, .aui-dialog button:focus-visible, .aui-input:focus-visible {
-  outline: 2px solid var(--color-accent, #FF7F7F); outline-offset: 2px;
+  outline: var(--a-ring-w) solid var(--a-focus); outline-offset: var(--a-ring-offset);
 }
 
 /* ----- Dialogs ----- */
 .aui-backdrop {
-  position: fixed; inset: 0; z-index: 1100;
+  position: fixed; inset: 0; z-index: var(--a-z-modal);
   display: flex; align-items: center; justify-content: center;
   padding: 16px; overflow-y: auto; overscroll-behavior: contain;
-  background: rgba(74, 48, 40, 0.5);
+  background: var(--a-scrim);
   animation: aui-fade 120ms ease-out;
 }
 .aui-dialog {
   width: min(440px, 100%); max-height: calc(100vh - 32px); max-height: calc(100dvh - 32px);
   overflow-y: auto; overscroll-behavior: contain; box-sizing: border-box;
   padding: 22px 22px 18px;
-  background: var(--color-surface-solid, #fff); color: var(--color-fg, #4A3028);
-  border-radius: var(--radius-lg, 18px);
-  box-shadow: 0 16px 48px rgba(74, 48, 40, 0.3);
+  background: var(--a-surface-raised); color: var(--color-fg);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--a-elev-modal);
   animation: aui-in 160ms ease-out;
 }
 .aui-dialog:focus { outline: none; }
-.aui-title { margin: 0 0 8px; font-family: var(--font-nav, inherit); font-size: 1.2rem; line-height: 1.25; }
-.aui-danger .aui-title { color: var(--color-destructive, #D64545); }
+.aui-title { margin: 0 0 8px; font-family: var(--a-font-ui); font-weight: var(--a-weight-bold); font-size: var(--a-text-lg); line-height: 1.25; }
+.aui-danger .aui-title { color: var(--color-destructive); }
 .aui-message { margin: 0 0 14px; line-height: 1.5; white-space: pre-wrap; overflow-wrap: anywhere; }
-.aui-field { display: block; margin: 0 0 14px; font-size: 0.9rem; font-weight: 700; }
+.aui-field { display: block; margin: 0 0 14px; font-size: var(--a-text-base); font-weight: 700; }
 .aui-input {
   display: block; width: 100%; margin-top: 6px; padding: 10px 12px; min-height: 44px;
   font: inherit; font-weight: 400; color: inherit; box-sizing: border-box;
-  background: var(--color-bg, #FFFDF9); border: 1px solid var(--color-border-input, #E8DAD1); border-radius: var(--radius-sm, 10px);
+  background: var(--color-bg); border: 1px solid var(--color-border-input); border-radius: var(--radius-sm);
 }
 .aui-actions { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: 8px; margin-top: 4px; }
 .aui-actions .btn { min-height: 44px; }
-.aui-danger .aui-ok { color: #fff; }
+.aui-danger .aui-ok { color: var(--a-on-danger); }
 .aui-ok:disabled { opacity: 0.5; cursor: not-allowed; }
 
 @media (max-width: 520px) {

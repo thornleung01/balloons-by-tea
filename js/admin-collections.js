@@ -74,7 +74,7 @@ async function refreshCollectionList() {
       <span class="drag-handle" aria-hidden="true" title="Drag to reorder">&#8942;&#8942;</span>
       <div class="admin-item-thumb">${c.card_image_url ? `<img src="${escapeHtml(c.card_image_url)}" alt=""/>` : ""}</div>
       <div class="admin-item-body">
-        <div class="name">${escapeHtml(c.title)} ${c.is_legacy ? '<span class="form-status" style="display:inline;">(built-in)</span>' : ""}</div>
+        <div class="name">${escapeHtml(c.title)} ${c.is_legacy ? '<span class="form-status a-inline">(built-in)</span>' : ""}</div>
         <div class="meta">${escapeHtml(c.tagline || "")}</div>
       </div>
       <div class="admin-item-actions">

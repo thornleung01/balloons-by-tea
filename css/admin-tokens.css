@@ -1,0 +1,505 @@
+/* ==========================================================================
+   Admin design tokens + shared utilities.   Load order: css/styles.css, THEN
+   this file, THEN css/admin.css and the rest.   Full reference and rules:
+   docs/admin-design-system.md
+
+   Everything here is scoped to `.admin-body` (never bare :root) so the public
+   storefront cannot change. This is the ONLY admin stylesheet allowed to
+   contain hex colors (scripts/check-admin-tokens.js enforces that).
+
+   Themes
+     light  default values on .admin-body
+     dark   re-tunes the same names under
+              @media (prefers-color-scheme: dark)  :root:not([data-theme="light"]) body.admin-body
+              :root[data-theme="dark"] body.admin-body
+            `data-theme` on <html> is set by js/admin-theme.js (and by the
+            inline script in admin.html <head> before first paint).
+   The dark blocks also re-point the public semantic variables (--color-bg,
+   --color-fg, --color-accent, ...) inside the admin scope, so every rule that
+   reads them adopts dark with no extra CSS. Prefer the --a-* names in new code.
+   ========================================================================== */
+
+/* -------------------------------------------------------------------------
+   1. Light theme (default) + theme-independent tokens
+   ------------------------------------------------------------------------- */
+body.admin-body {
+  color-scheme: light;
+
+  /* ---- Surfaces and text (aliases of the public semantic tokens) ---- */
+  --a-bg: var(--color-bg-alt);               /* page background */
+  --a-surface: var(--color-surface-solid);   /* cards, header, drawer head */
+  --a-surface-sunken: var(--color-bg-alt);   /* wells inside cards, table stripes */
+  --a-surface-raised: #FFFFFF;               /* dialogs, menus, toasts */
+  --a-text: var(--color-fg);
+  --a-text-soft: var(--color-fg-soft);
+  --a-text-faint: var(--color-fg-faint);     /* >= 4.5:1 on page and on cards */
+  --a-border: var(--color-border);
+  --a-border-strong: var(--color-border-input);
+  --a-scrim: rgba(74, 48, 40, 0.35);         /* modal / drawer backdrop */
+  --a-shadow-rgb: 74 48 40;
+
+  /* ---- One accent (brand coral) ---- */
+  --a-accent: var(--color-accent);           /* fills, rings, dots, borders */
+  --a-on-accent: #4A3028;                    /* label on a coral fill: 4.9:1 (white is only 2.4:1: never use it) */
+  --a-accent-text: #B34848;                  /* coral used AS TEXT or link: 5.3:1 on white, 4.9:1 on cream */
+  --a-focus: #C9484A;                        /* focus ring: >= 3:1 on white, cream and tints */
+
+  /* ---- Semantic status pairs: fg is text, bg is its soft fill (all >= 4.5:1) ---- */
+  --a-success-fg: #2F6B47;  --a-success-bg: #E5F3EA;  --a-success-line: #B9DCC7;
+  --a-warning-fg: #7A5A00;  --a-warning-bg: #FFF4D6;  --a-warning-line: #EBD58F;
+  --a-danger-fg:  #A32B2B;  --a-danger-bg:  #FDECEC;  --a-danger-line:  #F5C9C9;
+  --a-info-fg:    #2D5C7C;  --a-info-bg:    #E7F3FB;  --a-info-line:    #BFD9EC;
+  --a-neutral-fg: #5E4A41;  --a-neutral-bg: #F1E9E3;  --a-neutral-line: #E0D3CA;
+  --a-accent-fg:  #B34848;  --a-accent-bg:  #FFEDEA;  --a-accent-line:  #F8C4C4;
+  /* Solid fills (count badges, destructive buttons) with the label that goes on them */
+  --a-danger-solid: #C23B3B;  --a-on-danger: #FFFFFF;     /* 5.3:1 */
+  --a-success-solid: #2F7A4F; --a-on-success: #FFFFFF;    /* 5.2:1 */
+
+  /* ---- Domain status pairs: aliases of the semantic pairs, so one surface can be
+          re-pointed without touching the others. Used by .a-badge--<name> too. ---- */
+  /* order status */
+  --a-status-new-fg: var(--a-accent-fg);          --a-status-new-bg: var(--a-accent-bg);          --a-status-new-line: var(--a-accent-line);
+  --a-status-contacted-fg: var(--a-warning-fg);   --a-status-contacted-bg: var(--a-warning-bg);   --a-status-contacted-line: var(--a-warning-line);
+  --a-status-quoted-fg: var(--a-info-fg);         --a-status-quoted-bg: var(--a-info-bg);         --a-status-quoted-line: var(--a-info-line);
+  --a-status-fulfilled-fg: var(--a-success-fg);   --a-status-fulfilled-bg: var(--a-success-bg);   --a-status-fulfilled-line: var(--a-success-line);
+  --a-status-cancelled-fg: var(--a-neutral-fg);   --a-status-cancelled-bg: var(--a-neutral-bg);   --a-status-cancelled-line: var(--a-neutral-line);
+  /* payment */
+  --a-status-unpaid-fg: var(--a-neutral-fg);      --a-status-unpaid-bg: var(--a-neutral-bg);      --a-status-unpaid-line: var(--a-neutral-line);
+  --a-status-deposit-fg: var(--a-warning-fg);     --a-status-deposit-bg: var(--a-warning-bg);     --a-status-deposit-line: var(--a-warning-line);
+  --a-status-paid-fg: var(--a-success-fg);        --a-status-paid-bg: var(--a-success-bg);        --a-status-paid-line: var(--a-success-line);
+  --a-status-refunded-fg: var(--a-neutral-fg);    --a-status-refunded-bg: var(--a-neutral-bg);    --a-status-refunded-line: var(--a-neutral-line);
+  --a-status-balance-fg: var(--a-danger-fg);      --a-status-balance-bg: var(--a-danger-bg);      --a-status-balance-line: var(--a-danger-line);
+  /* product badges */
+  --a-status-sale-fg: var(--a-danger-fg);         --a-status-sale-bg: var(--a-danger-bg);         --a-status-sale-line: var(--a-danger-line);
+  --a-status-featured-fg: var(--a-accent-fg);     --a-status-featured-bg: var(--a-accent-bg);     --a-status-featured-line: var(--a-accent-line);
+  --a-status-lowstock-fg: var(--a-warning-fg);    --a-status-lowstock-bg: var(--a-warning-bg);    --a-status-lowstock-line: var(--a-warning-line);
+  --a-status-outofstock-fg: var(--a-danger-fg);   --a-status-outofstock-bg: var(--a-danger-bg);   --a-status-outofstock-line: var(--a-danger-line);
+  --a-status-scheduled-fg: var(--a-info-fg);      --a-status-scheduled-bg: var(--a-info-bg);      --a-status-scheduled-line: var(--a-info-line);
+  --a-status-expired-fg: var(--a-neutral-fg);     --a-status-expired-bg: var(--a-neutral-bg);     --a-status-expired-line: var(--a-neutral-line);
+  --a-status-hidden-fg: var(--a-neutral-fg);      --a-status-hidden-bg: var(--a-neutral-bg);      --a-status-hidden-line: var(--a-neutral-line);
+
+  /* ---- Charts (css/admin-analytics.css, js/admin-charts.js). Every categorical
+          colour is >= 3:1 on the card surface in its theme; text never uses them. ---- */
+  --a-chart-1: #3B7DB8;   /* blue: traffic / sessions */
+  --a-chart-2: #E0565B;   /* coral: orders / revenue */
+  --a-chart-3: #3F8F5F;   /* green */
+  --a-chart-4: #B87A00;   /* amber */
+  --a-chart-5: #8A6A5A;   /* taupe */
+  --a-chart-up: #2F7A4F;
+  --a-chart-down: #C23B3B;
+  --a-chart-grid: rgba(74, 48, 40, 0.10);
+  --a-chart-axis: rgba(74, 48, 40, 0.28);
+  --a-chart-track: var(--color-bg-alt);
+  --a-chart-tip-bg: #2F211C;
+  --a-chart-tip-fg: #FFFDF9;
+  /* sequential ramp, one hue, light to dark (step 1 is the "has data" floor) */
+  --a-seq-0: var(--color-bg-alt);
+  --a-seq-1: #D5696D;
+  --a-seq-2: #C24A52;
+  --a-seq-3: #A63341;
+  --a-seq-4: #7E222D;
+  --a-seq-0-fg: var(--color-fg-faint);  --a-seq-1-fg: #1F1511;  --a-seq-2-fg: #FFFFFF;  --a-seq-3-fg: #FFFFFF;  --a-seq-4-fg: #FFFFFF;   /* label on each step, >= 4.5:1 */
+
+  /* ---- Type ---- */
+  --a-font-ui: var(--font-body);            /* everything: buttons, labels, tabs, badges, tables */
+  --a-font-display: var(--font-display);    /* ONLY page and panel titles (h1, .admin-card h2) */
+  --a-font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+  --a-text-2xs: 0.6875rem;   /* 11px  micro labels (uppercase eyebrows, counts) */
+  --a-text-xs: 0.75rem;      /* 12px  captions, meta */
+  --a-text-sm: 0.8125rem;    /* 13px  secondary text, dense tables, chips */
+  --a-text-base: 0.9375rem;  /* 15px  body in the admin */
+  --a-text-md: 1rem;         /* 16px  inputs (stops iOS zoom), emphasised body */
+  --a-text-lg: 1.1875rem;    /* 19px  card / drawer titles */
+  --a-text-xl: 1.375rem;     /* 22px  section titles, big numbers on phones */
+  --a-text-2xl: 1.625rem;    /* 26px  page title, login */
+  --a-text-3xl: 2.125rem;    /* 34px  hero stat numbers */
+  --a-leading-tight: 1.2;
+  --a-leading-snug: 1.35;
+  --a-leading-normal: 1.5;
+  --a-weight-regular: 400;
+  --a-weight-medium: 500;
+  --a-weight-semibold: 600;   /* buttons, labels, tabs */
+  --a-weight-bold: 700;       /* badges, table heads, titles in the UI font */
+
+  /* ---- Shape ---- */
+  --a-radius-xs: 6px;                 /* tiny chips and controls inside dense tables */
+  --a-radius-sm: var(--radius-sm);    /* 10px  inputs, thumbnails, list rows */
+  --a-radius-md: var(--radius-md);    /* 14px  buttons (.btn), popovers, sub-cards */
+  --a-radius-lg: var(--radius-lg);    /* 18px  cards, drawers, dialogs */
+  --a-radius-pill: var(--radius-pill);/* chips, badges, filters, tabs */
+  /* 50% is allowed for avatars, dots and round icon buttons only. */
+
+  /* ---- Spacing (4px base) ---- */
+  --a-space-1: 4px;
+  --a-space-2: 8px;
+  --a-space-3: 12px;
+  --a-space-4: 16px;
+  --a-space-5: 24px;
+  --a-space-6: 32px;
+  --a-space-7: 48px;
+  --a-space-8: 64px;
+
+  /* ---- Borders, rings, tap targets ---- */
+  --a-border-w: 1px;
+  --a-border-w-strong: 1.5px;
+  --a-ring-w: 2px;
+  --a-ring-offset: 2px;
+  --a-tap: 44px;
+
+  /* ---- Elevation: two levels (cards, floating) + positional variants ---- */
+  --a-elev-1: 0 2px 10px rgb(var(--a-shadow-rgb) / 0.05);                 /* cards at rest */
+  --a-elev-2: 0 6px 24px rgb(var(--a-shadow-rgb) / 0.18);                 /* menus, toasts, popovers */
+  --a-elev-modal: 0 16px 48px rgb(var(--a-shadow-rgb) / 0.30);            /* dialogs, lightbox */
+  --a-elev-drawer: -8px 0 32px rgb(var(--a-shadow-rgb) / 0.18);           /* right-hand drawer */
+  --a-elev-bar: 0 -4px 16px rgb(var(--a-shadow-rgb) / 0.06);              /* bottom bar */
+
+  /* ---- Stacking order (matches the values the admin already used) ---- */
+  --a-z-raised: 1;      /* badges / overlays inside one component */
+  --a-z-above: 5;       /* sticky cells, tiles over neighbours */
+  --a-z-sticky: 40;     /* sticky toolbars and table heads */
+  --a-z-sticky-hi: 50;  /* sticky bars that sit over other sticky bars */
+  --a-z-header: 60;     /* sticky admin header */
+  --a-z-nav: 70;        /* phone bottom bar */
+  --a-z-skip: 200;      /* skip link */
+  --a-z-drawer: 400;    /* order drawer and other side panels */
+  --a-z-modal: 1100;    /* admin-ui dialogs, lightbox (above drawers) */
+  --a-z-toast: 1200;    /* toasts (above everything) */
+
+  /* ---- Motion ---- */
+  --a-ease: var(--ease);
+  --a-dur-fast: 120ms;
+  --a-dur: 160ms;
+  --a-dur-slow: 240ms;
+
+  /* ---- Fixed (theme-independent) surfaces: things drawn over photos, and
+          deliberately light replicas of third-party UI ---- */
+  --a-media-scrim: rgba(30, 20, 16, 0.78);          /* round buttons / counts on photo thumbnails */
+  --a-media-scrim-hi: rgba(30, 20, 16, 0.95);
+  --a-on-media: #FFFFFF;                             /* label on that scrim: > 12:1 */
+  --a-media-chip-bg: rgba(255, 255, 255, 0.92);      /* light chip over a photo */
+  --a-knob: #FFFFFF;                                 /* toggle switch knob */
+  --a-serp-bg: #FFFFFF;     --a-serp-line: #E3E3E3;  /* Google result preview stays a light plate in both themes */
+  --a-serp-title: #1A0DAB;  --a-serp-url: #202124;
+  --a-serp-text: #4D5156;   --a-serp-label: #5F6368;
+  --a-bar-bg: #4A3028;  --a-bar-fg: #FFFFFF;        /* sticky save bar (inverse of the page) */
+  --a-photo-filter: none;                            /* dimmed slightly in dark */
+  --a-plate: #FFFFFF;                                /* light plate behind QR codes */
+
+  /* ---- Re-point public semantic tokens inside the admin scope ---- */
+  --color-destructive: var(--a-danger-solid);   /* 5.3:1 on white as text and with white on it */
+  --color-success: var(--a-success-solid);
+  --color-accent-hover: #FF8C8C;                /* lighter, not darker: --a-on-accent stays >= 4.5:1 */
+}
+
+/* -------------------------------------------------------------------------
+   2. Dark theme. One block of values, applied twice (OS preference unless the
+   owner forced light, or forced dark). Keep the two copies identical.
+   Palette: warm brown-charcoal, stepped lighter for elevation. Never pure black.
+   ------------------------------------------------------------------------- */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) body.admin-body {
+    color-scheme: dark;
+
+    /* public semantic tokens, re-pointed so every existing rule goes dark */
+    --color-bg: #1E1814;
+    --color-bg-alt: #171210;
+    --color-surface: rgba(38, 32, 25, 0.72);
+    --color-surface-solid: #262019;
+    --color-fg: #F2E8DE;
+    --color-fg-soft: #CDBEB2;
+    --color-fg-faint: #AD9C90;
+    --color-accent: #FF8F88;
+    --color-accent-hover: #FFA39C;
+    --color-accent-soft: #7A4A47;
+    --color-accent-tint: rgba(255, 143, 136, 0.14);
+    --color-border: #3B3129;
+    --color-border-input: #766558;
+    --nav-pill-bg: #2E251E;
+    --nav-pill-border: rgba(242, 232, 222, 0.22);
+    --color-destructive: #FF8A80;
+    --color-success: #6CCB94;
+    --cream: #2E251E;
+    --baby-blue: #6FA8D6;
+    --soft-yellow: #D9A93A;
+    --shadow-soft: 0 2px 10px rgba(0, 0, 0, 0.30);
+    --shadow-lift: 0 6px 24px rgba(0, 0, 0, 0.35);
+
+    --a-surface-raised: #302821;
+    --a-scrim: rgba(8, 5, 3, 0.62);
+    --a-bar-bg: #3B2F27;  --a-bar-fg: #F2E8DE;
+    --a-photo-filter: brightness(0.92);
+    --a-shadow-rgb: 0 0 0;
+    --a-on-accent: #2B1812;
+    --a-accent-text: #FFA39C;
+    --a-focus: #FFA39C;
+
+    --a-success-fg: #8ED8A8;  --a-success-bg: #1F3326;  --a-success-line: #345A42;
+    --a-warning-fg: #F2CB6B;  --a-warning-bg: #382E14;  --a-warning-line: #5E4E1E;
+    --a-danger-fg:  #FFA79F;  --a-danger-bg:  #3E2321;  --a-danger-line:  #6B3A36;
+    --a-info-fg:    #9FCDEE;  --a-info-bg:    #1C2F3F;  --a-info-line:    #335470;
+    --a-neutral-fg: #CFC0B4;  --a-neutral-bg: #332A23;  --a-neutral-line: #4F4238;
+    --a-accent-fg:  #FFAAA2;  --a-accent-bg:  #402725;  --a-accent-line:  #6E403D;
+    --a-danger-solid: #E5645B;  --a-on-danger: #220B09;
+    --a-success-solid: #4FB07B; --a-on-success: #0D2216;
+
+    --a-chart-1: #6FB1E6;
+    --a-chart-2: #FF8A85;
+    --a-chart-3: #6CCB94;
+    --a-chart-4: #E8B84B;
+    --a-chart-5: #C9A898;
+    --a-chart-up: #6CCB94;
+    --a-chart-down: #FF8A80;
+    --a-chart-grid: rgba(242, 232, 222, 0.10);
+    --a-chart-axis: rgba(242, 232, 222, 0.30);
+    --a-chart-tip-bg: #F2E8DE;
+    --a-chart-tip-fg: #231B16;
+    --a-seq-1: #A25755;
+    --a-seq-2: #C46A69;
+    --a-seq-3: #E8837F;
+    --a-seq-4: #FFAAA2;
+    --a-seq-1-fg: #FFFFFF;  --a-seq-2-fg: #231B16;  --a-seq-3-fg: #231B16;  --a-seq-4-fg: #231B16;
+  }
+}
+:root[data-theme="dark"] body.admin-body {
+  color-scheme: dark;
+
+  --color-bg: #1E1814;
+  --color-bg-alt: #171210;
+  --color-surface: rgba(38, 32, 25, 0.72);
+  --color-surface-solid: #262019;
+  --color-fg: #F2E8DE;
+  --color-fg-soft: #CDBEB2;
+  --color-fg-faint: #AD9C90;
+  --color-accent: #FF8F88;
+  --color-accent-hover: #FFA39C;
+  --color-accent-soft: #7A4A47;
+  --color-accent-tint: rgba(255, 143, 136, 0.14);
+  --color-border: #3B3129;
+  --color-border-input: #766558;
+  --nav-pill-bg: #2E251E;
+  --nav-pill-border: rgba(242, 232, 222, 0.22);
+  --color-destructive: #FF8A80;
+  --color-success: #6CCB94;
+  --cream: #2E251E;
+  --baby-blue: #6FA8D6;
+  --soft-yellow: #D9A93A;
+  --shadow-soft: 0 2px 10px rgba(0, 0, 0, 0.30);
+  --shadow-lift: 0 6px 24px rgba(0, 0, 0, 0.35);
+
+  --a-surface-raised: #302821;
+  --a-scrim: rgba(8, 5, 3, 0.62);
+  --a-bar-bg: #3B2F27;  --a-bar-fg: #F2E8DE;
+  --a-photo-filter: brightness(0.92);
+  --a-shadow-rgb: 0 0 0;
+  --a-on-accent: #2B1812;
+  --a-accent-text: #FFA39C;
+  --a-focus: #FFA39C;
+
+  --a-success-fg: #8ED8A8;  --a-success-bg: #1F3326;  --a-success-line: #345A42;
+  --a-warning-fg: #F2CB6B;  --a-warning-bg: #382E14;  --a-warning-line: #5E4E1E;
+  --a-danger-fg:  #FFA79F;  --a-danger-bg:  #3E2321;  --a-danger-line:  #6B3A36;
+  --a-info-fg:    #9FCDEE;  --a-info-bg:    #1C2F3F;  --a-info-line:    #335470;
+  --a-neutral-fg: #CFC0B4;  --a-neutral-bg: #332A23;  --a-neutral-line: #4F4238;
+  --a-accent-fg:  #FFAAA2;  --a-accent-bg:  #402725;  --a-accent-line:  #6E403D;
+  --a-danger-solid: #E5645B;  --a-on-danger: #220B09;
+  --a-success-solid: #4FB07B; --a-on-success: #0D2216;
+
+  --a-chart-1: #6FB1E6;
+  --a-chart-2: #FF8A85;
+  --a-chart-3: #6CCB94;
+  --a-chart-4: #E8B84B;
+  --a-chart-5: #C9A898;
+  --a-chart-up: #6CCB94;
+  --a-chart-down: #FF8A80;
+  --a-chart-grid: rgba(242, 232, 222, 0.10);
+  --a-chart-axis: rgba(242, 232, 222, 0.30);
+  --a-chart-tip-bg: #F2E8DE;
+  --a-chart-tip-fg: #231B16;
+  --a-seq-1: #A25755;
+  --a-seq-2: #C46A69;
+  --a-seq-3: #E8837F;
+  --a-seq-4: #FFAAA2;
+  --a-seq-1-fg: #FFFFFF;  --a-seq-2-fg: #231B16;  --a-seq-3-fg: #231B16;  --a-seq-4-fg: #231B16;
+}
+
+/* -------------------------------------------------------------------------
+   Print is always light: restore the light value of every token the dark
+   blocks change. (js/admin-orders-print.js writes its own light document.)
+   ------------------------------------------------------------------------- */
+@media print {
+  :root:root body.admin-body {
+    color-scheme: light;
+    --color-bg: var(--background);
+    --color-bg-alt: var(--cream);
+    --color-surface: rgba(255, 255, 255, 0.72);
+    --color-surface-solid: var(--surface);
+    --color-fg: var(--brown);
+    --color-fg-soft: var(--muted-brown);
+    --color-fg-faint: var(--faint-brown);
+    --color-accent: var(--coral);
+    --color-accent-hover: #FF8C8C;
+    --color-accent-soft: var(--blush);
+    --color-accent-tint: rgba(255, 127, 127, 0.1);
+    --color-border: var(--border);
+    --color-border-input: var(--border-input);
+    --nav-pill-bg: var(--cream);
+    --nav-pill-border: rgba(74, 48, 40, 0.28);
+    --color-destructive: var(--a-danger-solid);
+    --color-success: var(--a-success-solid);
+    --cream: #FFF5E3;
+    --baby-blue: #B9DCF3;
+    --soft-yellow: #FFD66B;
+    --shadow-soft: 0 2px 10px rgba(74, 48, 40, 0.05);
+    --shadow-lift: 0 6px 24px rgba(74, 48, 40, 0.06);
+    --a-surface-raised: #FFFFFF;
+    --a-scrim: rgba(74, 48, 40, 0.35);
+    --a-bar-bg: #4A3028;
+    --a-bar-fg: #FFFFFF;
+    --a-photo-filter: none;
+    --a-shadow-rgb: 74 48 40;
+    --a-on-accent: #4A3028;
+    --a-accent-text: #B34848;
+    --a-focus: #C9484A;
+    --a-success-fg: #2F6B47;
+    --a-success-bg: #E5F3EA;
+    --a-success-line: #B9DCC7;
+    --a-warning-fg: #7A5A00;
+    --a-warning-bg: #FFF4D6;
+    --a-warning-line: #EBD58F;
+    --a-danger-fg: #A32B2B;
+    --a-danger-bg: #FDECEC;
+    --a-danger-line: #F5C9C9;
+    --a-info-fg: #2D5C7C;
+    --a-info-bg: #E7F3FB;
+    --a-info-line: #BFD9EC;
+    --a-neutral-fg: #5E4A41;
+    --a-neutral-bg: #F1E9E3;
+    --a-neutral-line: #E0D3CA;
+    --a-accent-fg: #B34848;
+    --a-accent-bg: #FFEDEA;
+    --a-accent-line: #F8C4C4;
+    --a-danger-solid: #C23B3B;
+    --a-on-danger: #FFFFFF;
+    --a-success-solid: #2F7A4F;
+    --a-on-success: #FFFFFF;
+    --a-chart-1: #3B7DB8;
+    --a-chart-2: #E0565B;
+    --a-chart-3: #3F8F5F;
+    --a-chart-4: #B87A00;
+    --a-chart-5: #8A6A5A;
+    --a-chart-up: #2F7A4F;
+    --a-chart-down: #C23B3B;
+    --a-chart-grid: rgba(74, 48, 40, 0.10);
+    --a-chart-axis: rgba(74, 48, 40, 0.28);
+    --a-chart-tip-bg: #2F211C;
+    --a-chart-tip-fg: #FFFDF9;
+    --a-seq-1: #D5696D;
+    --a-seq-2: #C24A52;
+    --a-seq-3: #A63341;
+    --a-seq-4: #7E222D;
+    --a-seq-1-fg: #1F1511;
+    --a-seq-2-fg: #FFFFFF;
+    --a-seq-3-fg: #FFFFFF;
+    --a-seq-4-fg: #FFFFFF;
+  }
+}
+
+/* -------------------------------------------------------------------------
+   3. Shared utilities (adopt these in new work instead of writing your own)
+   ------------------------------------------------------------------------- */
+
+/* Badge / pill. Colour comes from --a-badge-fg / --a-badge-bg / --a-badge-line. */
+.a-badge {
+  --a-badge-fg: var(--a-neutral-fg);
+  --a-badge-bg: var(--a-neutral-bg);
+  --a-badge-line: var(--a-neutral-line);
+  display: inline-flex; align-items: center; gap: var(--a-space-1);
+  padding: 4px 8px;
+  font-family: var(--a-font-ui); font-size: var(--a-text-xs); font-weight: var(--a-weight-bold);
+  line-height: 1; white-space: nowrap;
+  color: var(--a-badge-fg); background: var(--a-badge-bg);
+  border: var(--a-border-w) solid var(--a-badge-line);
+  border-radius: var(--a-radius-pill);
+}
+.a-badge--success { --a-badge-fg: var(--a-success-fg); --a-badge-bg: var(--a-success-bg); --a-badge-line: var(--a-success-line); }
+.a-badge--warning { --a-badge-fg: var(--a-warning-fg); --a-badge-bg: var(--a-warning-bg); --a-badge-line: var(--a-warning-line); }
+.a-badge--danger  { --a-badge-fg: var(--a-danger-fg);  --a-badge-bg: var(--a-danger-bg);  --a-badge-line: var(--a-danger-line); }
+.a-badge--info    { --a-badge-fg: var(--a-info-fg);    --a-badge-bg: var(--a-info-bg);    --a-badge-line: var(--a-info-line); }
+.a-badge--neutral { --a-badge-fg: var(--a-neutral-fg); --a-badge-bg: var(--a-neutral-bg); --a-badge-line: var(--a-neutral-line); }
+.a-badge--accent  { --a-badge-fg: var(--a-accent-fg);  --a-badge-bg: var(--a-accent-bg);  --a-badge-line: var(--a-accent-line); }
+.a-badge--outline { --a-badge-bg: transparent; }
+.a-badge--xs { padding: 2px 6px; font-size: var(--a-text-2xs); border-radius: var(--a-radius-xs); }
+/* Domain statuses: .a-badge.a-badge--status-<name>, e.g. a-badge--status-new */
+.a-badge--status-new        { --a-badge-fg: var(--a-status-new-fg);        --a-badge-bg: var(--a-status-new-bg);        --a-badge-line: var(--a-status-new-line); }
+.a-badge--status-contacted  { --a-badge-fg: var(--a-status-contacted-fg);  --a-badge-bg: var(--a-status-contacted-bg);  --a-badge-line: var(--a-status-contacted-line); }
+.a-badge--status-quoted     { --a-badge-fg: var(--a-status-quoted-fg);     --a-badge-bg: var(--a-status-quoted-bg);     --a-badge-line: var(--a-status-quoted-line); }
+.a-badge--status-fulfilled  { --a-badge-fg: var(--a-status-fulfilled-fg);  --a-badge-bg: var(--a-status-fulfilled-bg);  --a-badge-line: var(--a-status-fulfilled-line); }
+.a-badge--status-cancelled  { --a-badge-fg: var(--a-status-cancelled-fg);  --a-badge-bg: var(--a-status-cancelled-bg);  --a-badge-line: var(--a-status-cancelled-line); }
+.a-badge--status-unpaid     { --a-badge-fg: var(--a-status-unpaid-fg);     --a-badge-bg: var(--a-status-unpaid-bg);     --a-badge-line: var(--a-status-unpaid-line); }
+.a-badge--status-deposit    { --a-badge-fg: var(--a-status-deposit-fg);    --a-badge-bg: var(--a-status-deposit-bg);    --a-badge-line: var(--a-status-deposit-line); }
+.a-badge--status-paid       { --a-badge-fg: var(--a-status-paid-fg);       --a-badge-bg: var(--a-status-paid-bg);       --a-badge-line: var(--a-status-paid-line); }
+.a-badge--status-refunded   { --a-badge-fg: var(--a-status-refunded-fg);   --a-badge-bg: var(--a-status-refunded-bg);   --a-badge-line: var(--a-status-refunded-line); }
+.a-badge--status-balance    { --a-badge-fg: var(--a-status-balance-fg);    --a-badge-bg: var(--a-status-balance-bg);    --a-badge-line: var(--a-status-balance-line); }
+.a-badge--status-sale       { --a-badge-fg: var(--a-status-sale-fg);       --a-badge-bg: var(--a-status-sale-bg);       --a-badge-line: var(--a-status-sale-line); }
+.a-badge--status-featured   { --a-badge-fg: var(--a-status-featured-fg);   --a-badge-bg: var(--a-status-featured-bg);   --a-badge-line: var(--a-status-featured-line); }
+.a-badge--status-lowstock   { --a-badge-fg: var(--a-status-lowstock-fg);   --a-badge-bg: var(--a-status-lowstock-bg);   --a-badge-line: var(--a-status-lowstock-line); }
+.a-badge--status-outofstock { --a-badge-fg: var(--a-status-outofstock-fg); --a-badge-bg: var(--a-status-outofstock-bg); --a-badge-line: var(--a-status-outofstock-line); }
+.a-badge--status-scheduled  { --a-badge-fg: var(--a-status-scheduled-fg);  --a-badge-bg: var(--a-status-scheduled-bg);  --a-badge-line: var(--a-status-scheduled-line); }
+.a-badge--status-expired    { --a-badge-fg: var(--a-status-expired-fg);    --a-badge-bg: var(--a-status-expired-bg);    --a-badge-line: var(--a-status-expired-line); }
+.a-badge--status-hidden     { --a-badge-fg: var(--a-status-hidden-fg);     --a-badge-bg: var(--a-status-hidden-bg);     --a-badge-line: var(--a-status-hidden-line); }
+
+/* Skeleton: a quiet shimmer while data loads. Size it with width/height or a
+   utility on the element. Honors reduced motion (static block, no shimmer). */
+.a-skeleton {
+  display: block; min-height: 1em;
+  background: linear-gradient(90deg, var(--color-border) 0%, var(--color-bg-alt) 50%, var(--color-border) 100%);
+  background-size: 200% 100%;
+  border-radius: var(--a-radius-sm);
+  color: transparent; user-select: none;
+  animation: a-skeleton-shimmer 1.4s linear infinite;
+}
+.a-skeleton--line { height: 0.9em; border-radius: var(--a-radius-xs); }
+.a-skeleton--pill { height: 1.5em; width: 5em; border-radius: var(--a-radius-pill); }
+.a-skeleton--block { height: 4.5em; border-radius: var(--a-radius-md); }
+@keyframes a-skeleton-shimmer { from { background-position: 200% 0; } to { background-position: -200% 0; } }
+@media (prefers-reduced-motion: reduce) {
+  .a-skeleton { animation: none; background: var(--color-border); }
+}
+
+/* Empty state: icon (optional), title, one sentence, one action. */
+.a-empty {
+  display: flex; flex-direction: column; align-items: center; gap: var(--a-space-2);
+  padding: var(--a-space-6) var(--a-space-4); text-align: center;
+  color: var(--a-text-soft);
+  border: var(--a-border-w) dashed var(--a-border); border-radius: var(--a-radius-lg);
+  background: transparent;
+}
+.a-empty svg { width: 32px; height: 32px; color: var(--a-text-faint); }
+.a-empty-title { margin: 0; font-family: var(--a-font-ui); font-size: var(--a-text-md); font-weight: var(--a-weight-bold); color: var(--a-text); }
+.a-empty-text { margin: 0; max-width: 42ch; font-size: var(--a-text-sm); line-height: var(--a-leading-normal); }
+
+/* Inline error: sits next to the control or form it belongs to. */
+.a-inline-error {
+  display: flex; align-items: flex-start; gap: var(--a-space-2);
+  margin: var(--a-space-2) 0 0; padding: var(--a-space-2) var(--a-space-3);
+  font-size: var(--a-text-sm); line-height: var(--a-leading-snug);
+  color: var(--a-danger-fg); background: var(--a-danger-bg);
+  border: var(--a-border-w) solid var(--a-danger-line); border-radius: var(--a-radius-sm);
+}
+.a-inline-error[hidden] { display: none; }
+.a-inline-error--plain { padding: 0; background: none; border: none; }
+.a-inline-note { margin: var(--a-space-1) 0 0; font-size: var(--a-text-xs); color: var(--a-text-faint); }
+
+/* Visible only to assistive tech. */
+.a-visually-hidden {
+  position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; border: 0;
+  overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap;
+}
+
+/* Truncate one line with an ellipsis. */
+.a-truncate { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+
+/* Display-only helpers that replace the old style="display:..." attributes. */
+.a-inline, .form-status.a-inline { display: inline; }
+.a-inline-flex-center, .field label.a-inline-flex-center { display: inline-flex; align-items: center; gap: var(--a-space-2); }
+.a-width-auto, .field input.a-width-auto { width: auto; min-height: auto; }

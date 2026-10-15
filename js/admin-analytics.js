@@ -40,9 +40,9 @@ const ANALYTICS_DAY_MS = 86400000;
 let analyticsLastReport = null;
 
 const ANALYTICS_COLORS = {
-  sessions: "var(--ac-sessions, #3B7DB8)",
-  orders: "var(--ac-orders, #E0565B)",
-  revenue: "var(--ac-revenue, #E0565B)"
+  sessions: "var(--ac-sessions)",
+  orders: "var(--ac-orders)",
+  revenue: "var(--ac-revenue)"
 };
 const ANALYTICS_WEEKDAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 const ANALYTICS_MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];

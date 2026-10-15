@@ -46,7 +46,7 @@ async function refreshNavList() {
       ${lockHandleMarkup("nav", n.id)}
       <span class="drag-handle" aria-hidden="true" title="Drag to reorder">&#8942;&#8942;</span>
       <div class="admin-item-body">
-        <div class="name">${escapeHtml(n.label)} ${n.key ? '<span class="form-status" style="display:inline;">(built-in)</span>' : ""}</div>
+        <div class="name">${escapeHtml(n.label)} ${n.key ? '<span class="form-status a-inline">(built-in)</span>' : ""}</div>
         <div class="meta">${escapeHtml(n.href)} ${n.visible === false ? "&middot; hidden" : ""}</div>
       </div>
       <div class="admin-item-actions">

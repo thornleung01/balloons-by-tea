@@ -73,7 +73,7 @@ async function refreshFaqList() {
       ${lockHandleMarkup("faq", f.id)}
       <span class="drag-handle" aria-hidden="true" title="Drag to reorder">&#8942;&#8942;</span>
       <div class="admin-item-body">
-        <div class="name">${escapeHtml(f.question)} ${f.is_open_default ? '<span class="form-status" style="display:inline;">(open by default)</span>' : ""}</div>
+        <div class="name">${escapeHtml(f.question)} ${f.is_open_default ? '<span class="form-status a-inline">(open by default)</span>' : ""}</div>
       </div>
       <div class="admin-item-actions">
         <button type="button" class="edit-btn" data-id="${f.id}">Edit</button>
