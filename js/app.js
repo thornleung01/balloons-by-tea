@@ -814,17 +814,61 @@ function buildOrderPayload(form) {
   const street = form.address.value.trim();
   const postal = form.postal ? form.postal.value.trim().toUpperCase() : "";
   const hasPostal = postal && street.toUpperCase().replace(/\s/g, "").includes(postal.replace(/\s/g, ""));
+  const date = form.date.value.trim();
   return {
     kind: "checkout",
     name: form.name.value.trim(),
     phone: form.phone.value.trim(),
     email: form.email.value.trim(),
     address: postal && !hasPostal ? `${street}, ${postal}` : street,
-    date: form.date.value.trim(),
+    date,
     notes: form.notes.value.trim(),
     summary,
-    total: formatPrice(cartTotal(cart))
+    total: formatPrice(cartTotal(cart)),
+    // Structured copies for the admin Orders tab (orders v2 columns).
+    items: orderItemsFromCart(cart),
+    total_amount: Math.round(cartTotal(cart) * 100) / 100,
+    event_on: isoDateOrNull(date),
+    fulfillment: "delivery"
   };
+}
+
+/* 'YYYY-MM-DD' from a date input, or null for anything else. */
+function isoDateOrNull(value) {
+  return /^\d{4}-\d{2}-\d{2}$/.test(String(value || "").trim()) ? String(value).trim() : null;
+}
+
+/* orders.items: each cart line as-is plus the normalized keys the admin
+   reads — {product_id, name, qty, unit_price, line_total, variant?,
+   addons?: [{name, price}], image_url?}. A line can set unit_price /
+   line_total itself (e.g. when add-ons change the price); otherwise they
+   come from price x qty. If the lines are unusually large (long
+   descriptions etc.) only the normalized keys are kept, so the order
+   stays under the database's size cap. */
+function orderItemsFromCart(cart) {
+  const num = (v) => (typeof v === "number" && isFinite(v) ? v : (isFinite(Number(v)) && v !== "" && v != null ? Number(v) : null));
+  const normalized = cart.map((line) => {
+    const qty = num(line.qty) || 1;
+    const unit = num(line.unit_price) != null ? num(line.unit_price) : (num(line.price) || 0);
+    const total = num(line.line_total) != null ? num(line.line_total) : unit * qty;
+    const image = line.image_url || line.image || (Array.isArray(line.images) && line.images[0]) || undefined;
+    const keys = {
+      product_id: line.product_id != null ? line.product_id : line.id,
+      name: line.name || "",
+      qty,
+      unit_price: Math.round(unit * 100) / 100,
+      line_total: Math.round(total * 100) / 100
+    };
+    if (line.variant != null && line.variant !== "") keys.variant = line.variant;
+    if (Array.isArray(line.addons) && line.addons.length) keys.addons = line.addons;
+    if (typeof image === "string" && image) keys.image_url = image;
+    return { full: { ...line, ...keys }, keys };
+  });
+  const full = normalized.map((n) => n.full);
+  try {
+    if (JSON.stringify(full).length <= 40000) return full;
+  } catch (e) { /* fall through to the slim version */ }
+  return normalized.map((n) => n.keys);
 }
 
 /* Shared by every form's validation (checkout form here, custom-order form
@@ -948,6 +992,16 @@ function orderSubmitErrorMessage(err, fallback) {
   return fallback;
 }
 
+/* Session traffic source for orders.source: analytics.js's answer when that
+   file is on the page (so Analytics lines up), else js/order-source.js. */
+function orderTrafficSource() {
+  try {
+    if (typeof analyticsSessionTrafficSource === "function") return String(analyticsSessionTrafficSource() || "");
+    if (window.OrderSource) return String(window.OrderSource.get() || "");
+  } catch (e) { /* never block an order */ }
+  return "";
+}
+
 async function submitOrder(payload) {
   const client = typeof getSupabaseClient === "function" ? getSupabaseClient() : null;
   if (client) {
@@ -958,18 +1012,43 @@ async function submitOrder(payload) {
       event_date: date,
       notes, summary, total
     };
+    // Orders v2 columns (supabase-migrations/10-orders-v2.sql). Dropped and
+    // the order resent the old way if the database doesn't have them yet.
+    const V2_COLUMNS = ["items", "total_amount", "event_on", "event_time", "fulfillment", "source"];
+    const v2 = {
+      items: Array.isArray(payload.items) ? payload.items : [],
+      total_amount: typeof payload.total_amount === "number" && isFinite(payload.total_amount) ? payload.total_amount : null,
+      event_on: payload.event_on || null,
+      event_time: payload.event_time || "",
+      fulfillment: payload.fulfillment === "pickup" ? "pickup" : "delivery",
+      source: orderTrafficSource()
+    };
+    Object.assign(row, v2);
     // Inspiration photo paths (js/order-uploads.js). Only sent when there
     // are some, so orders keep working on a database without the column.
     const photos = Array.isArray(payload.attachments) ? payload.attachments : [];
     if (photos.length) row.attachments = photos;
+    const isV2ColumnError = (err) => {
+      const msg = String((err && err.message) || "");
+      return Boolean(err) && (err.code === "PGRST204" || err.code === "42703" || /column/i.test(msg))
+        && V2_COLUMNS.some((c) => msg.includes(c));
+    };
     let { error } = await client.from("orders").insert(row);
-    if (error && photos.length && /attachments/.test(error.message || "")) {
-      // The attachments column is missing (latest SQL not run) or the paths
-      // were refused: never lose the order over its photos.
-      console.warn("[Balloons by Tea] Couldn't save photos with the order; sending it without them.", error);
-      delete row.attachments;
-      payload.attachments = [];
-      row.notes = `${row.notes || ""}\n\n(The customer attached ${photos.length} inspiration photo${photos.length === 1 ? "" : "s"}, but they couldn't be saved with this order. Ask them to send them on WhatsApp.)`;
+    // At most one retry per problem: missing v2 columns, then photos.
+    for (let attempt = 0; error && attempt < 2; attempt++) {
+      if (V2_COLUMNS.some((c) => c in row) && isV2ColumnError(error)) {
+        console.warn("[Balloons by Tea] Database doesn't have the orders v2 columns yet; sending the order the old way.");
+        V2_COLUMNS.forEach((c) => { delete row[c]; });
+      } else if (row.attachments && /attachments/.test(error.message || "")) {
+        // The attachments column is missing (latest SQL not run) or the paths
+        // were refused: never lose the order over its photos.
+        console.warn("[Balloons by Tea] Couldn't save photos with the order; sending it without them.", error);
+        delete row.attachments;
+        payload.attachments = [];
+        row.notes = `${row.notes || ""}\n\n(The customer attached ${photos.length} inspiration photo${photos.length === 1 ? "" : "s"}, but they couldn't be saved with this order. Ask them to send them on WhatsApp.)`;
+      } else {
+        break;
+      }
       ({ error } = await client.from("orders").insert(row));
     }
     if (error) throw error;
@@ -1321,7 +1400,11 @@ function initCustomOrderForm() {
       date: `${form.eventDate.value.trim()} ${form.eventTime.value.trim()}`.trim(),
       notes: notesLines.join("\n"),
       summary: "Custom order request",
-      total: budget ? `Budget: ${budget}` : "Budget not specified"
+      total: budget ? `Budget: ${budget}` : "Budget not specified",
+      // Orders v2 columns; no items / total_amount until it's quoted.
+      event_on: isoDateOrNull(form.eventDate.value),
+      event_time: form.eventTime.value.trim(),
+      fulfillment: service === "pickup" ? "pickup" : "delivery"
     };
 
     // Inspiration photos (js/order-uploads.js) upload now, after validation

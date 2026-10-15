@@ -9,6 +9,7 @@
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Playfair+Display:wght@500;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="css/styles.css"/>
 <link rel="stylesheet" href="css/admin.css"/>
+<link rel="stylesheet" href="css/admin-orders.css"/>
 <link rel="stylesheet" href="css/admin-analytics.css"/>
 <link rel="stylesheet" href="css/admin-shell.css"/>
 <link rel="stylesheet" href="css/admin-notifications.css"/>
@@ -199,50 +200,86 @@
     <div id="ordersPanel" class="admin-card" hidden>
       <div class="orders-head">
         <h2>Orders</h2>
+        <div class="orders-view-toggle" id="ordersViewToggle" role="group" aria-label="Orders view">
+          <button type="button" class="orders-filter-btn active" data-orders-view="list" aria-pressed="true">List</button>
+          <button type="button" class="orders-filter-btn" data-orders-view="calendar" aria-pressed="false">Calendar</button>
+        </div>
+        <button type="button" class="orders-export-btn" id="exportOrdersCsvBtn">Export CSV</button>
+      </div>
+      <!-- Admin-only notices (missing migration, live updates) -->
+      <div id="ordersNotices"></div>
+      <div id="ordersListView">
         <div class="orders-filter" id="ordersFilter">
           <button type="button" class="orders-filter-btn active" data-status="all">All <span class="orders-filter-count" data-count-for="all"></span></button>
           <button type="button" class="orders-filter-btn" data-status="new">New <span class="orders-filter-count" data-count-for="new"></span></button>
           <button type="button" class="orders-filter-btn" data-status="contacted">Contacted <span class="orders-filter-count" data-count-for="contacted"></span></button>
+          <button type="button" class="orders-filter-btn" data-status="quoted">Quoted <span class="orders-filter-count" data-count-for="quoted"></span></button>
           <button type="button" class="orders-filter-btn" data-status="fulfilled">Fulfilled <span class="orders-filter-count" data-count-for="fulfilled"></span></button>
           <button type="button" class="orders-filter-btn" data-status="cancelled">Cancelled <span class="orders-filter-count" data-count-for="cancelled"></span></button>
         </div>
-        <button type="button" class="orders-export-btn" id="exportOrdersCsvBtn">Export CSV</button>
-      </div>
-      <div class="catalog-controls orders-controls">
-        <div class="search-field">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.35-4.35" stroke-linecap="round"/></svg>
-          <input type="search" id="orderSearch" placeholder="Search name, phone, email, ref, notes..." aria-label="Search orders"/>
+        <div class="orders-filter orders-payment-filter" id="ordersPaymentFilter" hidden>
+          <button type="button" class="orders-filter-btn active" data-payment="all">Any payment</button>
+          <button type="button" class="orders-filter-btn" data-payment="balance_due">Balance due <span class="orders-filter-count" data-pay-count-for="balance_due"></span></button>
+          <button type="button" class="orders-filter-btn" data-payment="unpaid">Unpaid <span class="orders-filter-count" data-pay-count-for="unpaid"></span></button>
+          <button type="button" class="orders-filter-btn" data-payment="deposit_paid">Deposit paid <span class="orders-filter-count" data-pay-count-for="deposit_paid"></span></button>
+          <button type="button" class="orders-filter-btn" data-payment="paid">Paid <span class="orders-filter-count" data-pay-count-for="paid"></span></button>
         </div>
-        <select id="orderSort" class="filter-select" aria-label="Sort orders">
-          <option value="newest">Newest first</option>
-          <option value="oldest">Oldest first</option>
-          <option value="event">Event date soonest</option>
-        </select>
-        <label class="orders-upcoming-toggle">
-          <input type="checkbox" id="orderUpcomingOnly"/>
-          <span>Upcoming events only</span>
-        </label>
+        <div class="catalog-controls orders-controls">
+          <div class="search-field">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.35-4.35" stroke-linecap="round"/></svg>
+            <input type="search" id="orderSearch" placeholder="Search name, phone, email, ref, notes..." aria-label="Search orders"/>
+          </div>
+          <select id="orderSort" class="filter-select" aria-label="Sort orders">
+            <option value="newest">Newest first</option>
+            <option value="oldest">Oldest first</option>
+            <option value="event">Event date soonest</option>
+          </select>
+          <label class="orders-upcoming-toggle">
+            <input type="checkbox" id="orderUpcomingOnly"/>
+            <span>Upcoming events only</span>
+          </label>
+        </div>
+        <div class="orders-date-range" id="ordersDateRange">
+          <label for="orderDateFrom">Event from</label>
+          <input type="date" id="orderDateFrom"/>
+          <label for="orderDateTo">to</label>
+          <input type="date" id="orderDateTo"/>
+          <button type="button" class="orders-export-btn" id="orderDateClear" hidden>Clear dates</button>
+        </div>
+        <div class="bulk-select-row">
+          <label class="bulk-select-all">
+            <input type="checkbox" id="orderSelectAll"/>
+            <span>Select all on this page</span>
+          </label>
+          <div class="bulk-action-bar" id="orderBulkActionBar" hidden>
+            <span id="orderBulkSelectedCount">0 selected</span>
+            <button type="button" id="orderBulkContactedBtn">Mark Contacted</button>
+            <button type="button" id="orderBulkQuotedBtn">Mark Quoted</button>
+            <button type="button" id="orderBulkFulfilledBtn">Mark Fulfilled</button>
+            <button type="button" id="orderBulkCancelledBtn">Mark Cancelled</button>
+            <button type="button" class="danger" id="orderBulkDeleteBtn">Delete</button>
+            <button type="button" id="orderBulkClearBtn">Clear</button>
+          </div>
+        </div>
+        <div id="orderList"></div>
+        <div id="ordersPager" class="orders-pager"></div>
       </div>
-      <div class="bulk-select-row">
-        <label class="bulk-select-all">
-          <input type="checkbox" id="orderSelectAll"/>
-          <span>Select all</span>
-        </label>
-        <div class="bulk-action-bar" id="orderBulkActionBar" hidden>
-          <span id="orderBulkSelectedCount">0 selected</span>
-          <button type="button" id="orderBulkContactedBtn">Mark Contacted</button>
-          <button type="button" id="orderBulkFulfilledBtn">Mark Fulfilled</button>
-          <button type="button" id="orderBulkCancelledBtn">Mark Cancelled</button>
-          <button type="button" class="danger" id="orderBulkDeleteBtn">Delete</button>
-          <button type="button" id="orderBulkClearBtn">Clear</button>
+      <!-- Month calendar, rendered by js/admin-orders-calendar.js -->
+      <div id="ordersCalendarView" hidden></div>
+      <div class="orders-tools">
+        <div class="orders-day-sheet">
+          <label for="orderDaySheetDate">Day sheet for</label>
+          <input type="date" id="orderDaySheetDate"/>
+          <button type="button" class="orders-export-btn" id="orderDaySheetBtn">Print day sheet</button>
+        </div>
+        <!-- Customer inspiration photos (orders.attachments, js/admin-orders.js "Order photos") -->
+        <div class="order-photo-tools">
+          <button type="button" class="orders-export-btn" id="cleanupOrderPhotosBtn">Clean up unused photos</button>
+          <span class="form-status" id="orderPhotoToolsStatus" role="status" aria-live="polite"></span>
         </div>
       </div>
-      <div id="orderList"></div>
-      <!-- Customer inspiration photos (orders.attachments, js/admin-orders.js "Order photos") -->
-      <div class="order-photo-tools">
-        <button type="button" class="orders-export-btn" id="cleanupOrderPhotosBtn">Clean up unused photos</button>
-        <span class="form-status" id="orderPhotoToolsStatus" role="status" aria-live="polite"></span>
-      </div>
+      <!-- Message templates editor, rendered by js/admin-orders-messages.js -->
+      <div id="orderMessageTemplates"></div>
     </div>
 
     <div id="analyticsPanel" class="admin-card" hidden>
@@ -528,6 +565,9 @@
 <script src="js/admin-orders.js"></script>
 <script src="js/admin-charts.js"></script>
 <script src="js/admin-analytics.js"></script>
+<script src="js/admin-orders-messages.js"></script>
+<script src="js/admin-orders-print.js"></script>
+<script src="js/admin-orders-calendar.js"></script>
 <script src="js/admin-notifications.js"></script>
 <script src="js/admin-backup.js"></script>
 <script src="js/admin-availability.js"></script>
