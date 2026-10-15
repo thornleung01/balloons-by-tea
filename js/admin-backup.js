@@ -39,8 +39,17 @@
     { name: "delivery_areas", orderBy: "fsa" },
     { name: "gallery_items", orderBy: "id" },
     { name: "order_events", orderBy: "id" },
-    { name: "settings_history", orderBy: "id" }
+    { name: "content_history", orderBy: "id" },
+    { name: "photo_meta", orderBy: "url" },
+    // Backed up for the record, but NEVER restored (restore: false): putting
+    // role rows back could hand out admin access, and the activity log must
+    // not be rewritable. admin_restore_rows() refuses both as well.
+    { name: "admin_users", orderBy: "user_id", restore: false },
+    { name: "audit_log", orderBy: "id", restore: false }
   ];
+  // Not backed up on purpose: rate_limit_secret, rate_limit_hits and
+  // order_upload_folders (private anti-spam plumbing, no client access).
+  // scripts/check-backup-coverage.js fails if a table is in neither place.
   const BUCKETS = ["product-photos", "site-images"];
   const BACKUP_FORMAT = "balloons-by-tea-backup";
   const BACKUP_VERSION = 2;
@@ -302,7 +311,7 @@
   }
 
   // Tables from other features: only worth listing when they exist.
-  const EXTRA_TABLE_NAMES = new Set(["order_events", "settings_history"]);
+  const EXTRA_TABLE_NAMES = new Set(["order_events", "content_history", "photo_meta", "admin_users", "audit_log"]);
 
   /* Reads everything into one backup object. Used by "Download backup" and
      by Restore's automatic safety-net backup. onStatus(message) receives

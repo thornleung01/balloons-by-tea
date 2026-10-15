@@ -49,7 +49,7 @@
         const rows = data.tables[name];
         if (!Array.isArray(rows)) { problems.push(`Table "${name}" is not a list of rows.`); return; }
         const key = knownKeys[name];
-        if (!key) { warnings.push(`"${name}" is in the file but this admin doesn't know how to restore it. It will be skipped.`); return; }
+        if (!key) { warnings.push(`"${name}" is in the file but this admin doesn't know how to restore it (or it is backup-only, like the team list and activity log). It will be skipped.`); return; }
         const bad = rows.findIndex((r) => !r || typeof r !== "object" || Array.isArray(r) || r[key] === undefined || r[key] === null);
         if (bad !== -1) { problems.push(`Table "${name}": row ${bad + 1} has no "${key}", so the file looks damaged.`); return; }
         const seen = new Set();
@@ -165,7 +165,7 @@
 
   function keyMap() {
     const map = {};
-    window.AdminBackup.TABLES.forEach((t) => { map[t.name] = t.orderBy; });
+    window.AdminBackup.TABLES.forEach((t) => { if (t.restore !== false) map[t.name] = t.orderBy; });
     return map;
   }
 
@@ -336,7 +336,7 @@
       lib.recordBackupTime(client, safety.exported_at);
 
       // 2. Tables in the order they're listed (products before gallery_items, which points at them).
-      const order = lib.TABLES.map((t) => t.name).filter((n) => names.includes(n));
+      const order = lib.TABLES.filter((t) => t.restore !== false).map((t) => t.name).filter((n) => names.includes(n));
       let rpcMissing = false;
       for (const name of order) {
         const rows = loaded.tables.find((t) => t.name === name).rows;

@@ -588,7 +588,12 @@ declare
     'faq_items', 'layout_overrides', 'layout_overrides_history',
     'analytics_events', 'blocked_dates', 'delivery_areas', 'gallery_items',
     -- Added by other admin features; skipped until they exist.
-    'order_events', 'settings_history'
+    'order_events', 'content_history', 'photo_meta'
+    -- Deliberately NOT restorable: admin_users (restoring role rows could
+    -- grant admin access) and audit_log (the activity record must not be
+    -- rewritable). Both are backed up read-only. rate_limit_secret,
+    -- rate_limit_hits and order_upload_folders are private plumbing and are
+    -- not backed up at all.
   ];
   v_rel regclass;
   v_pks text[];
