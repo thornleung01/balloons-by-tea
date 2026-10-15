@@ -242,14 +242,17 @@ async function deleteLibraryFile(path, { skipReferenceCheck = false } = {}) {
     try {
       refs = await findReferencesForUrl(url);
     } catch (err) {
-      const proceed = confirm(`Couldn't check whether this photo is still used by a product (${err.message}). If it is, deleting it will break that listing. Delete anyway?`);
+      const proceed = await adminConfirm({ title: "Couldn't check where this photo is used", message: `Couldn't check whether this photo is still used by a product (${err.message}). If it is, deleting it will break that listing. Delete anyway?`, confirmLabel: "Delete anyway", danger: true });
       if (!proceed) return { deleted: false, error: null };
       refs = [];
     }
     if (refs.length) {
-      const proceed = confirm(
-        `This photo is currently used by ${refs.join(", ")}. Deleting it will break ${refs.length === 1 ? "that listing" : "those listings"}. Delete anyway?`
-      );
+      const proceed = await adminConfirm({
+        title: "This photo is in use",
+        message: `This photo is currently used by ${refs.join(", ")}. Deleting it will break ${refs.length === 1 ? "that listing" : "those listings"}. Delete anyway?`,
+        confirmLabel: "Delete anyway",
+        danger: true,
+      });
       if (!proceed) return { deleted: false, error: null };
     }
   }
@@ -317,7 +320,7 @@ async function moveLibraryFile(fromPath, toFolder) {
     return `Photo not moved — couldn't update ${failed.length} place${failed.length === 1 ? "" : "s"} that use it (${reason}). Nothing was changed.`;
   }
   if (forward.length > 0) {
-    alert(`Moved — and updated ${forward.length} place${forward.length === 1 ? "" : "s"} that was using this photo so it keeps working.`);
+    adminToast(`Moved — and updated ${forward.length} place${forward.length === 1 ? "" : "s"} that was using this photo so it keeps working.`, { kind: "success" });
   }
   return null;
 }
@@ -378,9 +381,10 @@ function wireLibraryGrid(gridEl, { navigate, onFileClick, afterMutate, getPath }
   gridEl.querySelectorAll("[data-delete-file]").forEach((btn) => {
     btn.addEventListener("click", async (e) => {
       e.stopPropagation();
-      if (!confirm("Delete this photo? This can't be undone.")) return;
+      const photoName = String(btn.dataset.deleteFile).split("/").pop();
+      if (!(await adminConfirm({ title: `Delete photo "${photoName}"?`, message: "This can't be undone.", confirmLabel: "Delete photo", danger: true }))) return;
       const result = await deleteLibraryFile(btn.dataset.deleteFile);
-      if (result.error) { alert("Couldn't delete: " + result.error); return; }
+      if (result.error) { adminToast("Couldn't delete: " + result.error, { kind: "error" }); return; }
       if (result.deleted) afterMutate();
     });
   });
@@ -389,9 +393,9 @@ function wireLibraryGrid(gridEl, { navigate, onFileClick, afterMutate, getPath }
       e.stopPropagation();
       const base = getPath();
       const folderPath = base ? `${base}/${btn.dataset.deleteFolder}` : btn.dataset.deleteFolder;
-      if (!confirm(`Delete the "${btn.dataset.deleteFolder}" folder?`)) return;
+      if (!(await adminConfirm({ title: `Delete the "${btn.dataset.deleteFolder}" folder?`, message: "Only empty folders can be deleted.", confirmLabel: "Delete folder", danger: true }))) return;
       const error = await deleteLibraryFolder(folderPath);
-      if (error) { alert(error); return; }
+      if (error) { adminToast(error, { kind: "error" }); return; }
       afterMutate();
     });
   });
@@ -422,7 +426,7 @@ function wireLibraryGrid(gridEl, { navigate, onFileClick, afterMutate, getPath }
         toFolder = parts.join("/");
       }
       const error = await moveLibraryFile(fromPath, toFolder);
-      if (error) { alert("Couldn't move: " + error); return; }
+      if (error) { adminToast("Couldn't move: " + error, { kind: "error" }); return; }
       afterMutate();
     });
   });
@@ -491,10 +495,10 @@ function ensurePhotoLibraryModal() {
   modal.querySelectorAll("[data-close-library]").forEach((el) => el.addEventListener("click", closePhotoLibrary));
   modal.querySelector("#photoLibraryAddBtn").addEventListener("click", addSelectedLibraryPhotos);
   modal.querySelector("#pickerNewFolderBtn").addEventListener("click", async () => {
-    const name = prompt("New folder name:");
+    const name = await adminConfirm.prompt({ title: "New folder", label: "New folder name", confirmLabel: "Create folder" });
     if (!name) return;
     const { error } = await createFolderAt(pickerPath, name);
-    if (error) { alert(error); return; }
+    if (error) { adminToast(error, { kind: "error" }); return; }
     await navigatePickerTo(pickerPath);
   });
   modal.querySelector("#pickerUploadInput").addEventListener("change", async (e) => {
@@ -502,7 +506,7 @@ function ensurePhotoLibraryModal() {
     e.target.value = "";
     if (!files.length) return;
     const { error } = await uploadFilesToLibrary(pickerPath, files);
-    if (error) { alert("Upload failed: " + error); return; }
+    if (error) { adminToast("Upload failed: " + error, { kind: "error" }); return; }
     await navigatePickerTo(pickerPath);
   });
   modal.querySelector("#pickerBreadcrumb").addEventListener("click", (e) => {
@@ -710,7 +714,13 @@ function updateDeleteUnusedPhotosBtn() {
 async function handleDeleteSelectedUnusedPhotos() {
   const toDelete = unusedPhotosCandidates.filter((f) => unusedPhotosSelected.has(f.url));
   if (!toDelete.length) return;
-  if (!confirm(`Permanently delete ${toDelete.length} photo${toDelete.length === 1 ? "" : "s"} from Storage? This can't be undone.`)) return;
+  if (!(await adminConfirm({
+    title: `Permanently delete ${toDelete.length} photo${toDelete.length === 1 ? "" : "s"}?`,
+    message: "They will be removed from Storage. This can't be undone.",
+    confirmLabel: `Delete ${toDelete.length} photo${toDelete.length === 1 ? "" : "s"}`,
+    danger: true,
+    requireText: toDelete.length >= 10 ? "DELETE" : undefined,
+  }))) return;
 
   const btn = document.getElementById("deleteUnusedPhotosBtn");
   if (btn) btn.disabled = true;
@@ -723,7 +733,7 @@ async function handleDeleteSelectedUnusedPhotos() {
     referenced = await gatherReferencedPhotoUrls();
   } catch (err) {
     if (btn) btn.disabled = false;
-    alert(`Couldn't re-check whether these photos are in use (${err.message}), so nothing was deleted. Try again.`);
+    adminToast(`Couldn't re-check whether these photos are in use (${err.message}), so nothing was deleted. Try again.`, { kind: "error" });
     return;
   }
   const failures = [];
@@ -739,7 +749,7 @@ async function handleDeleteSelectedUnusedPhotos() {
   toDelete.forEach((f) => { if (succeededPaths.has(f.path)) unusedPhotosSelected.delete(f.url); });
   renderUnusedPhotosSection();
 
-  if (failures.length) alert("Some photos couldn't be deleted:\n" + failures.join("\n"));
+  if (failures.length) await adminAlert("Some photos couldn't be deleted:\n" + failures.join("\n"), { title: "Some photos were not deleted" });
 
   // Refresh the main Library grid too — a deleted file may have lived in
   // (or emptied out) the folder currently being browsed there.
@@ -754,10 +764,10 @@ onAdminInit(() => {
     if (btn) navigateLibraryTab(btn.dataset.libraryNav);
   });
   document.getElementById("libraryNewFolderBtn").addEventListener("click", async () => {
-    const name = prompt("New folder name:");
+    const name = await adminConfirm.prompt({ title: "New folder", label: "New folder name", confirmLabel: "Create folder" });
     if (!name) return;
     const { error } = await createFolderAt(libraryTabPath, name);
-    if (error) { alert(error); return; }
+    if (error) { adminToast(error, { kind: "error" }); return; }
     await navigateLibraryTab(libraryTabPath);
   });
   document.getElementById("libraryUploadInput").addEventListener("change", async (e) => {
@@ -765,7 +775,7 @@ onAdminInit(() => {
     e.target.value = "";
     if (!files.length) return;
     const { error } = await uploadFilesToLibrary(libraryTabPath, files);
-    if (error) { alert("Upload failed: " + error); return; }
+    if (error) { adminToast("Upload failed: " + error, { kind: "error" }); return; }
     await navigateLibraryTab(libraryTabPath);
   });
   document.getElementById("findUnusedPhotosBtn").addEventListener("click", openUnusedPhotosSection);
