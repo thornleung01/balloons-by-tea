@@ -9,6 +9,7 @@
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Playfair+Display:wght@500;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="css/styles.css"/>
 <link rel="stylesheet" href="css/admin.css"/>
+<link rel="stylesheet" href="css/admin-content.css"/>
 </head>
 <body class="admin-body">
 
@@ -400,21 +401,45 @@
       </div>
     </div>
 
-    <div id="settingsPanel" class="admin-card" hidden>
-      <h2>Site Settings</h2>
-      <form id="settingsForm" novalidate>
-        <fieldset class="settings-fieldset">
-          <legend>Hero</legend>
-          <div class="field"><label for="s-hero_heading">Headline</label><input id="s-hero_heading" name="hero_heading" type="text"/></div>
+    <div id="settingsPanel" class="admin-card settings-panel" hidden>
+      <!-- Layout: the sub-nav (#settingsSubnav) is the left column on desktop
+           and a chip row on phones. Each form fieldset, every card another
+           script appends to this panel (before #backupAdmin, or through
+           window.addSettingsSection()), and #backupAdmin itself is a page
+           shown one at a time. See js/admin-content-ui.js. -->
+      <div class="settings-head" data-settings-own>
+        <div>
+          <h2>Site Settings</h2>
+          <p class="panel-subtitle">Text, contact details, colours and search listings for the public site. Changes go live when you save.</p>
+        </div>
+        <div class="settings-head-actions">
+          <button type="button" class="btn btn-outline btn-sm" id="settingsHistoryBtn">History</button>
+          <button type="button" class="btn btn-outline btn-sm" id="settingsPreviewBtn" title="Open the site in a new tab with your unsaved changes">Preview</button>
+          <a class="btn btn-outline btn-sm" id="settingsEditOnPageLink" href="index.html?edit=1" target="_blank" rel="noopener" title="Open the site with the on-page editor switched on">Edit on page</a>
+        </div>
+      </div>
+      <nav class="settings-subnav" id="settingsSubnav" aria-label="Settings sections" data-settings-own></nav>
+      <form id="settingsForm" class="settings-page" novalidate>
+        <fieldset class="settings-fieldset" data-settings-section="hero" data-settings-title="Hero &amp; branding">
+          <legend>Hero &amp; branding</legend>
+          <div class="field">
+            <label for="s-hero_heading">Headline</label>
+            <input id="s-hero_heading" name="hero_heading" type="text" maxlength="120"/>
+            <p class="field-note">The big line at the top of the homepage. Leave blank to keep the built-in headline.</p>
+          </div>
           <div class="field"><label for="s-hero_subtext">Subtext</label><textarea id="s-hero_subtext" name="hero_subtext"></textarea></div>
-          <div class="field"><label for="s-hero_cta_text">Button text</label><input id="s-hero_cta_text" name="hero_cta_text" type="text"/></div>
+          <div class="field">
+            <label for="s-hero_cta_text">Button text</label>
+            <input id="s-hero_cta_text" name="hero_cta_text" type="text" maxlength="40"/>
+            <p class="field-note">Keep it short, e.g. "Shop now".</p>
+          </div>
           <div class="field">
             <label for="s-hero_image">Hero image</label>
             <div class="photo-preview" id="heroPhotoPreview">No photo</div>
             <label for="s-hero_image" class="upload-dropzone photo-upload-dropzone">
               <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M12 16V4M12 4l-4 4M12 4l4 4" stroke-linecap="round"/><path d="M4 16v3a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-3" stroke-linecap="round"/></svg>
               <strong>Click to add a photo</strong>
-              <span>PNG or JPG</span>
+              <span>PNG or JPG, wide (landscape) works best</span>
             </label>
             <input id="s-hero_image" type="file" accept="image/*"/>
           </div>
@@ -424,48 +449,108 @@
             <label for="s-logo_image" class="upload-dropzone photo-upload-dropzone">
               <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M12 16V4M12 4l-4 4M12 4l4 4" stroke-linecap="round"/><path d="M4 16v3a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-3" stroke-linecap="round"/></svg>
               <strong>Click to add a photo</strong>
-              <span>PNG or JPG</span>
+              <span>PNG with a transparent background looks best</span>
             </label>
             <input id="s-logo_image" type="file" accept="image/*"/>
           </div>
         </fieldset>
-        <fieldset class="settings-fieldset">
+        <fieldset class="settings-fieldset" data-settings-section="contact" data-settings-title="Contact">
           <legend>Contact</legend>
-          <div class="field"><label for="s-contact_phone">Phone</label><input id="s-contact_phone" name="contact_phone" type="text"/></div>
-          <div class="field"><label for="s-contact_email">Email</label><input id="s-contact_email" name="contact_email" type="text"/></div>
-          <div class="field"><label for="s-contact_whatsapp">WhatsApp link</label><input id="s-contact_whatsapp" name="contact_whatsapp" type="text" placeholder="https://wa.me/1..."/></div>
+          <div class="field">
+            <label for="s-contact_phone">Phone</label>
+            <input id="s-contact_phone" name="contact_phone" type="tel" autocomplete="off" placeholder="+1 555 123 4567"/>
+            <p class="field-note">Shown in the footer as a tap-to-call link.</p>
+          </div>
+          <div class="field"><label for="s-contact_email">Email</label><input id="s-contact_email" name="contact_email" type="email" autocomplete="off" placeholder="hello@example.com"/></div>
+          <div class="field">
+            <label for="s-contact_whatsapp">WhatsApp</label>
+            <input id="s-contact_whatsapp" name="contact_whatsapp" type="text" placeholder="https://wa.me/15551234567"/>
+            <p class="field-note">A wa.me link, or just the number with its country code (it's turned into a link for you).</p>
+          </div>
         </fieldset>
-        <fieldset class="settings-fieldset">
+        <fieldset class="settings-fieldset" data-settings-section="social" data-settings-title="Social">
           <legend>Social</legend>
-          <div class="field"><label for="s-social_instagram">Instagram</label><input id="s-social_instagram" name="social_instagram" type="text"/></div>
-          <div class="field"><label for="s-social_rednote">RedNote</label><input id="s-social_rednote" name="social_rednote" type="text"/></div>
-          <div class="field"><label for="s-social_tiktok">TikTok</label><input id="s-social_tiktok" name="social_tiktok" type="text"/></div>
-          <div class="field"><label for="s-social_youtube">YouTube</label><input id="s-social_youtube" name="social_youtube" type="text"/></div>
+          <p class="field-note settings-section-note">Paste a full profile link, or just an @handle for Instagram, TikTok and YouTube. Leave blank to keep the current link.</p>
+          <div class="field"><label for="s-social_instagram">Instagram</label><input id="s-social_instagram" name="social_instagram" type="text" placeholder="@yourhandle or https://instagram.com/…"/></div>
+          <div class="field"><label for="s-social_rednote">RedNote</label><input id="s-social_rednote" name="social_rednote" type="text" placeholder="https://www.xiaohongshu.com/user/profile/…"/></div>
+          <div class="field"><label for="s-social_tiktok">TikTok</label><input id="s-social_tiktok" name="social_tiktok" type="text" placeholder="@yourhandle or https://tiktok.com/@…"/></div>
+          <div class="field"><label for="s-social_youtube">YouTube</label><input id="s-social_youtube" name="social_youtube" type="text" placeholder="@yourchannel or https://youtube.com/@…"/></div>
         </fieldset>
-        <fieldset class="settings-fieldset">
+        <fieldset class="settings-fieldset" data-settings-section="about" data-settings-title="About page">
           <legend>About page</legend>
           <div class="field"><label for="s-about_intro_1">Intro paragraph 1</label><textarea id="s-about_intro_1" name="about_intro_1"></textarea></div>
           <div class="field"><label for="s-about_intro_2">Intro paragraph 2</label><textarea id="s-about_intro_2" name="about_intro_2"></textarea></div>
-          <div class="field"><label for="s-about_highlight_1_heading">Highlight 1 heading</label><input id="s-about_highlight_1_heading" name="about_highlight_1_heading" type="text"/></div>
-          <div class="field"><label for="s-about_highlight_1_body">Highlight 1 body</label><textarea id="s-about_highlight_1_body" name="about_highlight_1_body"></textarea></div>
-          <div class="field"><label for="s-about_highlight_2_heading">Highlight 2 heading</label><input id="s-about_highlight_2_heading" name="about_highlight_2_heading" type="text"/></div>
-          <div class="field"><label for="s-about_highlight_2_body">Highlight 2 body</label><textarea id="s-about_highlight_2_body" name="about_highlight_2_body"></textarea></div>
-          <div class="field"><label for="s-about_highlight_3_heading">Highlight 3 heading</label><input id="s-about_highlight_3_heading" name="about_highlight_3_heading" type="text"/></div>
-          <div class="field"><label for="s-about_highlight_3_body">Highlight 3 body</label><textarea id="s-about_highlight_3_body" name="about_highlight_3_body"></textarea></div>
+          <div class="settings-subgroup">
+            <h3>Highlight 1</h3>
+            <div class="field"><label for="s-about_highlight_1_heading">Heading</label><input id="s-about_highlight_1_heading" name="about_highlight_1_heading" type="text"/></div>
+            <div class="field"><label for="s-about_highlight_1_body">Body</label><textarea id="s-about_highlight_1_body" name="about_highlight_1_body"></textarea></div>
+          </div>
+          <div class="settings-subgroup">
+            <h3>Highlight 2</h3>
+            <div class="field"><label for="s-about_highlight_2_heading">Heading</label><input id="s-about_highlight_2_heading" name="about_highlight_2_heading" type="text"/></div>
+            <div class="field"><label for="s-about_highlight_2_body">Body</label><textarea id="s-about_highlight_2_body" name="about_highlight_2_body"></textarea></div>
+          </div>
+          <div class="settings-subgroup">
+            <h3>Highlight 3</h3>
+            <div class="field"><label for="s-about_highlight_3_heading">Heading</label><input id="s-about_highlight_3_heading" name="about_highlight_3_heading" type="text"/></div>
+            <div class="field"><label for="s-about_highlight_3_body">Body</label><textarea id="s-about_highlight_3_body" name="about_highlight_3_body"></textarea></div>
+          </div>
         </fieldset>
-        <fieldset class="settings-fieldset">
-          <legend>Theme colors</legend>
-          <div class="field"><label for="s-theme_coral">Accent (coral)</label><input id="s-theme_coral" name="theme_coral" type="color"/></div>
-          <div class="field"><label for="s-theme_blush">Blush</label><input id="s-theme_blush" name="theme_blush" type="color"/></div>
-          <div class="field"><label for="s-theme_baby_blue">Baby blue</label><input id="s-theme_baby_blue" name="theme_baby_blue" type="color"/></div>
-          <div class="field"><label for="s-theme_soft_yellow">Soft yellow</label><input id="s-theme_soft_yellow" name="theme_soft_yellow" type="color"/></div>
-          <div class="field"><label for="s-theme_brown">Text (brown)</label><input id="s-theme_brown" name="theme_brown" type="color"/></div>
+        <fieldset class="settings-fieldset" data-settings-section="theme" data-settings-title="Theme colours">
+          <legend>Theme colours</legend>
+          <div class="settings-theme-grid">
+            <div class="settings-theme-fields">
+              <div class="field settings-color-field"><label for="s-theme_coral">Accent (coral)</label><div class="settings-color-row"><input id="s-theme_coral" name="theme_coral" type="color" value="#ff7f7f"/><input type="text" class="settings-hex" data-hex-for="s-theme_coral" aria-label="Accent colour hex code" maxlength="7" spellcheck="false" autocomplete="off"/></div><p class="field-note">Buttons, links and highlights.</p></div>
+              <div class="field settings-color-field"><label for="s-theme_blush">Blush</label><div class="settings-color-row"><input id="s-theme_blush" name="theme_blush" type="color" value="#f8c4c4"/><input type="text" class="settings-hex" data-hex-for="s-theme_blush" aria-label="Blush colour hex code" maxlength="7" spellcheck="false" autocomplete="off"/></div><p class="field-note">Soft backgrounds and badges.</p></div>
+              <div class="field settings-color-field"><label for="s-theme_baby_blue">Baby blue</label><div class="settings-color-row"><input id="s-theme_baby_blue" name="theme_baby_blue" type="color" value="#b9dcf3"/><input type="text" class="settings-hex" data-hex-for="s-theme_baby_blue" aria-label="Baby blue colour hex code" maxlength="7" spellcheck="false" autocomplete="off"/></div></div>
+              <div class="field settings-color-field"><label for="s-theme_soft_yellow">Soft yellow</label><div class="settings-color-row"><input id="s-theme_soft_yellow" name="theme_soft_yellow" type="color" value="#ffd66b"/><input type="text" class="settings-hex" data-hex-for="s-theme_soft_yellow" aria-label="Soft yellow colour hex code" maxlength="7" spellcheck="false" autocomplete="off"/></div></div>
+              <div class="field settings-color-field"><label for="s-theme_brown">Text (brown)</label><div class="settings-color-row"><input id="s-theme_brown" name="theme_brown" type="color" value="#4a3028"/><input type="text" class="settings-hex" data-hex-for="s-theme_brown" aria-label="Text colour hex code" maxlength="7" spellcheck="false" autocomplete="off"/></div><p class="field-note">Body text and headings.</p></div>
+            </div>
+            <div class="settings-theme-preview-wrap">
+              <p class="settings-theme-preview-label">Preview</p>
+              <div class="settings-theme-preview" id="themePreview" aria-hidden="true">
+                <div class="tp-card">
+                  <span class="tp-badge">New</span>
+                  <strong class="tp-title">Pastel Party Bouquet</strong>
+                  <span class="tp-text">Hand-tied balloons in your colours.</span>
+                  <span class="tp-btn">Add to cart</span>
+                  <span class="tp-link">See details</span>
+                </div>
+                <div class="tp-chips"><span class="tp-chip tp-chip-blue">Kids</span><span class="tp-chip tp-chip-yellow">Birthday</span></div>
+              </div>
+              <div class="settings-contrast" id="themeContrastNote" role="status" aria-live="polite"></div>
+            </div>
+          </div>
         </fieldset>
-        <div class="form-status" id="settingsFormStatus"></div>
+        <fieldset class="settings-fieldset" data-settings-section="seo" data-settings-title="SEO &amp; sharing">
+          <legend>SEO &amp; sharing</legend>
+          <p class="field-note settings-section-note">How each page shows up in Google and when a link is shared. Leave a field blank to keep the page's built-in text.</p>
+          <div class="field">
+            <label for="s-seo_og_image_file">Default share image</label>
+            <div class="photo-preview settings-og-preview" id="ogImagePreview">None, each page uses its built-in image</div>
+            <label for="s-seo_og_image_file" class="upload-dropzone photo-upload-dropzone">
+              <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M12 16V4M12 4l-4 4M12 4l4 4" stroke-linecap="round"/><path d="M4 16v3a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-3" stroke-linecap="round"/></svg>
+              <strong>Click to add an image</strong>
+              <span>1200 × 630 px works best, shown when a link is shared</span>
+            </label>
+            <input id="s-seo_og_image_file" type="file" accept="image/*"/>
+            <button type="button" class="btn btn-ghost btn-sm" id="ogImageClearBtn" hidden>Remove share image</button>
+          </div>
+          <div class="seo-pages" id="seoPagesContainer"></div>
+        </fieldset>
+        <div class="form-status" id="settingsFormStatus" role="status" aria-live="polite"></div>
         <button type="submit" class="btn btn-primary btn-block" id="saveSettingsBtn">Save Settings</button>
       </form>
+      <!-- Sticky "Unsaved changes" bar (js/admin-content-ui.js) -->
+      <div class="settings-savebar" id="settingsSaveBar" hidden data-settings-own role="region" aria-label="Unsaved settings">
+        <span class="settings-savebar-text"><span class="settings-savebar-dot" aria-hidden="true"></span>Unsaved changes</span>
+        <span class="settings-savebar-actions">
+          <button type="button" class="btn btn-ghost btn-sm" id="settingsDiscardBtn">Discard</button>
+          <button type="button" class="btn btn-primary btn-sm" id="settingsSaveBarBtn">Save</button>
+        </span>
+      </div>
       <!-- Filled in by js/admin-backup.js -->
-      <section class="backup-section" id="backupAdmin"></section>
+      <section class="backup-section" id="backupAdmin" data-settings-title="Backup"></section>
     </div>
   </div>
 
@@ -485,6 +570,9 @@
 <script src="js/admin-settings.js"></script>
 <script src="js/admin-orders.js"></script>
 <script src="js/admin-analytics.js"></script>
+<script src="js/admin-content-history.js"></script>
+<script src="js/admin-content-ui.js"></script>
+<script src="js/admin-content-alt.js"></script>
 <script src="js/admin-backup.js"></script>
 <script src="js/admin-availability.js"></script>
 <script src="js/admin-delivery-areas.js"></script>
