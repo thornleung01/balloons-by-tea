@@ -44,9 +44,14 @@ async function loadCollectionsCache() {
   collectionsCache = data || [];
   const select = document.getElementById("f-collection");
   if (select) {
+    // Rebuilding the dropdown can change the item form's value (e.g. after a
+    // category is deleted); that isn't an edit, so a clean form stays clean.
+    const itemFormWasClean = typeof itemFormIsDirty === "function" && typeof markItemFormClean === "function"
+      && itemFormSnapshot !== null && !itemFormIsDirty();
     const prev = select.value;
     select.innerHTML = collectionsCache.map((c) => `<option value="${escapeHtml(c.slug)}">${escapeHtml(c.title)}</option>`).join("");
     if ([...select.options].some((o) => o.value === prev)) select.value = prev;
+    if (itemFormWasClean) markItemFormClean();
   }
 }
 
