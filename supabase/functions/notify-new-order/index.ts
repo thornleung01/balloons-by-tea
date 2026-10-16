@@ -239,52 +239,157 @@ function ownerText(o: NormalizedOrder, test: boolean): string {
   return lines.join("\n");
 }
 
-function row(label: string, valueHtml: string): string {
-  return `<tr><td style="padding:6px 12px 6px 0;color:#8a7468;font-size:13px;vertical-align:top;white-space:nowrap">${escapeHtml(label)}</td><td style="padding:6px 0;font-size:14px;color:#3d2b22">${valueHtml}</td></tr>`;
-}
+/* ---------- HTML email (inline CSS only, table layout, 600px) ----------
+   Brand colours: cream page #FFF5E3, white card, coral #FF7F7F used for the button with a
+   dark brown label (never white on coral), brown text #4A3028. Every cell that sits on a
+   colour sets BOTH the bgcolor attribute and a background-color style, and every text
+   element sets its own colour, so Gmail's dark-mode inversion cannot leave dark text on a
+   dark fill. `color-scheme: light dark` plus a prefers-color-scheme block gives Apple Mail
+   a proper dark version; the inline light colours are what every other client shows. */
+
+const EM = {
+  page: "#FFF5E3",
+  card: "#FFFFFF",
+  well: "#FFF5E3",
+  line: "#EAD9C8",
+  text: "#4A3028",
+  soft: "#6F564B",
+  link: "#B34848",
+  coral: "#FF7F7F",
+  warnBg: "#FFF4D6",
+  warnText: "#6B5200",
+};
+const EM_FONT = "-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif";
 
 function multiline(text: string): string {
   return escapeHtml(text).replace(/\r?\n/g, "<br>");
 }
 
-function ownerHtml(o: NormalizedOrder, test: boolean): string {
-  const phoneHref = o.phone.replace(/[^\d+]/g, "");
-  const rows = [
-    row("Customer", escapeHtml(o.name || "-")),
-    row("Phone", o.phone ? (phoneHref ? `<a href="tel:${escapeHtml(phoneHref)}" style="color:#d9776b">${escapeHtml(o.phone)}</a>` : escapeHtml(o.phone)) : "-"),
-    row("Email", o.email ? `<a href="mailto:${escapeHtml(o.email)}" style="color:#d9776b">${escapeHtml(o.email)}</a>` : "-"),
-  ];
-  if (o.eventWhen) rows.push(row("Event", escapeHtml(o.eventWhen)));
-  if (o.fulfillment) rows.push(row("Fulfillment", escapeHtml(o.fulfillment)));
-  if (o.address) rows.push(row("Address", multiline(o.address)));
-  if (o.total) rows.push(row("Total", `<strong>${escapeHtml(o.total)}</strong>`));
-  if (o.attachmentCount) rows.push(row("Photos", `${o.attachmentCount} attached (view them in admin)`));
+/* One label/value row of the key facts table. */
+function row(label: string, valueHtml: string): string {
+  return `<tr><td class="em-soft em-label" valign="top" width="112" style="padding:8px 12px 8px 0;border-top:1px solid ${EM.line};font-family:${EM_FONT};font-size:13px;line-height:20px;color:${EM.soft}">${escapeHtml(label)}</td><td class="em-text" valign="top" style="padding:8px 0;border-top:1px solid ${EM.line};font-family:${EM_FONT};font-size:15px;line-height:20px;color:${EM.text}">${valueHtml}</td></tr>`;
+}
 
-  let itemsHtml = "";
+function emLink(href: string, label: string): string {
+  return `<a href="${escapeHtml(href)}" class="em-link" style="color:${EM.link};text-decoration:underline">${escapeHtml(label)}</a>`;
+}
+
+function emHeading(text: string): string {
+  return `<p class="em-text" style="margin:28px 0 8px;font-family:${EM_FONT};font-size:12px;line-height:16px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:${EM.soft}">${escapeHtml(text)}</p>`;
+}
+
+/* The shared page: cream background, business name on top, white card, small print. */
+function emailShell(opts: { title: string; preheader: string; inner: string; footer: string }): string {
+  const business = escapeHtml(businessName());
+  return `<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<meta name="supported-color-schemes" content="light dark">
+<title>${escapeHtml(opts.title)}</title>
+<style>
+:root { color-scheme: light dark; supported-color-schemes: light dark; }
+a { color: ${EM.link}; }
+@media (max-width: 620px) {
+  .em-wrap { width: 100% !important; }
+  .em-pad { padding: 20px 16px !important; }
+  .em-title { font-size: 24px !important; line-height: 30px !important; }
+  .em-btn a { display: block !important; }
+  .em-label { width: 96px !important; }
+}
+@media (prefers-color-scheme: dark) {
+  .em-bg { background-color: #171210 !important; }
+  .em-card { background-color: #262019 !important; border-color: #3B3129 !important; }
+  .em-well { background-color: #1E1814 !important; }
+  .em-warn { background-color: #382E14 !important; }
+  .em-warn-text { color: #F2CB6B !important; }
+  .em-text { color: #F2E8DE !important; border-color: #3B3129 !important; }
+  .em-soft { color: #CDBEB2 !important; border-color: #3B3129 !important; }
+  .em-link, a { color: #FFA39C !important; }
+  .em-btn-cell { background-color: #FF8F88 !important; }
+  .em-btn-cell a { color: #2B1812 !important; }
+}
+</style>
+</head>
+<body class="em-bg" bgcolor="${EM.page}" style="margin:0;padding:0;background-color:${EM.page}">
+<div style="display:none;max-height:0;overflow:hidden;font-size:1px;line-height:1px;color:${EM.page}">${escapeHtml(opts.preheader)}</div>
+<table role="presentation" class="em-bg" width="100%" cellspacing="0" cellpadding="0" border="0" bgcolor="${EM.page}" style="background-color:${EM.page}">
+<tr><td align="center" class="em-bg" bgcolor="${EM.page}" style="padding:24px 12px;background-color:${EM.page}">
+<table role="presentation" class="em-wrap" width="600" cellspacing="0" cellpadding="0" border="0" style="width:600px;max-width:600px">
+<tr><td class="em-bg em-text" bgcolor="${EM.page}" style="padding:0 4px 14px;background-color:${EM.page};font-family:${EM_FONT};font-size:16px;line-height:22px;font-weight:700;color:${EM.text}">${business}</td></tr>
+<tr><td class="em-card em-pad" bgcolor="${EM.card}" style="padding:28px;background-color:${EM.card};border:1px solid ${EM.line};border-radius:14px">
+${opts.inner}
+</td></tr>
+<tr><td class="em-bg em-soft" bgcolor="${EM.page}" style="padding:16px 4px 0;background-color:${EM.page};font-family:${EM_FONT};font-size:12px;line-height:18px;color:${EM.soft}">${opts.footer}</td></tr>
+</table>
+</td></tr>
+</table>
+</body>
+</html>`;
+}
+
+function emButton(href: string, label: string): string {
+  return `<table role="presentation" class="em-btn" cellspacing="0" cellpadding="0" border="0" style="margin:28px 0 0"><tr><td class="em-btn-cell" bgcolor="${EM.coral}" style="background-color:${EM.coral};border-radius:999px"><a href="${escapeHtml(href)}" style="display:inline-block;padding:14px 28px;font-family:${EM_FONT};font-size:15px;line-height:20px;font-weight:700;color:${EM.text};text-decoration:none;text-align:center">${escapeHtml(label)}</a></td></tr></table>`;
+}
+
+function itemRowHtml(l: OrderLine): string {
+  const price = money(l.lineTotal ?? (l.unitPrice !== null && l.qty !== null ? l.unitPrice * l.qty : null));
+  const sub = [l.variant, l.addons ? `+ ${l.addons}` : ""].filter(Boolean).join(" ");
+  return `<tr><td class="em-text" valign="top" style="padding:10px 12px 10px 0;border-top:1px solid ${EM.line};font-family:${EM_FONT};font-size:15px;line-height:20px;color:${EM.text}">${escapeHtml(`${l.qty ?? 1} x ${l.name}`)}${sub ? `<br><span class="em-soft" style="font-size:13px;color:${EM.soft}">${escapeHtml(sub)}</span>` : ""}</td><td class="em-text" align="right" valign="top" style="padding:10px 0;border-top:1px solid ${EM.line};font-family:${EM_FONT};font-size:15px;line-height:20px;color:${EM.text};white-space:nowrap">${price ? escapeHtml(price) : ""}</td></tr>`;
+}
+
+export function ownerHtml(o: NormalizedOrder, test: boolean): string {
+  const phoneHref = o.phone.replace(/[^\d+]/g, "");
+  const kindWord = o.kind === "custom" ? "custom request" : "order";
+  const facts = [
+    o.eventWhen ? row("Event", escapeHtml(o.eventWhen)) : "",
+    o.fulfillment ? row("Fulfillment", escapeHtml(o.fulfillment)) : "",
+    o.total ? row("Total", `<strong style="font-size:17px">${escapeHtml(o.total)}</strong>`) : "",
+    row("Phone", o.phone ? (phoneHref ? emLink(`tel:${phoneHref}`, o.phone) : escapeHtml(o.phone)) : "-"),
+    row("Email", o.email ? emLink(`mailto:${o.email}`, o.email) : "-"),
+    o.address ? row("Address", multiline(o.address)) : "",
+  ].join("");
+
+  let items = "";
   if (o.items.length) {
-    itemsHtml = `<h3 style="font-size:15px;margin:20px 0 8px;color:#3d2b22">Items</h3><ul style="margin:0;padding-left:20px;font-size:14px;color:#3d2b22;line-height:1.6">${
-      o.items.map((l) => `<li>${escapeHtml(itemLineText(l))}</li>`).join("")
-    }</ul>`;
+    items = `${emHeading("Items")}<table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0">${o.items.map(itemRowHtml).join("")}</table>`;
   } else if (o.summary) {
-    itemsHtml = `<h3 style="font-size:15px;margin:20px 0 8px;color:#3d2b22">Summary</h3><p style="margin:0;font-size:14px;color:#3d2b22;line-height:1.6">${multiline(o.summary)}</p>`;
+    items = `${emHeading("Summary")}<p class="em-text" style="margin:0;font-family:${EM_FONT};font-size:15px;line-height:22px;color:${EM.text}">${multiline(o.summary)}</p>`;
   }
-  const notesHtml = o.notes
-    ? `<h3 style="font-size:15px;margin:20px 0 8px;color:#3d2b22">Notes</h3><p style="margin:0;font-size:14px;color:#3d2b22;line-height:1.6">${multiline(o.notes)}</p>`
+  const notes = o.notes
+    ? `${emHeading("Notes from the customer")}<table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0"><tr><td class="em-well em-text" bgcolor="${EM.well}" style="padding:14px 16px;background-color:${EM.well};border-left:4px solid ${EM.coral};border-radius:8px;font-family:${EM_FONT};font-size:15px;line-height:22px;color:${EM.text}">${multiline(o.notes)}</td></tr></table>`
+    : "";
+  const photos = o.attachmentCount
+    ? `<p class="em-soft" style="margin:16px 0 0;font-family:${EM_FONT};font-size:14px;line-height:20px;color:${EM.soft}">${o.attachmentCount} photo${o.attachmentCount === 1 ? "" : "s"} attached. View ${o.attachmentCount === 1 ? "it" : "them"} in admin.</p>`
     : "";
   const link = adminLink();
-  const button = link
-    ? `<p style="margin:28px 0 0"><a href="${escapeHtml(link)}" style="display:inline-block;background:#d9776b;color:#fff;text-decoration:none;padding:12px 22px;border-radius:999px;font-weight:600;font-size:14px">Open in admin</a></p>`
-    : "";
   const banner = test
-    ? `<p style="margin:0 0 16px;padding:10px 14px;background:#fff4d6;border-radius:8px;font-size:13px;color:#6b5200">Test notification: no real order was placed.</p>`
+    ? `<table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="margin:0 0 20px"><tr><td class="em-warn em-warn-text" bgcolor="${EM.warnBg}" style="padding:10px 14px;background-color:${EM.warnBg};border-radius:8px;font-family:${EM_FONT};font-size:13px;line-height:18px;color:${EM.warnText}">Test notification: no real order was placed.</td></tr></table>`
     : "";
-  return `<!doctype html><html><body style="margin:0;padding:24px;background:#fbf6f2;font-family:Helvetica,Arial,sans-serif">
-<div style="max-width:560px;margin:0 auto;background:#fff;border-radius:14px;padding:28px">
-${banner}<h2 style="margin:0 0 4px;font-size:20px;color:#3d2b22">New ${o.kind === "custom" ? "custom request" : "order"}${o.id ? ` #${escapeHtml(o.id)}` : ""}</h2>
-<p style="margin:0 0 16px;font-size:13px;color:#8a7468">${escapeHtml(businessName())}</p>
-<table role="presentation" cellspacing="0" cellpadding="0" style="border-collapse:collapse">${rows.join("")}</table>
-${itemsHtml}${notesHtml}${button}
-</div></body></html>`;
+  const who = o.name || "a customer";
+  const inner = `${banner}<p class="em-soft" style="margin:0 0 6px;font-family:${EM_FONT};font-size:12px;line-height:16px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:${EM.soft}">New ${kindWord}${o.id ? ` #${escapeHtml(o.id)}` : ""}</p>
+<h1 class="em-text em-title" style="margin:0 0 20px;font-family:${EM_FONT};font-size:28px;line-height:34px;font-weight:700;color:${EM.text}">New ${kindWord} from ${escapeHtml(who)}</h1>
+<table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0">${facts}</table>
+${items}${notes}${photos}${link ? emButton(link, "Open in admin") : ""}`;
+  return emailShell({
+    title: `New ${kindWord} from ${who}`,
+    preheader: [o.eventWhen, o.total, o.phone].filter(Boolean).join(" | ") || `New ${kindWord}`,
+    inner,
+    footer: `You get this email because new orders at ${escapeHtml(businessName())} are sent to this address. Change who is notified in the admin under Settings, Notifications.`,
+  });
+}
+
+/* Customer confirmation: the owner's own wording, in the same shell. */
+export function customerHtml(text: string): string {
+  const inner = `<p class="em-text" style="margin:0;font-family:${EM_FONT};font-size:16px;line-height:26px;color:${EM.text}">${multiline(text)}</p>`;
+  return emailShell({
+    title: businessName(),
+    preheader: text.replace(/\s+/g, " ").slice(0, 90),
+    inner,
+    footer: `Sent by ${escapeHtml(businessName())}. Reply to this email to reach us.`,
+  });
 }
 
 function smsText(o: NormalizedOrder, test: boolean): string {
@@ -426,7 +531,7 @@ async function notify(record: Json, test: boolean): Promise<Response> {
       const tpl = await readCustomerSettings();
       const subject = (test ? "[TEST preview] " : "") + fillTemplate(tpl.subject, order);
       const text = fillTemplate(tpl.body, order);
-      const html = `<!doctype html><html><body style="margin:0;padding:24px;background:#fbf6f2;font-family:Helvetica,Arial,sans-serif"><div style="max-width:560px;margin:0 auto;background:#fff;border-radius:14px;padding:28px;font-size:15px;line-height:1.6;color:#3d2b22">${multiline(text)}</div></body></html>`;
+      const html = customerHtml(text);
       customer = await sendEmail(to, subject, html, text, ownerTo[0]);
     }
   }
