@@ -67,15 +67,15 @@
     return out;
   }
 
-  // Bar path with 4px rounded data-end (top, or right when horizontal),
-  // square at the baseline.
+  // Bar path with a 6px (--a-radius-xs) rounded data-end (top, or right when
+  // horizontal), square at the baseline.
   function barPath(x, y, w, h, horizontal) {
     if (w <= 0 || h <= 0) return "";
     if (horizontal) {
-      const r = Math.min(4, h / 2, w);
+      const r = Math.min(6, h / 2, w);
       return `M${r1(x)},${r1(y)}h${r1(w - r)}a${r},${r} 0 0 1 ${r},${r}v${r1(h - 2 * r)}a${r},${r} 0 0 1 -${r},${r}h-${r1(w - r)}z`;
     }
-    const r = Math.min(4, w / 2, h);
+    const r = Math.min(6, w / 2, h);
     return `M${r1(x)},${r1(y + h)}v-${r1(h - r)}a${r},${r} 0 0 1 ${r},-${r}h${r1(w - 2 * r)}a${r},${r} 0 0 1 ${r},${r}v${r1(h - r)}z`;
   }
 
@@ -150,17 +150,20 @@
     if (legend) {
       let lx = padLeft;
       series.forEach((ser) => {
-        parts.push(`<rect x="${lx}" y="8" width="12" height="3" rx="1.5" style="fill:${ser.color}"/><text class="ac-legend" x="${lx + 16}" y="10" dy="0.32em">${esc(ser.name)}</text>`);
-        lx += 16 + textWidth(ser.name, 12) + 18;
+        // Swatch repeats the line's dash so series differ by more than colour.
+        parts.push(`<line x1="${lx}" x2="${lx + 14}" y1="9.5" y2="9.5" stroke-width="2" stroke-linecap="round"${ser.dash ? ` stroke-dasharray="${esc(ser.dash)}"` : ""} style="stroke:${ser.color}"/><text class="ac-legend" x="${lx + 19}" y="10" dy="0.32em">${esc(ser.name)}</text>`);
+        lx += 19 + textWidth(ser.name, 12) + 18;
       });
     }
-    // Areas then lines.
+    // Areas (a soft gradient from the series colour to nothing) then lines.
     series.forEach((ser) => {
       const pts = ser.values.map((v, i) => `${r1(x(i))},${r1(y(v))}`);
       if (ser.area !== false && n > 1) {
-        parts.push(`<path class="ac-area" d="M${r1(x(0))},${r1(y(0))}L${pts.join("L")}L${r1(x(n - 1))},${r1(y(0))}Z" style="fill:${ser.color}"/>`);
+        const gid = nextId("acg");
+        parts.push(`<defs><linearGradient id="${gid}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" style="stop-color:${ser.color}" stop-opacity="0.28"/><stop offset="1" style="stop-color:${ser.color}" stop-opacity="0.02"/></linearGradient></defs>`);
+        parts.push(`<path class="ac-area" d="M${r1(x(0))},${r1(y(0))}L${pts.join("L")}L${r1(x(n - 1))},${r1(y(0))}Z" fill="url(#${gid})"/>`);
       }
-      if (n > 1) parts.push(`<path class="ac-path" d="M${pts.join("L")}" style="stroke:${ser.color}"/>`);
+      if (n > 1) parts.push(`<path class="ac-path" d="M${pts.join("L")}"${ser.dash ? ` stroke-dasharray="${esc(ser.dash)}"` : ""} style="stroke:${ser.color}"/>`);
     });
     // Static markers only when sparse enough to read (or a lone point).
     const showDots = n <= 16;
@@ -217,7 +220,6 @@
         const w = (values[i] / max) * plotW;
         const tip = `${tipLabels[i]}\n${o.valueName ? o.valueName + ": " : ""}${valueLabels[i]}`;
         parts.push(`<text class="ac-cat" x="0" y="${r1(top + rowH / 2)}" dy="0.32em">${esc(truncate(label, labelW - 8, 12))}</text>`);
-        parts.push(`<rect class="ac-track" x="${labelW}" y="${r1(by)}" width="${r1(plotW)}" height="${barH}" rx="${barH / 2}"/>`);
         if (w > 0) parts.push(`<path class="ac-bar" d="${barPath(labelW, by, Math.max(w, 2), barH, true)}" style="fill:${color}"/>`);
         parts.push(`<text class="ac-val" x="${width}" y="${r1(top + rowH / 2)}" dy="0.32em" text-anchor="end">${esc(valueLabels[i])}</text>`);
         parts.push(`<rect class="ac-hit" x="0" y="${top}" width="${width}" height="${rowH}" data-tip="${esc(tip)}"/>`);
@@ -230,7 +232,7 @@
     if (!n) return emptyChart(width, height, o.title, o.emptyText || "No data in this range.");
     const yFmt = o.yFormat || fmt;
     const scale = niceScale(Math.max(0, ...values), height < 160 ? 3 : 4);
-    const padTop = 12;
+    const padTop = 20; // room for value labels above the tallest bar
     const padBottom = 24;
     const padLeft = Math.ceil(Math.max(...scale.ticks.map((t) => textWidth(yFmt(t))))) + 12;
     const padRight = 8;
@@ -252,6 +254,10 @@
       const bx = padLeft + i * slot + gap / 2;
       const h = (values[i] / scale.max) * plotH;
       if (h > 0) parts.push(`<path class="ac-bar" d="${barPath(bx, y(values[i]), barW, Math.max(h, 1.5), false)}" style="fill:${color}"/>`);
+      // Value above the bar where it fits inside the bar's slot.
+      if (values[i] > 0 && o.valueLabels !== false && textWidth(fmt(values[i]), 11) <= slot - 2) {
+        parts.push(`<text class="ac-val-sm" x="${r1(bx + barW / 2)}" y="${r1(y(values[i]) - 5)}" text-anchor="middle">${esc(fmt(values[i]))}</text>`);
+      }
       if (labelIdx.has(i)) parts.push(`<text class="ac-tick" x="${r1(bx + barW / 2)}" y="${height - 6}" text-anchor="middle">${esc(label)}</text>`);
       const tip = `${tipLabels[i]}\n${o.valueName ? o.valueName + ": " : ""}${fmt(values[i])}`;
       parts.push(`<rect class="ac-hit" x="${r1(padLeft + i * slot)}" y="${padTop}" width="${r1(slot)}" height="${plotH}" data-tip="${esc(tip)}"/>`);
@@ -275,7 +281,8 @@
     const pad = 3;
     const pts = vals.map((v, i) => `${r1(pad + (i / (vals.length - 1)) * (width - 2 * pad))},${r1(height - pad - ((v - min) / span) * (height - 2 * pad))}`);
     const last = pts[pts.length - 1].split(",");
-    return `<svg class="ac-spark" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" aria-hidden="true" focusable="false"><path d="M${pts.join("L")}" fill="none" style="stroke:${color}" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"/><circle cx="${last[0]}" cy="${last[1]}" r="2.5" style="fill:${color}"/></svg>`;
+    const first = pts[0].split(",");
+    return `<svg class="ac-spark" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" aria-hidden="true" focusable="false"><path d="M${first[0]},${height - pad}L${pts.join("L")}L${last[0]},${height - pad}Z" stroke="none" opacity="0.12" style="fill:${color}"/><path d="M${pts.join("L")}" fill="none" style="stroke:${color}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/><circle cx="${last[0]}" cy="${last[1]}" r="2.5" style="fill:${color}"/></svg>`;
   }
 
   /* One row of cells, shade = value / max (single hue, light -> dark), and
