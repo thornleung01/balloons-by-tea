@@ -486,6 +486,7 @@ body.admin-body {
 .a-empty svg { width: 32px; height: 32px; color: var(--a-text-faint); }
 .a-empty-title { margin: 0; font-family: var(--a-font-ui); font-size: var(--a-text-md); font-weight: var(--a-weight-bold); color: var(--a-text); }
 .a-empty-text { margin: 0; max-width: 42ch; font-size: var(--a-text-sm); line-height: var(--a-leading-normal); }
+.a-empty .btn { margin-top: var(--a-space-2); }
 
 /* Inline error: sits next to the control or form it belongs to. */
 .a-inline-error {

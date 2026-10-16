@@ -187,6 +187,9 @@ body.admin-body {
   .admin-body .modal, .admin-body .modal-panel { transition: none; }
 }
 
+/* An empty message inside a tile grid spans the whole row instead of sitting in one narrow cell. */
+.admin-body .photo-library-grid > .empty-note { grid-column: 1 / -1; }
+
 /* ===== Phase 2 shared: upload dropzone ===== */
 .admin-body .upload-dropzone {
   min-height: 96px; gap: var(--a-space-1);
@@ -239,8 +242,8 @@ body.admin-body {
 .login-card h1 { margin: 0 0 var(--a-space-1); font-family: var(--a-font-display); font-size: var(--a-text-2xl); line-height: var(--a-leading-tight); color: var(--a-text); }
 .login-card > p { margin: 0 0 var(--a-space-4); font-size: var(--a-text-base); line-height: var(--a-leading-normal); color: var(--a-text-soft); }
 .login-card form { text-align: left; }
-/* Reserve two lines for the message so a login error does not push the button down. */
-.login-card .form-status { min-height: 2.8em; margin: 0 0 var(--a-space-3); line-height: var(--a-leading-snug); }
+/* Reserve a line for the message so a login error does not push the button down. */
+.login-card .form-status { min-height: 1.4em; margin: 0 0 var(--a-space-3); line-height: var(--a-leading-snug); }
 .login-card .form-status.error { font-weight: var(--a-weight-semibold); color: var(--a-danger-fg); }
 .login-card .btn-block + .login-link-btn { margin-top: var(--a-space-3); }
 
