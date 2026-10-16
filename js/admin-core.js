@@ -205,7 +205,7 @@ function renderAdminNav() {
   if (bottom) {
     bottom.innerHTML = groups.map((g) => `
       <button type="button" class="admin-bottom-btn" data-group="${escapeHtml(g.key)}">
-        <span class="admin-bottom-icon">${adminIconSvg(g.icon, 22)}<span class="admin-tab-badge admin-group-badge" hidden></span></span>
+        <span class="admin-bottom-icon">${adminIconSvg(g.icon, 22)}<span class="a-badge a-badge--count admin-tab-badge admin-group-badge" hidden></span></span>
         <span class="admin-bottom-label">${escapeHtml(g.label)}</span>
       </button>`).join("");
     bottom.querySelectorAll(".admin-bottom-btn").forEach((btn) => {
@@ -238,7 +238,7 @@ function adminTabButton(key) {
     btn.id = t.btnId;
     const label = t.label || key.charAt(0).toUpperCase() + key.slice(1);
     const hasBadgeEl = t.badgeId && document.getElementById(t.badgeId);
-    btn.innerHTML = `${adminIconSvg(t.icon)}<span class="admin-tab-label">${escapeHtml(label)}</span>${t.badgeId && !hasBadgeEl ? `<span class="admin-tab-badge" id="${escapeHtml(t.badgeId)}" hidden>0</span>` : ""}`;
+    btn.innerHTML = `${adminIconSvg(t.icon)}<span class="admin-tab-label">${escapeHtml(label)}</span>${t.badgeId && !hasBadgeEl ? `<span class="a-badge a-badge--count admin-tab-badge" id="${escapeHtml(t.badgeId)}" hidden>0</span>` : ""}`;
   } else if (!t.label) {
     t.label = btn.textContent.trim();
   }
@@ -291,7 +291,7 @@ function setTabBadge(key, n) {
     const btn = document.getElementById(t.btnId);
     if (!btn) return;
     el = document.createElement("span");
-    el.className = "admin-tab-badge";
+    el.className = "a-badge a-badge--count admin-tab-badge";
     el.id = t.badgeId;
     btn.appendChild(el);
     adminObserveBadge(t.badgeId);
@@ -663,7 +663,7 @@ async function handleLogin(e) {
 
   const { error } = await client.auth.signInWithPassword({ email, password });
   if (error) {
-    errorEl.textContent = "Couldn't log in — check your email and password.";
+    errorEl.textContent = "Couldn't log in. Check your email and password.";
     return;
   }
   await enterDashboard();

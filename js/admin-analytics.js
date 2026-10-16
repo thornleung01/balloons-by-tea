@@ -134,7 +134,7 @@ function analyticsMonthKeys(fromMs, count) {
 /* ===== Formatting ===== */
 
 function analyticsMoney(v) {
-  if (v == null || !Number.isFinite(v)) return "—";
+  if (v == null || !Number.isFinite(v)) return "n/a";
   return "$" + v.toLocaleString(undefined, { maximumFractionDigits: Math.abs(v) < 100 ? 2 : 0 });
 }
 function analyticsMoneyTick(v) {
@@ -142,7 +142,7 @@ function analyticsMoneyTick(v) {
 }
 const analyticsInt = (v) => Math.round(Number(v) || 0).toLocaleString();
 function analyticsPct(part, whole, digits) {
-  if (!whole) return "—";
+  if (!whole) return "n/a";
   return `${((part / whole) * 100).toLocaleString(undefined, { maximumFractionDigits: digits == null ? 1 : digits })}%`;
 }
 function analyticsDayLabel(key, long) {
@@ -399,15 +399,29 @@ async function fetchAnalyticsOrders(client) {
 
 /* ===== Events ===== */
 
+/* Loading placeholder shaped like the loaded page: KPI row, then a chart card. */
+function analyticsSkeletonHtml() {
+  const kpi = `<div class="an-kpi an-sk-kpi"><span class="a-skeleton a-skeleton--line an-sk-w50"></span><span class="a-skeleton an-sk-value"></span><span class="a-skeleton a-skeleton--line an-sk-w70"></span></div>`;
+  return `<div class="an-skeleton" role="status" aria-label="Loading analytics">
+    <div class="an-kpis" aria-hidden="true">${kpi.repeat(5)}</div>
+    <div class="analytics-card" aria-hidden="true"><span class="a-skeleton a-skeleton--line an-sk-w30"></span><span class="a-skeleton an-sk-chart"></span><span class="a-skeleton a-skeleton--line an-sk-w30"></span><span class="a-skeleton an-sk-chart an-sk-chart-short"></span></div>
+  </div>`;
+}
+
+/* Inline error with a Retry button (wired once, by delegation, in onAdminInit). */
+function analyticsErrorHtml(title, message) {
+  return `<div class="an-error" role="alert"><p class="a-inline-error">${escapeHtml(title)} ${escapeHtml(message)}</p><button type="button" class="btn btn-outline btn-sm" data-an-retry>Retry</button></div>`;
+}
+
 async function refreshAnalyticsPanel() {
   const seq = ++analyticsRefreshSeq;
   const content = document.getElementById("analyticsContent");
   const win = analyticsWindow(analyticsRangeDays, analyticsCustomRange);
   if (!win) {
-    content.innerHTML = `<p class="form-status error">Pick a start and end date (the end can't be before the start).</p>`;
+    content.innerHTML = `<p class="a-inline-error" role="alert">Pick a start and end date. The end can't be before the start.</p>`;
     return;
   }
-  content.innerHTML = `<p class="empty-note">Loading...</p>`;
+  content.innerHTML = analyticsSkeletonHtml();
   const client = getSupabaseClient();
   const tz = analyticsTimezone();
   const rpc = (fromMs, toMs) => client.rpc("analytics_summary_v2", { from_ts: analyticsIso(fromMs), to_ts: analyticsIso(toMs), tz });
@@ -446,9 +460,9 @@ async function refreshAnalyticsPanel() {
     // Most likely cause: the analytics_events table/migration hasn't been
     // run yet (see supabase-setup.sql) — give a specific, actionable
     // message instead of a raw Postgres error for that common case.
-    content.innerHTML = `<p class="form-status error">${isMissingTableError(error, "analytics_events")
-      ? "The analytics_events table doesn't exist yet — run the latest supabase-setup.sql in your Supabase SQL Editor to turn tracking on."
-      : "Couldn't load analytics: " + escapeHtml(error.message)}</p>`;
+    content.innerHTML = isMissingTableError(error, "analytics_events")
+      ? analyticsErrorHtml("The analytics_events table doesn't exist yet.", "Run the latest supabase-setup.sql in your Supabase SQL Editor to turn tracking on.")
+      : analyticsErrorHtml("Couldn't load analytics.", error.message || "");
     return;
   }
 
@@ -780,7 +794,7 @@ function buildAnalyticsReport({ win, summary, prevSummary, seasonSummary, orders
     { key: "revenue", label: "Revenue", value: curOrders.revenue, display: analyticsMoney(curOrders.revenue), prev: prevOrders ? prevOrders.revenue : null, mode: "pct", spark: trend.map((t) => t.revenue), color: ANALYTICS_COLORS.revenue, note: "Non-cancelled orders" },
     { key: "orders", label: "Orders", value: curOrders.count, display: analyticsInt(curOrders.count), prev: prevOrders ? prevOrders.count : null, mode: "pct", spark: trend.map((t) => t.orders), color: ANALYTICS_COLORS.orders, note: curOrders.cancelled ? `${curOrders.cancelled} cancelled not counted` : "" },
     { key: "aov", label: "Avg order value", value: curOrders.aov, display: analyticsMoney(curOrders.aov), prev: prevOrders ? prevOrders.aov : null, mode: "pct", spark: null, color: ANALYTICS_COLORS.revenue, note: curOrders.priced < curOrders.count ? `${curOrders.priced} of ${curOrders.count} orders have a price` : "" },
-    { key: "conversion", label: "Conversion rate", value: conv, display: conv == null ? "—" : analyticsPct(curOrders.count, sessions, 2), prev: prevConv, mode: "pts", spark: null, color: ANALYTICS_COLORS.orders, note: "Orders ÷ sessions" },
+    { key: "conversion", label: "Conversion rate", value: conv, display: conv == null ? "n/a" : analyticsPct(curOrders.count, sessions, 2), prev: prevConv, mode: "pts", spark: null, color: ANALYTICS_COLORS.orders, note: "Orders ÷ sessions" },
     { key: "sessions", label: "Sessions", value: sessions, display: analyticsInt(sessions), prev: prevSessions, mode: "pct", spark: trend.map((t) => t.sessions), color: ANALYTICS_COLORS.sessions, note: "Browser visits" }
   ].map((k) => ({ ...k, delta: analyticsDelta(k.value, k.prev, k.mode) }));
 
@@ -956,7 +970,7 @@ function analyticsFunnelHtml(funnel) {
       ${analyticsDataToggle("Shopping funnel", [
         { label: "Step", value: (r) => r.label },
         { label: "Sessions", value: (r) => analyticsInt(r.count), num: true },
-        { label: "% of previous", value: (r) => (r.ofPrev == null ? "—" : analyticsPct(r.ofPrev, 1)), num: true },
+        { label: "% of previous", value: (r) => (r.ofPrev == null ? "n/a" : analyticsPct(r.ofPrev, 1)), num: true },
         { label: "% of visits", value: (r) => analyticsPct(r.ofFirst || 0, 1), num: true }
       ], steps)}
     </div>
@@ -969,8 +983,8 @@ function analyticsSeasonTable(months) {
     { label: "Sessions", value: (m) => analyticsInt(m.sessions), num: true },
     { label: "Orders", value: (m) => analyticsInt(m.orders), num: true },
     { label: "Revenue", value: (m) => analyticsMoney(m.revenue), num: true },
-    { label: "Top collection", value: (m) => m.topCollection || "—" },
-    { label: "Top product", value: (m) => (m.topProduct ? `${m.topProduct}${m.basis === "viewed" ? " (most viewed)" : ""}` : "—") }
+    { label: "Top collection", value: (m) => m.topCollection || "n/a" },
+    { label: "Top product", value: (m) => (m.topProduct ? `${m.topProduct}${m.basis === "viewed" ? " (most viewed)" : ""}` : "n/a") }
   ], months.slice().reverse());
 }
 
@@ -980,11 +994,16 @@ function renderAnalyticsPanel(report) {
   const tips = [];
   if (r.usedFallback) tips.push("Tip: run supabase-migrations/50-analytics.sql in the Supabase SQL Editor for faster analytics (the numbers are being counted in your browser for now).");
   const ordersNote = r.ordersError
-    ? `<p class="form-status error">Couldn't load orders, so revenue and order numbers are missing: ${escapeHtml(r.ordersError.message)}</p>`
+    ? `<p class="a-inline-error" role="alert">Couldn't load orders, so revenue and order numbers are missing. ${escapeHtml(r.ordersError.message)}</p>`
     : "";
 
-  if (!r.totalEvents && !r.hasOrders) {
-    content.innerHTML = `${ordersNote}<p class="empty-note">No analytics events in this range yet.</p>${tips.map((t) => `<p class="analytics-note">${escapeHtml(t)}</p>`).join("")}`;
+  // Highlight the range chips when the range has nothing in it.
+  const rangeBar = document.getElementById("analyticsRangeFilter");
+  const isEmpty = !r.totalEvents && !r.hasOrders;
+  if (rangeBar) rangeBar.classList.toggle("is-hint", isEmpty);
+  if (isEmpty) {
+    const longer = analyticsRangeDays !== "all";
+    content.innerHTML = `${ordersNote}<div class="a-empty an-empty">${typeof adminIconSvg === "function" ? adminIconSvg("chart", 28) : ""}<p class="a-empty-title">No data in this range</p><p class="a-empty-text">Visits and orders show up here once the site has traffic.${longer ? " Try a longer range." : ""}</p>${longer ? `<button type="button" class="btn btn-outline btn-sm" data-an-range-jump="all">Show all time</button>` : ""}</div>${tips.map((t) => `<p class="analytics-note">${escapeHtml(t)}</p>`).join("")}`;
     return;
   }
 
@@ -1034,7 +1053,7 @@ function renderAnalyticsPanel(report) {
           { label: "Sessions", value: (s) => analyticsInt(s.sessions), num: true },
           { label: "Orders", value: (s) => analyticsInt(s.orders), num: true },
           { label: "Revenue", value: (s) => analyticsMoney(s.revenue), num: true },
-          { label: "Conv.", value: (s) => (s.sessions ? analyticsPct(s.orders, s.sessions) : "—"), num: true }
+          { label: "Conv.", value: (s) => (s.sessions ? analyticsPct(s.orders, s.sessions) : "n/a"), num: true }
         ], r.sources)}
       </div>
     </div>
@@ -1046,7 +1065,7 @@ function renderAnalyticsPanel(report) {
         { label: "Product", value: (p) => p.name, html: (p) => `${escapeHtml(p.name)}${p.collectionLabel ? `<span class="an-cell-sub">${escapeHtml(p.collectionLabel)}</span>` : ""}` },
         { label: "Views", value: (p) => analyticsInt(p.views), num: true },
         { label: "Adds", value: (p) => analyticsInt(p.adds), num: true },
-        { label: "View→cart", value: (p) => (p.viewToCart == null ? "—" : analyticsPct(p.adds, p.views, 0)), num: true },
+        { label: "View→cart", value: (p) => (p.viewToCart == null ? "n/a" : analyticsPct(p.adds, p.views, 0)), num: true },
         { label: "Orders", value: (p) => analyticsInt(p.orders), num: true },
         { label: "Qty", value: (p) => analyticsInt(p.qty), num: true },
         { label: "Revenue", value: (p) => analyticsMoney(p.revenue), num: true }
@@ -1063,7 +1082,7 @@ function renderAnalyticsPanel(report) {
       <details class="an-data" open><summary>Month by month</summary>${analyticsSeasonTable(r.months)}</details>
       <h4 class="an-chart-title">Busy seasons: orders by event month <span class="an-sub">all years, by the date of the party</span></h4>
       ${r.eventMonths.dated
-        ? `<div class="an-chart an-heat-host" data-chart="heat"></div><p class="analytics-note">${analyticsInt(r.eventMonths.dated)} non-cancelled order${r.eventMonths.dated === 1 ? "" : "s"} with an event date. Darker = busier; each cell shows its count.</p>`
+        ? `<div class="an-chart an-heat-host" data-chart="heat"></div><div class="an-heat-legend" aria-hidden="true"><span>Fewer orders</span><i class="ac-heat-0"></i><i class="ac-heat-1"></i><i class="ac-heat-2"></i><i class="ac-heat-3"></i><i class="ac-heat-4"></i><span>More orders</span></div><p class="analytics-note">${analyticsInt(r.eventMonths.dated)} non-cancelled order${r.eventMonths.dated === 1 ? "" : "s"} with an event date. Darker = busier; each cell shows its count.</p>`
         : `<p class="empty-note">No orders with an event date yet.</p>`}
       <h4 class="an-chart-title">Day of week <span class="an-sub">sessions, selected range</span></h4>
       <div class="an-chart" data-chart="dow"></div>
@@ -1084,12 +1103,12 @@ function renderAnalyticsPanel(report) {
           : `<p class="empty-note">No abandonment data in this range.</p>`}
         ${checkoutFailedCount > 0 ? `<p class="analytics-note">${checkoutFailedCount} checkout submission${checkoutFailedCount === 1 ? "" : "s"} failed with a backend error in this range.</p>` : ""}
       </div>
-      ${fieldBreakdownHtml("Checkout form — which field trips people up", f.checkoutFieldErrors)}
+      ${fieldBreakdownHtml("Checkout form: which field trips people up", f.checkoutFieldErrors)}
       <div class="analytics-card">
         <h3>Custom-order funnel</h3>
         ${customSteps.map(([label, count]) => funnelBarHtml(label, count, customMax)).join("")}
       </div>
-      ${fieldBreakdownHtml("Custom-order form — which field trips people up", f.customFieldErrors)}
+      ${fieldBreakdownHtml("Custom-order form: which field trips people up", f.customFieldErrors)}
     </div>
     ${tips.map((t) => `<p class="analytics-note">${escapeHtml(t)}</p>`).join("")}
   `;
@@ -1217,7 +1236,7 @@ function buildAnalyticsCsv(report) {
 
 function exportAnalyticsCsv() {
   if (!analyticsLastReport) {
-    adminToast("Nothing to export yet — wait for the analytics to finish loading.", { kind: "info" });
+    adminToast("Nothing to export yet. Wait for the analytics to finish loading.", { kind: "info" });
     return;
   }
   const blob = new Blob(["﻿" + buildAnalyticsCsv(analyticsLastReport)], { type: "text/csv;charset=utf-8;" });
@@ -1293,7 +1312,7 @@ async function clearOldAnalyticsEvents() {
     .delete({ count: "exact" })
     .lt("created_at", cutoffIso);
   if (!deleteError && !deletedCount) {
-    deleteError = { message: "Nothing was deleted — your login may have expired. Refresh the page and try again." };
+    deleteError = { message: "Nothing was deleted. Your login may have expired. Refresh the page and try again." };
   }
 
   btn.disabled = false;
@@ -1346,6 +1365,18 @@ onAdminInit(() => {
       analyticsRangeDays = "custom";
       analyticsCustomRange = { from: fromInput.value, to: toInput.value };
       refreshAnalyticsPanel();
+    });
+  }
+  // Retry (error state) and the "Show all time" shortcut (empty state).
+  const contentEl = document.getElementById("analyticsContent");
+  if (contentEl) {
+    contentEl.addEventListener("click", (e) => {
+      if (e.target.closest("[data-an-retry]")) { refreshAnalyticsPanel(); return; }
+      const jump = e.target.closest("[data-an-range-jump]");
+      if (jump) {
+        const chip = document.querySelector(`#analyticsRangeFilter [data-range="${jump.dataset.anRangeJump}"]`);
+        if (chip) chip.click();
+      }
     });
   }
   const exportBtn = document.getElementById("analyticsExportBtn");
