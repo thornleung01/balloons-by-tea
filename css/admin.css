@@ -789,11 +789,12 @@ a.order-attachment:focus-visible { outline: var(--a-ring-w) solid var(--a-focus)
   font-size: var(--a-text-sm);
   margin-bottom: 6px;
 }
-.analytics-funnel-label { color: var(--color-fg-soft); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.analytics-funnel-track { background: var(--color-bg-alt); border-radius: var(--radius-pill); height: 10px; overflow: hidden; }
-.analytics-funnel-fill { background: var(--color-accent); height: 100%; border-radius: var(--radius-pill); transition: width 300ms var(--ease); }
-.analytics-funnel-count { font-weight: 700; min-width: 2ch; text-align: right; }
-.analytics-big-number { font-size: 2.2rem; font-weight: 700; color: var(--a-accent-text); line-height: 1; margin-bottom: var(--space-2); }
+.analytics-funnel-label { color: var(--a-text-soft); line-height: var(--a-leading-snug); overflow-wrap: anywhere; }
+.analytics-funnel-track { background: var(--a-chart-track); border-radius: var(--a-radius-xs); height: 8px; overflow: hidden; }
+.analytics-funnel-fill { background: var(--a-chart-1); height: 100%; border-radius: var(--a-radius-xs); transition: width var(--a-dur-slow) var(--a-ease); }
+.analytics-funnel-count { font-weight: 700; min-width: 2ch; text-align: right; font-variant-numeric: tabular-nums; }
+.analytics-big-number { font-size: var(--a-text-3xl); font-weight: 700; color: var(--a-accent-text); line-height: 1; margin-bottom: var(--space-2); font-variant-numeric: tabular-nums; }
+@media (prefers-reduced-motion: reduce) { .analytics-funnel-fill { transition: none; } }
 .analytics-note { font-size: var(--a-text-xs); color: var(--color-fg-faint); margin: 6px 0; }
 .order-field { font-size: var(--a-text-sm); color: var(--color-fg-soft); margin-top: 6px; }
 .order-summary-text, .order-notes-text { white-space: pre-line; background: var(--color-bg-alt); border-radius: var(--radius-sm); padding: 8px 10px; }
