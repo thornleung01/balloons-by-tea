@@ -612,7 +612,7 @@ a.order-attachment:focus-visible { outline: var(--a-ring-w) solid var(--a-focus)
   font-size: var(--a-text-sm);
   margin-bottom: 6px;
 }
-.analytics-funnel-label { color: var(--color-fg-soft); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.analytics-funnel-label { color: var(--a-text-soft); line-height: var(--a-leading-snug); overflow-wrap: anywhere; }
 .analytics-funnel-track { background: var(--a-chart-track); border-radius: var(--a-radius-xs); height: 8px; overflow: hidden; }
 .analytics-funnel-fill { background: var(--a-chart-1); height: 100%; border-radius: var(--a-radius-xs); transition: width var(--a-dur-slow) var(--a-ease); }
 .analytics-funnel-count { font-weight: 700; min-width: 2ch; text-align: right; font-variant-numeric: tabular-nums; }

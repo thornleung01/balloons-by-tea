@@ -386,7 +386,7 @@
       const ref = orderRefOf(o);
       const key = isoDay(day);
       const heading = key === lastKey ? "" : `
-          <li class="ov-day"><span class="ov-day-rel">${escapeHtml(relativeDay(day))}</span><span class="ov-day-date">${escapeHtml(day.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" }))}</span></li>`;
+          <li class="ov-day"><span class="ov-day-rel">${escapeHtml(relativeDay(day))}</span><span class="ov-day-date">${escapeHtml(day.toLocaleDateString("en-US", /^(Today|Tomorrow)$/.test(relativeDay(day)) ? { weekday: "short", month: "short", day: "numeric" } : { month: "short", day: "numeric" }))}</span></li>`;
       lastKey = key;
       return `${heading}
           <li>

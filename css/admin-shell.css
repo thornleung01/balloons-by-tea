@@ -325,6 +325,7 @@
 .backup-nudge-text { display: flex; align-items: center; gap: var(--a-space-2); flex: 1 1 260px; min-width: 0; font-weight: var(--a-weight-semibold); }
 .backup-nudge-text .admin-icon { flex-shrink: 0; }
 .backup-nudge-actions { display: flex; align-items: center; gap: var(--a-space-2); margin-left: auto; }
+.backup-nudge-actions .btn-outline { color: var(--a-warning-fg); border-color: var(--a-warning-fg); }
 .backup-nudge-actions .btn-ghost { color: var(--a-warning-fg); }
 .backup-nudge-actions .btn-ghost:hover { color: var(--a-warning-fg); text-decoration: underline; }
 

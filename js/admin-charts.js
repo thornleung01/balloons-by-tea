@@ -160,7 +160,7 @@
       const pts = ser.values.map((v, i) => `${r1(x(i))},${r1(y(v))}`);
       if (ser.area !== false && n > 1) {
         const gid = nextId("acg");
-        parts.push(`<defs><linearGradient id="${gid}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" style="stop-color:${ser.color}" stop-opacity="0.28"/><stop offset="1" style="stop-color:${ser.color}" stop-opacity="0.02"/></linearGradient></defs>`);
+        parts.push(`<defs><linearGradient id="${gid}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${ser.color}" stop-opacity="0.28"/><stop offset="1" stop-color="${ser.color}" stop-opacity="0.02"/></linearGradient></defs>`);
         parts.push(`<path class="ac-area" d="M${r1(x(0))},${r1(y(0))}L${pts.join("L")}L${r1(x(n - 1))},${r1(y(0))}Z" fill="url(#${gid})"/>`);
       }
       if (n > 1) parts.push(`<path class="ac-path" d="M${pts.join("L")}"${ser.dash ? ` stroke-dasharray="${esc(ser.dash)}"` : ""} style="stroke:${ser.color}"/>`);
