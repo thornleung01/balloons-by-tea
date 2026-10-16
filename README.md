@@ -409,6 +409,13 @@ The steps only you can do (database update, email setup, redirect URL) are
 in [`docs/ADMIN-SETUP-CHECKLIST.md`](docs/ADMIN-SETUP-CHECKLIST.md). For new
 projects, run `supabase-all.sql` once; see [`docs/DATABASE.md`](docs/DATABASE.md).
 
+The admin has a dark mode (Light / Dark / System button in the header) and a
+shared design system. Developers: see
+[`docs/admin-design-system.md`](docs/admin-design-system.md). Run
+`node scripts/check-admin-tokens.js` after changing admin styles, and
+`node scripts/admin-visual-check.js` (needs Playwright) to screenshot every tab
+in both themes and check text contrast.
+
 ## File map
 
 ```

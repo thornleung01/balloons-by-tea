@@ -104,6 +104,8 @@ On your live site, in order:
 6. In **Products**, add a test product with a sale price, then delete it. It should land in **Trash** and be restorable.
 7. In **Settings**, change something, press **Preview**, then **Discard**.
 8. Download a backup, then look at the **Restore** section to see that it reads the file. Don't press Restore on your real data unless you mean to.
+9. Press the **Light / Dark / System** button at the top of the admin page. It remembers your choice on that device. "System" follows your phone or computer setting.
+10. If you set up email alerts, place a test order and check the email in both your phone's light and dark mode. It should be readable either way, with a coral "Open in admin" button.
 
 ---
 
