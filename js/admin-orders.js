@@ -132,7 +132,7 @@ function formatOrderMoney(value) {
 
 // Shown when a write touches something the live database doesn't have yet.
 const ORDERS_SQL_HINT = "run it in the Supabase SQL Editor";
-const ORDERS_V2_HINT = `needs ${ORDERS_MIGRATION_FILE} — ${ORDERS_SQL_HINT}`;
+const ORDERS_V2_HINT = `needs ${ORDERS_MIGRATION_FILE}, ${ORDERS_SQL_HINT}`;
 
 /* True when a Supabase error means a column doesn't exist yet — PostgREST
    PGRST204 ("Could not find the 'x' column ... in the schema cache") or
@@ -153,7 +153,7 @@ function isMissingColumnError(error, column) {
 function orderStatusErrorMessage(error, status) {
   const isCheck = error && (error.code === "23514" || /orders_status_check/.test(error.message || ""));
   if (status === "quoted" && isCheck) return `The Quoted status ${ORDERS_V2_HINT}.`;
-  if (status === "cancelled" && isCheck) return `The Cancelled status needs the latest supabase-setup.sql — ${ORDERS_SQL_HINT}.`;
+  if (status === "cancelled" && isCheck) return `The Cancelled status needs the latest supabase-setup.sql, ${ORDERS_SQL_HINT}.`;
   return error.message;
 }
 
@@ -429,11 +429,11 @@ async function refreshOrderCounts() {
   ]);
   results.slice(0, statusKeys.length).forEach((res, i) => {
     const el = document.querySelector(`#ordersFilter .orders-filter-count[data-count-for="${statusKeys[i]}"]`);
-    if (el) el.textContent = res.error || res.count == null ? "" : `(${res.count})`;
+    if (el) el.textContent = res.error || res.count == null ? "" : String(res.count);
   });
   results.slice(statusKeys.length).forEach((res, i) => {
     const el = document.querySelector(`#ordersPaymentFilter .orders-filter-count[data-pay-count-for="${payKeys[i]}"]`);
-    if (el) el.textContent = res.error || res.count == null ? "" : `(${res.count})`;
+    if (el) el.textContent = res.error || res.count == null ? "" : String(res.count);
   });
   const newRes = results[statusKeys.indexOf("new")];
   const badge = document.getElementById("ordersBadge");
@@ -460,12 +460,17 @@ async function refreshOrderList(opts) {
   if (!options.skipCounts) refreshOrderCounts().catch(() => {});
 
   const seq = ++ordersFetchSeq;
-  let { data, error, count } = await buildOrdersPageQuery();
+  // Skeleton rows only when no rows are on screen yet (first load, or after
+  // an empty/error state); a refresh keeps the current rows in place.
+  if (!listEl.querySelector(".order-row:not(.order-row-skeleton)")) renderOrderListLoading(listEl);
+  listEl.setAttribute("aria-busy", "true");
+  let { data, error, count } = await runOrdersPageQuery();
   if (error && ordersHasAdminNotes && isMissingColumnError(error, "admin_notes")) {
     ordersHasAdminNotes = false;
-    ({ data, error, count } = await buildOrdersPageQuery());
+    ({ data, error, count } = await runOrdersPageQuery());
   }
   if (seq !== ordersFetchSeq) return;
+  listEl.removeAttribute("aria-busy");
 
   if (error) {
     // Asking for a page past the end (rows deleted elsewhere) is a 416.
@@ -473,7 +478,7 @@ async function refreshOrderList(opts) {
       ordersPage = 0;
       return refreshOrderList({ skipCounts: true });
     }
-    listEl.innerHTML = `<p class="form-status error">Couldn't load orders: ${escapeHtml(error.message)}</p>`;
+    renderOrderListError(listEl, error);
     return;
   }
 
@@ -492,20 +497,128 @@ async function refreshOrderList(opts) {
 
 /* ----- List rendering ----- */
 
+/* Badges: the shared .a-badge with a domain colour pair from
+   css/admin-tokens.css (--a-status-<name>). The label always says the state. */
+const ORDER_PAYMENT_BADGE = { unpaid: "unpaid", deposit_paid: "deposit", paid: "paid", refunded: "refunded" };
+
 function orderStatusPill(status) {
   const s = ORDER_STATUSES.includes(status) ? status : "new";
-  return `<span class="order-pill status-pill status-${s}">${escapeHtml(orderStatusLabel(s))}</span>`;
+  return `<span class="a-badge a-badge--status-${s} order-badge">${escapeHtml(orderStatusLabel(s))}</span>`;
 }
 
 function orderPaymentPill(order) {
   if (!ordersSchemaV2) return "";
   const p = ORDER_PAYMENT_STATUSES.includes(order.payment_status) ? order.payment_status : "unpaid";
-  return `<span class="order-pill pay-pill pay-${p}">${escapeHtml(orderPaymentLabel(p))}</span>`;
+  return `<span class="a-badge a-badge--status-${ORDER_PAYMENT_BADGE[p]} order-badge">${escapeHtml(orderPaymentLabel(p))}</span>`;
 }
 
 function orderBalancePill(order) {
   if (!orderHasBalanceDue(order)) return "";
-  return `<span class="order-pill balance-pill" title="Balance due">Due ${escapeHtml(formatOrderMoney(orderBalance(order)))}</span>`;
+  return `<span class="a-badge a-badge--status-balance order-badge" title="Balance due">Due ${escapeHtml(formatOrderMoney(orderBalance(order)))}</span>`;
+}
+
+/* "Today", "Tomorrow", "In 3 days" for events inside the next week; "" otherwise. */
+function orderRelativeDay(iso) {
+  if (!iso) return "";
+  const today = ordersTodayIso();
+  if (iso === today) return "Today";
+  if (iso < today) return "";
+  const days = Math.round((new Date(iso + "T00:00:00") - new Date(today + "T00:00:00")) / 86400000);
+  if (days === 1) return "Tomorrow";
+  return days <= 6 ? `In ${days} days` : "";
+}
+
+/* ----- List states: loading, error, empty ----- */
+
+function renderOrderListLoading(listEl) {
+  const row = `<div class="order-row order-row-compact order-row-skeleton" aria-hidden="true">
+    <span class="a-skeleton order-skel-check"></span>
+    <span class="order-row-main"><span class="a-skeleton a-skeleton--line order-skel-name"></span><span class="a-skeleton a-skeleton--line order-skel-meta"></span></span>
+    <span class="order-row-pills"><span class="a-skeleton a-skeleton--pill"></span><span class="a-skeleton a-skeleton--pill"></span></span>
+    <span class="a-skeleton a-skeleton--line order-skel-total"></span>
+  </div>`;
+  listEl.innerHTML = `<div role="status"><span class="a-visually-hidden">Loading orders</span>${row.repeat(6)}</div>`;
+}
+
+function renderOrderListError(listEl, error) {
+  listEl.removeAttribute("aria-busy");
+  ordersAllCache = [];
+  ordersVisibleCache = [];
+  const countEl = document.getElementById("ordersResultCount");
+  if (countEl) countEl.textContent = "";
+  const pagerEl = document.getElementById("ordersPager");
+  if (pagerEl) pagerEl.innerHTML = "";
+  listEl.innerHTML = `<div class="a-panel-error" role="alert">
+    <p class="a-panel-error-title">Couldn't load orders</p>
+    <p class="a-panel-error-text">${escapeHtml((error && error.message) || String(error || "Something went wrong."))} Check your connection and try again.</p>
+    <button type="button" class="btn btn-outline btn-sm" data-orders-retry>Try again</button>
+  </div>`;
+  syncOrderBulkSelectionUI([]);
+}
+
+async function runOrdersPageQuery() {
+  try {
+    return await buildOrdersPageQuery();
+  } catch (err) {
+    return { data: null, count: null, error: err };
+  }
+}
+
+/* Puts every filter back to its default and reloads. Also used by the
+   "Clear filters" button in the no-matches state. */
+function clearAllOrderFilters() {
+  ordersStatusFilter = "all";
+  ordersPaymentFilter = "all";
+  ordersSearchQuery = "";
+  ordersUpcomingOnly = false;
+  ordersDateFrom = "";
+  ordersDateTo = "";
+  const setValue = (id, v) => { const el = document.getElementById(id); if (el) el.value = v; };
+  setValue("orderSearch", "");
+  setValue("orderDateFrom", "");
+  setValue("orderDateTo", "");
+  const upcoming = document.getElementById("orderUpcomingOnly");
+  if (upcoming) upcoming.checked = false;
+  const toEl = document.getElementById("orderDateTo");
+  if (toEl) toEl.removeAttribute("min");
+  const clearDates = document.getElementById("orderDateClear");
+  if (clearDates) clearDates.hidden = true;
+  setOrderChipActive("#ordersFilter", "status", "all");
+  setOrderChipActive("#ordersPaymentFilter", "payment", "all");
+  resetOrdersPagingAndRefresh();
+}
+
+/* Marks one chip in a filter group active (class + aria-pressed). */
+function setOrderChipActive(groupSelector, dataKey, value) {
+  document.querySelectorAll(`${groupSelector} .orders-filter-btn`).forEach((b) => {
+    const on = b.dataset[dataKey] === value;
+    b.classList.toggle("active", on);
+    b.setAttribute("aria-pressed", String(on));
+  });
+}
+
+function orderListEmptyHtml() {
+  const hasSearchOrDates = orderSearchWords().length || ordersUpcomingOnly || ordersDateFrom || ordersDateTo || ordersPaymentFilter !== "all";
+  const icon = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 7.5l9-4.5 9 4.5v9l-9 4.5-9-4.5z"/><path d="M3 7.5l9 4.5 9-4.5M12 12v9"/></svg>`;
+  if (hasSearchOrDates) {
+    return `<div class="a-empty">${icon}
+      <p class="a-empty-title">No orders match</p>
+      <p class="a-empty-text">Nothing fits the current search and filters. Clear them to see every order again.</p>
+      <button type="button" class="btn btn-outline btn-sm" data-orders-clear-filters>Clear filters</button>
+    </div>`;
+  }
+  if (ordersStatusFilter !== "all") {
+    return `<div class="a-empty">${icon}
+      <p class="a-empty-title">No ${escapeHtml(orderStatusLabel(ordersStatusFilter).toLowerCase())} orders</p>
+      <p class="a-empty-text">No order is marked ${escapeHtml(orderStatusLabel(ordersStatusFilter).toLowerCase())} right now.</p>
+      <button type="button" class="btn btn-outline btn-sm" data-orders-clear-filters>Show all orders</button>
+    </div>`;
+  }
+  return `<div class="a-empty">${icon}
+    <p class="a-empty-title">No orders yet</p>
+    <p class="a-empty-text">Orders from checkout and the custom order form appear here as soon as a customer places one. You will see a notice when a new one arrives.</p>
+    <a class="btn btn-outline btn-sm" href="index.html" target="_blank" rel="noopener">View your site</a>
+  </div>`;
 }
 
 function renderOrderList() {
@@ -517,39 +630,42 @@ function renderOrderList() {
   ordersVisibleCache = visible;
 
   if (!visible.length) {
-    const filtered = orderSearchWords().length || ordersUpcomingOnly || ordersDateFrom || ordersDateTo || ordersPaymentFilter !== "all";
-    const message = filtered
-      ? "No orders match your search and filters."
-      : `No orders ${ordersStatusFilter === "all" ? "yet" : "with this status"}.`;
-    listEl.innerHTML = `<p class="empty-note">${message}</p>`;
+    listEl.innerHTML = orderListEmptyHtml();
     syncOrderBulkSelectionUI([]);
     return;
   }
 
+  const today = ordersTodayIso();
   listEl.innerHTML = visible.map((order) => {
     const status = order.status || "new";
     const id = escapeHtml(String(order.id));
     const ref = orderRef(order);
+    const eventIso = orderEventIso(order);
     const eventLabel = orderEventLabel(order);
+    const when = orderRelativeDay(eventIso);
     const photos = orderAttachmentPaths(order).length;
+    const name = order.name || "(no name)";
+    const total = orderTotalLabel(order);
+    const past = Boolean(eventIso) && eventIso < today;
     return `
-    <div class="order-row order-row-compact status-${escapeHtml(status)}" data-id="${id}">
-      <input type="checkbox" class="order-select" data-select-id="${id}" aria-label="Select order from ${escapeHtml(order.name || "customer")}" ${selectedOrderIds.has(String(order.id)) ? "checked" : ""}/>
+    <div class="order-row order-row-compact status-${escapeHtml(status)}${past ? " is-past" : ""}" data-id="${id}">
+      <label class="order-select-wrap"><input type="checkbox" class="order-select" data-select-id="${id}" aria-label="Select order from ${escapeHtml(order.name || "customer")}" ${selectedOrderIds.has(String(order.id)) ? "checked" : ""}/></label>
       <button type="button" class="order-row-main" data-open-id="${id}" aria-label="Open order from ${escapeHtml(order.name || "customer")}">
         <span class="order-row-line1">
-          <span class="status-dot" aria-hidden="true"></span>
-          <strong class="order-row-name">${escapeHtml(order.name || "(no name)")}</strong>
+          <strong class="order-row-name" title="${escapeHtml(name)}">${escapeHtml(name)}</strong>
           ${ref ? `<span class="order-row-ref">${escapeHtml(ref)}</span>` : ""}
         </span>
         <span class="order-row-line2">
-          <span class="order-row-event">${eventLabel ? escapeHtml(eventLabel) : "No event date"}</span>
-          <span class="order-kind-tag">${escapeHtml(orderKindLabel(order.kind))}</span>
-          ${order.fulfillment === "pickup" ? `<span class="order-kind-tag">Pick-up</span>` : ""}
-          ${photos ? `<span class="order-kind-tag">${photos} photo${photos === 1 ? "" : "s"}</span>` : ""}
+          <span class="order-row-event">${eventLabel ? escapeHtml(eventLabel) : "No event date"}${when ? ` <span class="order-row-when">${escapeHtml(when)}</span>` : ""}</span>
+          <span class="order-row-tags">
+            <span class="a-badge a-badge--xs a-badge--neutral a-badge--outline order-kind-tag">${escapeHtml(orderKindLabel(order.kind))}</span>
+            ${order.fulfillment === "pickup" ? `<span class="order-row-meta">Pick-up</span>` : ""}
+            ${photos ? `<span class="order-row-meta">${photos} photo${photos === 1 ? "" : "s"}</span>` : ""}
+          </span>
         </span>
       </button>
       <span class="order-row-pills">${orderStatusPill(status)}${orderPaymentPill(order)}${orderBalancePill(order)}</span>
-      <span class="order-row-total">${escapeHtml(orderTotalLabel(order))}</span>
+      ${total ? `<span class="order-row-total" title="${escapeHtml(total)}">${escapeHtml(total)}</span>` : `<span class="order-row-total is-empty" aria-label="No total"><span aria-hidden="true">&ndash;</span></span>`}
     </div>`;
   }).join("");
 
@@ -566,9 +682,11 @@ function renderOrderList() {
 function renderOrdersPager() {
   const el = document.getElementById("ordersPager");
   if (!el) return;
+  const countEl = document.getElementById("ordersResultCount");
+  if (countEl) countEl.textContent = ordersTotalMatching ? `${ordersTotalMatching} order${ordersTotalMatching === 1 ? "" : "s"}` : "";
   const pages = Math.max(1, Math.ceil(ordersTotalMatching / ORDERS_PAGE_SIZE));
   if (ordersTotalMatching <= ORDERS_PAGE_SIZE && ordersPage === 0) {
-    el.innerHTML = ordersTotalMatching ? `<span class="orders-pager-info">${ordersTotalMatching} order${ordersTotalMatching === 1 ? "" : "s"}</span>` : "";
+    el.innerHTML = "";
     return;
   }
   const from = ordersPage * ORDERS_PAGE_SIZE + 1;
@@ -607,7 +725,7 @@ async function handleDeleteOrder(id) {
   const order = findLoadedOrder(id);
   const photoCount = order ? orderAttachmentPaths(order).length : 0;
   const photoNote = photoCount ? ` Its ${photoCount === 1 ? "photo" : `${photoCount} photos`} will be deleted too.` : "";
-  const who = order ? [orderRef(order), order.name].filter(Boolean).join(" — ") : "";
+  const who = order ? [orderRef(order), order.name].filter(Boolean).join(" - ") : "";
   if (!(await adminConfirm({ title: who ? `Delete order ${who}?` : "Delete this order?", message: `${photoNote} This can't be undone.`.trim(), confirmLabel: "Delete order", danger: true }))) return false;
   const client = getSupabaseClient();
   const { data, error } = await mustAffect(client.from("orders").delete().eq("id", id));
@@ -652,7 +770,7 @@ async function saveOrderAdminNote(id, value, explicit) {
   if (error) {
     // The draft is kept, so the text isn't lost and the next blur retries.
     setOrderNoteStatus(id, isMissingColumnError(error, "admin_notes")
-      ? `Admin notes need the latest supabase-setup.sql — ${ORDERS_SQL_HINT}.`
+      ? `Admin notes need the latest supabase-setup.sql, ${ORDERS_SQL_HINT}.`
       : "Couldn't save note: " + error.message, "error");
     return;
   }
@@ -756,7 +874,7 @@ async function loadOrderTimeline(order) {
   if (!el || !order) return;
   const placed = `<li><span class="order-timeline-what">Order placed${order.source ? ` (came from ${escapeHtml(order.source)})` : ""}</span><span class="order-timeline-when">${escapeHtml(formatOrderDate(order.created_at))}</span></li>`;
   if (ordersSchemaV2 === false || orderEventsAvailable === false) {
-    el.innerHTML = `<ul class="order-timeline">${placed}</ul><p class="field-note">The full timeline (status, payment and message history) ${escapeHtml(ORDERS_V2_HINT)}.</p>`;
+    el.innerHTML = `<ul class="order-timeline">${placed}</ul><p class="orders-notice">The full timeline (status, payment and message history) ${escapeHtml(ORDERS_V2_HINT)}.</p>`;
     return;
   }
   const { data, error } = await getSupabaseClient()
@@ -768,7 +886,7 @@ async function loadOrderTimeline(order) {
       orderEventsAvailable = false;
       return loadOrderTimeline(order);
     }
-    el.innerHTML = `<ul class="order-timeline">${placed}</ul><p class="form-status error">Couldn't load the timeline: ${escapeHtml(error.message)}</p>`;
+    el.innerHTML = `<ul class="order-timeline">${placed}</ul><p class="a-inline-error" role="alert">Couldn't load the timeline: ${escapeHtml(error.message)}</p>`;
     return;
   }
   orderEventsAvailable = true;
@@ -794,11 +912,47 @@ function ensureOrderDrawer() {
     <aside class="order-drawer" role="dialog" aria-modal="true" aria-labelledby="orderDrawerTitle" tabindex="-1">
       <div class="order-drawer-head" id="orderDrawerHead"></div>
       <div class="order-drawer-body" id="orderDrawerBody"></div>
+      <div class="order-drawer-foot" id="orderDrawerFoot">
+        <button type="button" class="orders-export-btn" id="orderDrawerPrint">Print work order</button>
+        <button type="button" class="orders-export-btn order-drawer-foot-close" id="orderDrawerFootClose">Close</button>
+      </div>
     </aside>`;
   document.body.appendChild(wrap);
   wrap.querySelector("[data-close-order-drawer]").addEventListener("click", () => closeOrderDrawer());
+  wrap.querySelector("#orderDrawerFootClose").addEventListener("click", () => closeOrderDrawer());
+  wrap.addEventListener("click", (e) => {
+    const retry = e.target.closest("[data-order-drawer-retry]");
+    if (retry) openOrderDrawer(retry.dataset.orderDrawerRetry, orderDrawerOpener);
+    const thumb = e.target.closest(".order-attachment[href]");
+    if (thumb) openOrderPhotoLightbox(e, thumb);
+  });
+  wrap.querySelector("#orderDrawerPrint").addEventListener("click", () => {
+    if (window.AdminOrderPrint && orderDrawerOrder) window.AdminOrderPrint.printOrder(orderDrawerOrder);
+  });
+  // Another layer (confirm dialog, photo lightbox) is on top: leave keys to it.
+  const layerOnTop = () => Boolean(document.querySelector("#adminPhotoPreview.open, .aui-backdrop"));
   document.addEventListener("keydown", (e) => {
-    if (e.key === "Escape" && !wrap.hidden && !document.querySelector("#adminPhotoPreview.open")) closeOrderDrawer();
+    if (wrap.hidden) return;
+    if (e.key === "Escape" && !layerOnTop()) { closeOrderDrawer(); return; }
+    // Keep Tab inside the drawer while it is open (it is a modal dialog).
+    if (e.key === "Tab" && !layerOnTop()) {
+      const drawer = wrap.querySelector(".order-drawer");
+      const items = Array.from(drawer.querySelectorAll('a[href], button:not([disabled]), input:not([disabled]):not([type="hidden"]), select:not([disabled]), textarea:not([disabled]), summary, [tabindex]:not([tabindex="-1"])'))
+        .filter((el) => el.getClientRects().length > 0);
+      if (!items.length) return;
+      const first = items[0];
+      const last = items[items.length - 1];
+      if (!drawer.contains(document.activeElement) || document.activeElement === drawer) {
+        e.preventDefault();
+        (e.shiftKey ? last : first).focus();
+      } else if (e.shiftKey && document.activeElement === first) {
+        e.preventDefault();
+        last.focus();
+      } else if (!e.shiftKey && document.activeElement === last) {
+        e.preventDefault();
+        first.focus();
+      }
+    }
   });
   return wrap;
 }
@@ -821,7 +975,10 @@ async function openOrderDrawer(id, opener) {
   if (!orderDrawerOrder || String(orderDrawerOrder.id) !== String(id)) return;
   if (error || !data) {
     if (!cached) {
-      document.getElementById("orderDrawerBody").innerHTML = `<p class="form-status error">${error ? "Couldn't load this order: " + escapeHtml(error.message) : "This order no longer exists."}</p>`;
+      document.getElementById("orderDrawerBody").innerHTML = `<div class="a-panel-error" role="alert">
+        <p class="a-panel-error-title">${error ? "Couldn't load this order" : "This order no longer exists"}</p>
+        ${error ? `<p class="a-panel-error-text">${escapeHtml(error.message)}</p><button type="button" class="btn btn-outline btn-sm" data-order-drawer-retry="${escapeHtml(String(id))}">Try again</button>` : `<p class="a-panel-error-text">It may have been deleted from another device. Close this panel to go back to the list.</p>`}
+      </div>`;
     }
     return;
   }
@@ -865,20 +1022,23 @@ function renderOrderDrawerHeader() {
     <div class="order-drawer-title-wrap">
       <h2 id="orderDrawerTitle">${escapeHtml(order.name || "(no name)")}</h2>
       <div class="order-drawer-sub">
-        ${ref ? `<span>${escapeHtml(ref)}</span>` : ""}
+        ${ref ? `<span class="order-drawer-ref">${escapeHtml(ref)}</span>` : ""}
         <span>${escapeHtml(orderKindLabel(order.kind))}</span>
         ${order.created_at ? `<span>Placed ${escapeHtml(formatOrderDate(order.created_at))}</span>` : ""}
       </div>
       <div class="order-drawer-pills">${orderStatusPill(order.status || "new")}${orderPaymentPill(order)}${orderBalancePill(order)}</div>
     </div>
-    <div class="order-drawer-head-actions">
-      <button type="button" class="orders-export-btn" id="orderDrawerPrint">Print work order</button>
-      <button type="button" class="icon-btn order-drawer-close" id="orderDrawerClose" aria-label="Close order">&times;</button>
-    </div>`;
+    <button type="button" class="icon-btn order-drawer-close" id="orderDrawerClose" aria-label="Close order"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>`;
   head.querySelector("#orderDrawerClose").addEventListener("click", () => closeOrderDrawer());
-  head.querySelector("#orderDrawerPrint").addEventListener("click", () => {
-    if (window.AdminOrderPrint) window.AdminOrderPrint.printOrder(orderDrawerOrder);
-  });
+}
+
+/* Opens a photo in the shared lightbox, stepping through the order's other
+   photos; the plain link still works (new tab) with a modifier key. */
+function openOrderPhotoLightbox(e, link) {
+  if (typeof openImagePreviewSet !== "function" || e.metaKey || e.ctrlKey || e.shiftKey || e.button === 1) return;
+  const links = Array.from(link.closest(".order-attachments-list").querySelectorAll(".order-attachment[href]"));
+  e.preventDefault();
+  openImagePreviewSet(links.map((a) => a.getAttribute("href")), Math.max(0, links.indexOf(link)));
 }
 
 function moneyInputValue(v) {
@@ -892,7 +1052,11 @@ function renderOrderDrawer() {
   if (!order || !body) return;
   renderOrderDrawerHeader();
   if (order.name === "Loading..." && !order.created_at) {
-    body.innerHTML = `<p class="empty-note">Loading...</p>`;
+    body.innerHTML = `<div role="status"><span class="a-visually-hidden">Loading order</span>
+      <span class="a-skeleton a-skeleton--pill order-skel-status"></span>
+      <span class="a-skeleton a-skeleton--block"></span>
+      <span class="a-skeleton a-skeleton--block"></span>
+      <span class="a-skeleton a-skeleton--block"></span></div>`;
     return;
   }
   const id = String(order.id);
@@ -912,16 +1076,16 @@ function renderOrderDrawer() {
         const variant = l.variant ? (typeof l.variant === "object" ? (l.variant.name || l.variant.label || "") : l.variant) : "";
         const addons = Array.isArray(l.addons) ? l.addons.filter(Boolean) : [];
         return `<tr>
-          <td>${escapeHtml(l.name || "Item")}
+          <td class="order-item-name">${escapeHtml(l.name || "Item")}
             ${variant ? `<div class="order-item-sub">${escapeHtml(variant)}</div>` : ""}
             ${addons.map((a) => `<div class="order-item-sub">+ ${escapeHtml(typeof a === "object" ? a.name || "" : a)}${typeof a === "object" && orderAmountNumber(a.price) ? ` (${escapeHtml(formatOrderMoney(a.price))})` : ""}</div>`).join("")}
           </td>
-          <td class="num">${escapeHtml(String(l.qty || 1))}</td>
-          <td class="num">${escapeHtml(formatOrderMoney(l.unit_price))}</td>
-          <td class="num">${escapeHtml(formatOrderMoney(l.line_total))}</td>
+          <td class="num" data-label="Qty">${escapeHtml(String(l.qty || 1))}</td>
+          <td class="num" data-label="Price">${escapeHtml(formatOrderMoney(l.unit_price))}</td>
+          <td class="num" data-label="Total">${escapeHtml(formatOrderMoney(l.line_total))}</td>
         </tr>`;
       }).join("")}</tbody>
-      ${total !== null ? `<tfoot><tr><td colspan="3">Total</td><td class="num">${escapeHtml(formatOrderMoney(total))}</td></tr></tfoot>` : ""}
+      ${total !== null ? `<tfoot><tr><td class="order-items-total-label" colspan="3">Total</td><td class="num" data-label="Total">${escapeHtml(formatOrderMoney(total))}</td></tr></tfoot>` : ""}
     </table>`
     : (orderSummaryBody(order) ? `<div class="order-field order-summary-text">${escapeHtml(orderSummaryBody(order))}</div>` : `<p class="field-note">No items listed.</p>`);
 
@@ -930,9 +1094,9 @@ function renderOrderDrawer() {
       <h3>Payment</h3>
       ${order.kind === "custom" && order.total ? `<p class="field-note">Customer's budget: ${escapeHtml(order.total)}</p>` : ""}
       <div class="order-money-grid">
-        <label>Total<input type="number" inputmode="decimal" min="0" step="0.01" id="odTotal" value="${escapeHtml(moneyInputValue(order.total_amount))}" placeholder="Not set"/></label>
-        <label>Deposit<input type="number" inputmode="decimal" min="0" step="0.01" id="odDeposit" value="${escapeHtml(moneyInputValue(order.deposit_amount))}" placeholder="None"/></label>
-        <label>Paid so far<input type="number" inputmode="decimal" min="0" step="0.01" id="odPaid" value="${escapeHtml(moneyInputValue(order.amount_paid) || "0")}"/></label>
+        <label>Total<span class="order-money-field"><span aria-hidden="true">${ORDERS_CURRENCY}</span><input type="number" inputmode="decimal" min="0" step="0.01" id="odTotal" value="${escapeHtml(moneyInputValue(order.total_amount))}" placeholder="Not set"/></span></label>
+        <label>Deposit<span class="order-money-field"><span aria-hidden="true">${ORDERS_CURRENCY}</span><input type="number" inputmode="decimal" min="0" step="0.01" id="odDeposit" value="${escapeHtml(moneyInputValue(order.deposit_amount))}" placeholder="None"/></span></label>
+        <label>Paid so far<span class="order-money-field"><span aria-hidden="true">${ORDERS_CURRENCY}</span><input type="number" inputmode="decimal" min="0" step="0.01" id="odPaid" value="${escapeHtml(moneyInputValue(order.amount_paid) || "0")}"/></span></label>
         <div class="order-balance-box"><span>Balance due</span><strong id="odBalance"></strong></div>
       </div>
       <label class="order-inline-field">Payment status
@@ -940,12 +1104,14 @@ function renderOrderDrawer() {
           ${ORDER_PAYMENT_STATUSES.map((p) => `<option value="${p}" ${p === (order.payment_status || "unpaid") ? "selected" : ""}>${escapeHtml(orderPaymentLabel(p))}</option>`).join("")}
         </select>
       </label>
-      <div class="order-drawer-actions">
-        <button type="button" class="orders-export-btn" data-pay-quick="deposit">Deposit received</button>
-        <button type="button" class="orders-export-btn" data-pay-quick="full">Paid in full</button>
-        <button type="button" class="btn btn-primary order-drawer-save" id="odSavePayment">Save payment</button>
+      <div class="order-quick-pay" role="group" aria-label="Quick payment">
+        <button type="button" class="orders-export-btn" data-pay-quick="deposit" title="Sets Paid so far to the deposit and saves">Deposit received</button>
+        <button type="button" class="orders-export-btn" data-pay-quick="full" title="Sets Paid so far to the total and saves">Paid in full</button>
       </div>
-      <p class="form-status" id="odPaymentStatus" role="status" aria-live="polite"></p>
+      <div class="order-drawer-actions">
+        <button type="button" class="btn btn-primary order-drawer-save" id="odSavePayment">Save payment</button>
+        <span class="form-status" id="odPaymentStatus" role="status" aria-live="polite"></span>
+      </div>
     </section>` : `
     <section class="order-drawer-section">
       <h3>Total</h3>
@@ -1013,10 +1179,12 @@ function renderOrderDrawer() {
 
     <section class="order-drawer-section">
       <h3>Timeline</h3>
-      <div id="orderDrawerTimeline"><p class="empty-note">Loading...</p></div>
+      <div id="orderDrawerTimeline" role="status"><span class="a-visually-hidden">Loading timeline</span><span class="a-skeleton a-skeleton--line order-skel-timeline"></span><span class="a-skeleton a-skeleton--line order-skel-timeline"></span></div>
     </section>
 
     <section class="order-drawer-section order-drawer-danger">
+      <h3>Delete order</h3>
+      <p class="field-note">Removes this order and its photos for good.</p>
       <button type="button" class="danger delete-order-btn" id="odDelete">Delete order</button>
     </section>`;
 
@@ -1061,7 +1229,7 @@ function updateDrawerBalance() {
   if (!out) return;
   const total = orderAmountNumber(document.getElementById("odTotal").value);
   const paid = orderAmountNumber(document.getElementById("odPaid").value) || 0;
-  out.textContent = total === null ? "—" : formatOrderMoney(Math.max(0, total - paid)) || ORDERS_CURRENCY + "0";
+  out.textContent = total === null ? "Not set" : formatOrderMoney(Math.max(0, total - paid)) || ORDERS_CURRENCY + "0";
 }
 
 function wireOrderDrawerEditors(order) {
@@ -1290,7 +1458,7 @@ async function loadOrderAttachmentThumbs(root) {
   const { error } = await signOrderPhotoUrls(paths);
   if (error) {
     const message = /bucket not found/i.test(error.message || "")
-      ? `${ORDER_PHOTOS_SQL_HINT} — ${ORDERS_SQL_HINT}.`
+      ? `${ORDER_PHOTOS_SQL_HINT}, ${ORDERS_SQL_HINT}.`
       : `Couldn't load photos: ${error.message || error}`;
     root.querySelectorAll(".order-attachments").forEach((wrap) => {
       wrap.querySelectorAll(".order-attachment[data-path]").forEach((a) => {
@@ -1350,7 +1518,7 @@ async function checkOrderPhotosSchema() {
   const btn = document.getElementById("cleanupOrderPhotosBtn");
   if (missing) {
     if (btn) btn.disabled = true;
-    setOrderPhotoToolsStatus(`${ORDER_PHOTOS_SQL_HINT} — ${ORDERS_SQL_HINT}.`, "");
+    setOrderPhotoToolsStatus(`${ORDER_PHOTOS_SQL_HINT}, ${ORDERS_SQL_HINT}.`, "");
   }
 }
 
@@ -1415,7 +1583,7 @@ async function handleCleanupOrderPhotos() {
       candidates = await findUnusedOrderPhotoFolders();
     } catch (err) {
       const message = isMissingColumnError(err, "attachments") || /bucket not found/i.test(err.message || "")
-        ? `${ORDER_PHOTOS_SQL_HINT} — ${ORDERS_SQL_HINT}.`
+        ? `${ORDER_PHOTOS_SQL_HINT}, ${ORDERS_SQL_HINT}.`
         : `Couldn't check for unused photos (${err.message || err}), so nothing was deleted.`;
       setOrderPhotoToolsStatus(message, "error");
       return;
@@ -1748,7 +1916,7 @@ function setOrdersView(view) {
 window.setOrdersPaymentFilter = function (value, refresh) {
   const v = ["all", "balance_due", "unpaid", "deposit_paid", "paid"].includes(value) ? value : "all";
   ordersPaymentFilter = v;
-  document.querySelectorAll("#ordersPaymentFilter .orders-filter-btn").forEach((b) => b.classList.toggle("active", b.dataset.payment === v));
+  setOrderChipActive("#ordersPaymentFilter", "payment", v);
   if (refresh) resetOrdersPagingAndRefresh();
 };
 
@@ -1787,14 +1955,14 @@ onAdminInit((client) => {
     ordersStatusFilter = btn.dataset.status;
     // Scoped to #ordersFilter — the Analytics range buttons share the
     // .orders-filter-btn class and would otherwise lose their highlight.
-    document.querySelectorAll("#ordersFilter .orders-filter-btn").forEach((b) => b.classList.toggle("active", b === btn));
+    setOrderChipActive("#ordersFilter", "status", btn.dataset.status);
     resetOrdersPagingAndRefresh();
   });
   document.getElementById("ordersPaymentFilter").addEventListener("click", (e) => {
     const btn = e.target.closest(".orders-filter-btn");
     if (!btn) return;
     ordersPaymentFilter = btn.dataset.payment;
-    document.querySelectorAll("#ordersPaymentFilter .orders-filter-btn").forEach((b) => b.classList.toggle("active", b === btn));
+    setOrderChipActive("#ordersPaymentFilter", "payment", btn.dataset.payment);
     resetOrdersPagingAndRefresh();
   });
   let orderSearchDebounce = null;
@@ -1830,6 +1998,8 @@ onAdminInit((client) => {
   document.getElementById("orderList").addEventListener("click", (e) => {
     const open = e.target.closest("[data-open-id]");
     if (open) openOrderDrawer(open.dataset.openId, open);
+    if (e.target.closest("[data-orders-clear-filters]")) clearAllOrderFilters();
+    if (e.target.closest("[data-orders-retry]")) refreshOrderList();
   });
   document.getElementById("ordersPager").addEventListener("click", (e) => {
     const btn = e.target.closest("[data-page]");

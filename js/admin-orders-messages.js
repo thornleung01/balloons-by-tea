@@ -48,6 +48,33 @@
   const settingKey = (key) => `msg_template_${key}`;
   const ALL_KEYS = [BUSINESS_KEY, ...TEMPLATES.map((t) => settingKey(t.key))];
 
+  // Chips in the template editor (insert at the cursor).
+  const PLACEHOLDERS = [
+    { key: "name", hint: "Customer's first name" },
+    { key: "full_name", hint: "Customer's full name" },
+    { key: "date", hint: "Event date" },
+    { key: "time", hint: "Event time" },
+    { key: "items", hint: "Items ordered" },
+    { key: "total", hint: "Order total" },
+    { key: "deposit", hint: "Deposit amount" },
+    { key: "balance", hint: "Balance still due" },
+    { key: "ref", hint: "Order reference" },
+    { key: "business", hint: "Your business name" }
+  ];
+
+  // A made-up order for the editor's live preview.
+  function sampleOrder() {
+    const d = new Date();
+    d.setDate(d.getDate() + 7);
+    return {
+      name: "Jamie Rivera", kind: "checkout", status: "quoted",
+      event_on: ordersLocalIso(d), event_time: "14:00",
+      items: [{ name: "Pastel balloon arch", qty: 1 }, { name: "Number balloons", qty: 2 }],
+      total_amount: 240, deposit_amount: 60, amount_paid: 60,
+      summary: "Ref: AUR-SAMPLE"
+    };
+  }
+
   let saved = null; // key -> value from site_settings, once loaded
   let loading = null;
 
@@ -148,18 +175,19 @@
     wrap.className = "order-messages";
     const id = `odMsg-${order.id}`;
     wrap.innerHTML = `
-      <label class="order-inline-field" for="${id}-tpl">Template
+      <label class="order-inline-field order-msg-picker" for="${id}-tpl">Template
         <select id="${id}-tpl" class="order-status-select">
           ${TEMPLATES.map((t) => `<option value="${t.key}">${escapeHtml(t.label)}</option>`).join("")}
         </select>
       </label>
-      <textarea id="${id}-text" class="order-admin-notes-input order-message-text" rows="7" aria-label="Message text"></textarea>
-      <div class="order-drawer-actions">
-        <button type="button" class="orders-export-btn" data-send="whatsapp">WhatsApp</button>
-        <button type="button" class="orders-export-btn" data-send="email">Email</button>
-        <button type="button" class="orders-export-btn" data-send="copy">Copy</button>
-        <span class="form-status" role="status" aria-live="polite"></span>
-      </div>`;
+      <label class="order-msg-label" for="${id}-text">Message preview (you can edit it before sending)</label>
+      <textarea id="${id}-text" class="order-admin-notes-input order-message-text" rows="7"></textarea>
+      <div class="order-msg-actions" role="group" aria-label="Send this message">
+        <button type="button" class="orders-export-btn" data-send="whatsapp">Open in WhatsApp</button>
+        <button type="button" class="orders-export-btn" data-send="email">Open in email</button>
+        <button type="button" class="orders-export-btn" data-send="copy">Copy text</button>
+      </div>
+      <p class="form-status" role="status" aria-live="polite"></p>`;
     section.appendChild(wrap);
 
     const select = wrap.querySelector("select");
@@ -208,7 +236,7 @@
           a.remove();
         } else {
           const ok = await copyText(text);
-          if (!ok) return setStatus("Couldn't copy — select the text and copy it by hand.", "error");
+          if (!ok) return setStatus("Couldn't copy. Select the text and copy it by hand.", "error");
         }
         setStatus(channel === "copy" ? "Copied. Logged in the timeline." : "Opened. Logged in the timeline.", "success");
         const err = await logOrderEvent(order.id, { kind: "message", from_value: channel, to_value: select.value, note: text.slice(0, 300) });
@@ -243,16 +271,25 @@
     container.innerHTML = `
       <details class="order-templates-editor">
         <summary>Message templates</summary>
-        <p class="panel-subtitle">Used by "Send a message" on each order. Placeholders: {name}, {full_name}, {date}, {time}, {items}, {total}, {deposit}, {balance}, {ref}, {business}. Leave a box empty to use the built-in wording. These are stored with your site settings, which anyone can technically read — keep them to the words you'd send customers.</p>
-        <div class="field">
-          <label for="msgtpl-${BUSINESS_KEY}">Business name ({business})</label>
+        <p class="panel-subtitle">Used by "Send a message" on each order. Click a placeholder to insert it where your cursor is. Leave a box empty to use the built-in wording. Templates are stored with your site settings, which anyone can technically read, so keep them to the words you'd send customers.</p>
+        <div class="field msgtpl-business">
+          <label for="msgtpl-${BUSINESS_KEY}">Business name (used for {business})</label>
           <input type="text" id="msgtpl-${BUSINESS_KEY}" maxlength="120" placeholder="${escapeHtml(DEFAULT_BUSINESS)}"/>
         </div>
         ${TEMPLATES.map((t) => `
-          <div class="field">
-            <label for="msgtpl-${settingKey(t.key)}">${escapeHtml(t.label)}</label>
+          <div class="msgtpl-card" data-tpl-card="${t.key}">
+            <div class="msgtpl-head">
+              <label for="msgtpl-${settingKey(t.key)}">${escapeHtml(t.label)}</label>
+              <button type="button" class="orders-link-btn" data-reset-template="${t.key}">Reset to default wording</button>
+            </div>
+            <div class="msgtpl-chips" role="group" aria-label="Insert a placeholder into ${escapeHtml(t.label)}">
+              ${PLACEHOLDERS.map((p) => `<button type="button" class="msgtpl-chip" data-insert="{${p.key}}" title="${escapeHtml(p.hint)}">{${p.key}}</button>`).join("")}
+            </div>
             <textarea id="msgtpl-${settingKey(t.key)}" rows="6" maxlength="4000" placeholder="${escapeHtml(t.text)}"></textarea>
-            <button type="button" class="orders-link-btn" data-reset-template="${t.key}">Fill in the built-in wording</button>
+            <div class="msgtpl-preview">
+              <span class="msgtpl-preview-label">Preview with sample order</span>
+              <div class="msgtpl-preview-text" data-preview-for="${t.key}" aria-live="off"></div>
+            </div>
           </div>`).join("")}
         <div class="order-drawer-actions">
           <button type="button" class="btn btn-primary" id="msgTemplatesSave">Save templates</button>
@@ -269,12 +306,41 @@
     });
     editorBaseline = editorValues();
 
+    // Live preview: the box's text (or the built-in wording when empty) filled
+    // with a sample order, so {placeholders} show what customers will read.
+    const businessEl = document.getElementById(`msgtpl-${BUSINESS_KEY}`);
+    const renderPreview = (t) => {
+      const box = document.getElementById(`msgtpl-${settingKey(t.key)}`);
+      const out = container.querySelector(`[data-preview-for="${t.key}"]`);
+      if (!box || !out) return;
+      const biz = (businessEl.value || "").trim() || DEFAULT_BUSINESS;
+      const raw = box.value.trim() ? box.value : t.text;
+      out.textContent = fillTemplate(raw.replace(/\{business\}/g, biz), sampleOrder());
+    };
+    const renderAllPreviews = () => TEMPLATES.forEach(renderPreview);
+    renderAllPreviews();
+    businessEl.addEventListener("input", renderAllPreviews);
+    TEMPLATES.forEach((t) => document.getElementById(`msgtpl-${settingKey(t.key)}`).addEventListener("input", () => renderPreview(t)));
+
+    container.querySelectorAll("[data-insert]").forEach((chip) => {
+      chip.addEventListener("click", () => {
+        const card = chip.closest("[data-tpl-card]");
+        const el = document.getElementById(`msgtpl-${settingKey(card.dataset.tplCard)}`);
+        const start = el.selectionStart == null ? el.value.length : el.selectionStart;
+        const end = el.selectionEnd == null ? start : el.selectionEnd;
+        el.setRangeText(chip.dataset.insert, start, end, "end");
+        el.focus();
+        el.dispatchEvent(new Event("input", { bubbles: true }));
+      });
+    });
+
     container.querySelectorAll("[data-reset-template]").forEach((btn) => {
       btn.addEventListener("click", async () => {
         const t = TEMPLATES.find((x) => x.key === btn.dataset.resetTemplate);
         const el = document.getElementById(`msgtpl-${settingKey(t.key)}`);
         if (el.value.trim() && !(await adminConfirm({ title: "Reset this template?", message: "Replace this template with the built-in wording? Your current wording in this box will be lost.", confirmLabel: "Use built-in wording", danger: true }))) return;
         el.value = t.text;
+        renderPreview(t);
       });
     });
     document.getElementById("msgTemplatesSave").addEventListener("click", async () => {

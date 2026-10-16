@@ -410,7 +410,7 @@ function analyticsSkeletonHtml() {
 
 /* Inline error with a Retry button (wired once, by delegation, in onAdminInit). */
 function analyticsErrorHtml(title, message) {
-  return `<div class="an-error" role="alert"><p class="a-inline-error">${escapeHtml(title)} ${escapeHtml(message)}</p><button type="button" class="btn btn-outline btn-sm" data-an-retry>Retry</button></div>`;
+  return `<div class="a-panel-error an-error" role="alert"><h3 class="a-panel-error-title">${escapeHtml(title)}</h3><p class="a-panel-error-text">${escapeHtml(message)}</p><button type="button" class="btn btn-outline btn-sm" data-an-retry>Retry</button></div>`;
 }
 
 async function refreshAnalyticsPanel() {

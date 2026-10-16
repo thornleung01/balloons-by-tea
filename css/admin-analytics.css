@@ -134,8 +134,7 @@ body.admin-body {
 .an-sk-chart { height: 170px; margin: var(--a-space-3) 0; border-radius: var(--a-radius-md); }
 .an-sk-chart-short { height: 120px; }
 .an-empty { margin: var(--a-space-3) 0; }
-.an-error { display: flex; flex-direction: column; align-items: flex-start; gap: var(--a-space-3); margin: var(--a-space-3) 0; }
-.an-error .a-inline-error { margin: 0; }
+.an-error { margin: var(--a-space-3) 0; }
 
 /* ---------- Maintenance (danger zone, collapsed by default) ---------- */
 .an-maintenance { margin-top: var(--a-space-5); border: var(--a-border-w) solid var(--a-border); border-radius: var(--a-radius-md); }

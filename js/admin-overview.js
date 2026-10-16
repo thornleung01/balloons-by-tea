@@ -160,8 +160,11 @@
     el.hidden = false;
     el.removeAttribute("aria-busy");
     el.innerHTML = `${cardHead(title, iconName)}
-      <p class="a-inline-error ov-error" role="alert">${escapeHtml(`Couldn't load this card. ${message}`)}</p>
-      <div class="ov-retry"><button type="button" class="btn btn-outline btn-sm" data-ov-retry>Retry</button></div>`;
+      <div class="a-panel-error ov-error" role="alert">
+        <h3 class="a-panel-error-title">Couldn't load this card</h3>
+        <p class="a-panel-error-text">${escapeHtml(message)}</p>
+        <button type="button" class="btn btn-outline btn-sm" data-ov-retry>Retry</button>
+      </div>`;
     const retry = el.querySelector("[data-ov-retry]");
     if (retry) retry.addEventListener("click", () => refreshOverviewPanel());
   }
