@@ -1,54 +1,75 @@
 /* Printable work orders for the admin Orders tab.
 
-   - printOrder(order): one order on a page, for the day of the event —
-     event date/time, fulfilment, address, contact, items, totals and
-     balance, customer notes, private admin notes and inspiration photo
-     thumbnails.
-   - printDaySheet('YYYY-MM-DD'): every non-cancelled order on that date,
-     sorted by time, one block per order (page breaks between orders when
-     they don't fit).
+   - printOrder(order): one order on a page, for the crew on the day of the
+     event: a big date and time, delivery or pick-up, address, contact, items
+     with quantities, money, customer and private notes, inspiration photos
+     and an empty-box checklist (Packed, Loaded, Installed, Balance collected).
+   - printDaySheet('YYYY-MM-DD'): a schedule table of every non-cancelled
+     order on that date, sorted by time, with totals, then one work order per
+     page.
 
    Opens a new window holding a self-contained, print-styled page and calls
    print() on it once the photos have loaded. The window is opened straight
    from the click (before any network wait) so popup blockers allow it.
 
+   The page is black on white (no backgrounds, so it is cheap to print and
+   still reads on a black-and-white printer). It does not use the admin CSS,
+   so dark mode never reaches it.
+
    Exposes window.AdminOrderPrint = { printOrder, printDaySheet }. Uses
    helpers from js/admin-core.js and js/admin-orders.js. */
 (function () {
   const PRINT_CSS = `
+    @page { margin: 14mm 12mm; }
     * { box-sizing: border-box; }
-    body { font: 14px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif; color: #222; margin: 0; padding: 24px; }
-    h1 { font-size: 20px; margin: 0 0 4px; }
-    h2 { font-size: 17px; margin: 0; }
-    h3 { font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: #666; margin: 14px 0 4px; }
-    .toolbar { margin-bottom: 16px; display: flex; gap: 8px; }
-    .toolbar button { font: inherit; padding: 6px 14px; border: 1px solid #999; border-radius: 6px; background: #fff; cursor: pointer; }
-    .order { border: 1px solid #bbb; border-radius: 8px; padding: 14px 16px; margin-bottom: 16px; page-break-inside: avoid; break-inside: avoid; }
-    .order-head { display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; border-bottom: 2px solid #222; padding-bottom: 8px; }
-    .when { font-size: 18px; font-weight: 700; }
-    .meta { color: #555; font-size: 12px; }
-    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0 24px; }
+    html { -webkit-print-color-adjust: economy; print-color-adjust: economy; }
+    body { font: 11pt/1.4 system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif; color: #000; background: #fff; margin: 0; padding: 16px; }
+    .page { max-width: 190mm; margin: 0 auto; }
+    h1 { font-size: 20pt; margin: 0 0 2mm; line-height: 1.15; }
+    h2 { font-size: 16pt; margin: 0; line-height: 1.2; }
+    h3 { font-size: 8.5pt; text-transform: uppercase; letter-spacing: .08em; color: #000; margin: 5mm 0 1.5mm; padding-bottom: 1mm; border-bottom: 1px solid #000; }
+    p { margin: 0 0 2mm; }
+    .toolbar { display: flex; gap: 8px; margin: 0 auto 16px; max-width: 190mm; }
+    .toolbar button { font: inherit; padding: 8px 16px; border: 1.5px solid #000; border-radius: 6px; background: #fff; color: #000; cursor: pointer; }
+    .order { padding-bottom: 2mm; }
+    .order + .order, .schedule + .order { break-before: page; page-break-before: always; margin-top: 12mm; }
+    .kicker { display: flex; justify-content: space-between; gap: 8mm; font-size: 9pt; letter-spacing: .06em; text-transform: uppercase; margin-bottom: 2mm; }
+    .event { display: flex; justify-content: space-between; align-items: flex-end; gap: 6mm; flex-wrap: wrap; padding: 4mm 5mm; border: 2.5px solid #000; border-radius: 3mm; break-inside: avoid; }
+    .when { font-size: 24pt; font-weight: 800; line-height: 1.1; }
+    .time { font-size: 24pt; font-weight: 800; line-height: 1.1; }
+    .how { font-size: 11pt; font-weight: 800; text-transform: uppercase; letter-spacing: .08em; padding: 1mm 3mm; border: 2px solid #000; border-radius: 2mm; }
+    .who { margin: 4mm 0 0; font-size: 16pt; font-weight: 700; }
+    .cols { display: grid; grid-template-columns: 1fr 1fr; gap: 0 8mm; }
+    .cols > div { break-inside: avoid; }
+    .big { font-size: 12pt; }
     table { width: 100%; border-collapse: collapse; }
-    th, td { text-align: left; padding: 4px 6px; border-bottom: 1px solid #ddd; vertical-align: top; }
-    th { font-size: 11px; text-transform: uppercase; color: #666; }
-    .num { text-align: right; white-space: nowrap; }
-    tfoot td { font-weight: 700; border-bottom: none; }
-    .sub { color: #555; font-size: 12px; }
-    .pre { white-space: pre-wrap; }
-    .money { display: flex; gap: 18px; flex-wrap: wrap; font-size: 13px; }
-    .money strong { font-size: 15px; }
-    .due { color: #b00020; }
-    .photos { display: flex; gap: 8px; flex-wrap: wrap; }
-    .photos img { width: 150px; height: 150px; object-fit: cover; border-radius: 6px; border: 1px solid #ccc; }
-    .checks { display: flex; gap: 18px; flex-wrap: wrap; margin-top: 10px; font-size: 13px; }
-    .checks span::before { content: ""; display: inline-block; width: 13px; height: 13px; border: 1.5px solid #444; border-radius: 2px; margin-right: 6px; vertical-align: -2px; }
-    .empty { color: #666; font-style: italic; }
-    @media (max-width: 600px) { .grid { grid-template-columns: 1fr; } body { padding: 12px; } }
+    thead { display: table-header-group; }
+    tr { break-inside: avoid; }
+    th, td { text-align: left; padding: 1.5mm 2mm; border-bottom: 1px solid #000; vertical-align: top; }
+    th { font-size: 8pt; text-transform: uppercase; letter-spacing: .06em; border-bottom: 2px solid #000; }
+    .qty { width: 14mm; font-size: 13pt; font-weight: 800; text-align: center; }
+    .num { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+    tfoot td { font-weight: 800; border-bottom: none; border-top: 2px solid #000; }
+    .sub { font-size: 9.5pt; margin-top: .5mm; }
+    .pre { white-space: pre-wrap; overflow-wrap: anywhere; }
+    .box { border: 1.5px solid #000; border-radius: 2mm; padding: 2.5mm 3mm; min-height: 14mm; break-inside: avoid; }
+    .money { display: flex; gap: 8mm; flex-wrap: wrap; margin-top: 3mm; font-size: 10.5pt; font-variant-numeric: tabular-nums; }
+    .money strong { font-size: 13pt; }
+    .due strong { text-decoration: underline; }
+    .photos { display: grid; grid-template-columns: repeat(3, 1fr); gap: 3mm; }
+    .photos img { width: 100%; aspect-ratio: 1; object-fit: cover; border: 1px solid #000; border-radius: 1.5mm; break-inside: avoid; filter: grayscale(1); }
+    .checks { display: grid; grid-template-columns: repeat(2, 1fr); gap: 3mm 8mm; margin-top: 2mm; font-size: 12pt; break-inside: avoid; }
+    .checks span { display: flex; align-items: center; gap: 3mm; }
+    .checks span::before { content: ""; flex: none; width: 6mm; height: 6mm; border: 2px solid #000; border-radius: 1mm; }
+    .empty { font-style: italic; }
+    .schedule h1 { margin-bottom: 1mm; }
+    .schedule .lead { font-size: 10.5pt; margin-bottom: 4mm; }
+    .schedule td.time-col { width: 24mm; font-weight: 800; white-space: nowrap; }
+    .schedule .addr { font-size: 9.5pt; }
+    @media (max-width: 600px) { .cols { grid-template-columns: 1fr; } .when, .time { font-size: 18pt; } body { padding: 10px; } }
     @media print {
       body { padding: 0; }
       .toolbar { display: none; }
-      .order { border-color: #888; }
-      .page-break { page-break-before: always; break-before: page; }
       a { color: inherit; text-decoration: none; }
     }`;
 
@@ -61,7 +82,7 @@
       return null;
     }
     w.document.open();
-    w.document.write(`<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>${esc(title)}</title><style>${PRINT_CSS}</style></head><body><p class="empty">Preparing...</p></body></html>`);
+    w.document.write(`<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>${esc(title)}</title><style>${PRINT_CSS}</style></head><body><p class="empty">Preparing...</p></body></html>`);
     w.document.close();
     return w;
   }
@@ -69,9 +90,9 @@
   function writeAndPrint(w, title, bodyHtml) {
     if (!w || w.closed) return;
     w.document.open();
-    w.document.write(`<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>${esc(title)}</title><style>${PRINT_CSS}</style></head><body>
+    w.document.write(`<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>${esc(title)}</title><style>${PRINT_CSS}</style></head><body>
       <div class="toolbar"><button type="button" data-act="print">Print</button><button type="button" data-act="close">Close</button></div>
-      ${bodyHtml}</body></html>`);
+      <div class="page">${bodyHtml}</div></body></html>`);
     w.document.close();
     // Wired from here rather than inline onclick, so a future
     // Content-Security-Policy can't break the buttons.
@@ -100,15 +121,15 @@
     const items = orderItems(order);
     if (!items.length) {
       const summary = orderSummaryBody(order);
-      return summary ? `<div class="pre">${esc(summary)}</div>` : `<p class="empty">No items listed.</p>`;
+      return summary ? `<div class="box pre">${esc(summary)}</div>` : `<p class="empty">No items listed.</p>`;
     }
     const total = orderTotalAmount(order);
     return `<table>
-      <thead><tr><th>Qty</th><th>Item</th><th class="num">Line total</th></tr></thead>
+      <thead><tr><th class="qty">Qty</th><th>Item</th><th class="num">Line total</th></tr></thead>
       <tbody>${items.map((l) => {
         const variant = l.variant ? (typeof l.variant === "object" ? (l.variant.name || l.variant.label || "") : l.variant) : "";
         const addons = orderItemAddonsText(l);
-        return `<tr><td>${esc(l.qty || 1)}</td><td>${esc(l.name || "Item")}${variant ? `<div class="sub">${esc(variant)}</div>` : ""}${addons ? `<div class="sub">+ ${esc(addons)}</div>` : ""}</td><td class="num">${esc(formatOrderMoney(l.line_total))}</td></tr>`;
+        return `<tr><td class="qty">${esc(l.qty || 1)}</td><td>${esc(l.name || "Item")}${variant ? `<div class="sub">${esc(variant)}</div>` : ""}${addons ? `<div class="sub">+ ${esc(addons)}</div>` : ""}</td><td class="num">${esc(formatOrderMoney(l.line_total))}</td></tr>`;
       }).join("")}</tbody>
       ${total !== null ? `<tfoot><tr><td></td><td>Total</td><td class="num">${esc(formatOrderMoney(total))}</td></tr></tfoot>` : ""}
     </table>`;
@@ -116,7 +137,7 @@
 
   function moneyHtml(order) {
     const total = orderTotalAmount(order);
-    if (total === null) return order.total ? `<p>${esc(order.total)}</p>` : "";
+    if (total === null) return order.total ? `<p class="money">Total: ${esc(order.total)}</p>` : "";
     const balance = orderBalance(order);
     const paid = orderAmountNumber(order.amount_paid) || 0;
     const deposit = orderAmountNumber(order.deposit_amount);
@@ -134,38 +155,35 @@
     const when = iso ? friendlyOrderDay(iso) : (order.event_date || "No date given");
     const time = formatOrderTime(orderEventTime(order));
     const ref = orderRef(order);
+    const pickup = order.fulfillment === "pickup";
     const photos = orderAttachmentPaths(order).map((p) => photoUrls.get(p)).filter(Boolean);
     const missingPhotos = orderAttachmentPaths(order).length - photos.length;
     return `<section class="order">
-      <div class="order-head">
-        <div>
-          <div class="when">${esc(when)}${time ? ` · ${esc(time)}` : ""}</div>
-          <h2>${esc(order.name || "(no name)")}</h2>
-        </div>
-        <div class="meta">
-          ${ref ? `<div>${esc(ref)}</div>` : ""}
-          <div>${esc(orderKindLabel(order.kind))} · ${esc(order.fulfillment === "pickup" ? "Pick-up" : "Delivery")}</div>
-          <div>Status: ${esc(orderStatusLabel(order.status))}</div>
-        </div>
+      <div class="kicker"><span>Work order${ref ? ` ${esc(ref)}` : ""}</span><span>${esc(orderKindLabel(order.kind))} &middot; ${esc(orderStatusLabel(order.status))}</span></div>
+      <div class="event">
+        <div><div class="when">${esc(when)}</div><div class="time">${time ? esc(time) : "Time to be confirmed"}</div></div>
+        <div class="how">${pickup ? "Pick-up" : "Delivery"}</div>
       </div>
-      <div class="grid">
+      <p class="who">${esc(order.name || "(no name)")}</p>
+      <div class="cols">
         <div>
-          <h3>${order.fulfillment === "pickup" ? "Pick-up" : "Address"}</h3>
-          <div class="pre">${esc(order.address || "—")}</div>
+          <h3>${pickup ? "Pick-up" : "Address"}</h3>
+          <div class="pre big">${esc(order.address || (pickup ? "Customer collects" : "Not given"))}</div>
         </div>
         <div>
           <h3>Contact</h3>
-          <div>${esc(order.phone || "")}</div>
+          <div class="big">${esc(order.phone || "No phone")}</div>
           <div>${esc(order.email || "")}</div>
         </div>
       </div>
       <h3>Items</h3>
       ${itemsHtml(order)}
       ${moneyHtml(order)}
-      ${order.notes ? `<h3>Customer notes</h3><div class="pre">${esc(order.notes)}</div>` : ""}
-      ${order.admin_notes ? `<h3>Our notes</h3><div class="pre">${esc(order.admin_notes)}</div>` : ""}
+      ${order.notes ? `<h3>Customer notes</h3><div class="box pre">${esc(order.notes)}</div>` : ""}
+      ${order.admin_notes ? `<h3>Our notes</h3><div class="box pre">${esc(order.admin_notes)}</div>` : ""}
       ${photos.length || missingPhotos ? `<h3>Inspiration photos</h3><div class="photos">${photos.map((u, i) => `<img src="${esc(u)}" alt="Inspiration photo ${i + 1}">`).join("")}</div>${missingPhotos ? `<p class="empty">${missingPhotos} photo${missingPhotos === 1 ? "" : "s"} couldn't be loaded.</p>` : ""}` : ""}
-      <div class="checks"><span>Loaded</span><span>Delivered / picked up</span><span>Set up</span><span>Balance collected</span><span>Photos taken</span></div>
+      <h3>Crew checklist</h3>
+      <div class="checks"><span>Packed</span><span>Loaded</span><span>Installed</span><span>Balance collected</span></div>
     </section>`;
   }
 
@@ -178,7 +196,7 @@
 
   async function printOrder(order) {
     if (!order) return;
-    const title = `Work order — ${order.name || "order"}`;
+    const title = `Work order - ${order.name || "order"}`;
     const w = openPrintWindow(title);
     if (!w) return;
     const urls = await photoUrlsFor([order]);
@@ -191,12 +209,42 @@
     return m ? m[1].padStart(2, "0") + m[2] : (t ? "50" + t : "99");
   }
 
+  /* One compact table, sorted by time, with totals. */
+  function scheduleHtml(title, orders) {
+    const totals = orders.reduce((acc, o) => {
+      const t = orderTotalAmount(o);
+      const b = orderBalance(o);
+      if (t !== null) acc.total += t;
+      if (b !== null && o.payment_status !== "paid") acc.balance += b;
+      return acc;
+    }, { total: 0, balance: 0 });
+    const money = (n) => formatOrderMoney(n) || ORDERS_CURRENCY + "0";
+    return `<section class="schedule">
+      <h1>${esc(title)}</h1>
+      <p class="lead">${orders.length} order${orders.length === 1 ? "" : "s"}. Order total ${esc(money(totals.total))}. Balance to collect ${esc(money(totals.balance))}.</p>
+      <table>
+        <thead><tr><th>Time</th><th>Customer</th><th>Where</th><th class="num">Total</th><th class="num">Balance</th></tr></thead>
+        <tbody>${orders.map((o) => {
+          const b = orderBalance(o);
+          return `<tr>
+            <td class="time-col">${esc(formatOrderTime(orderEventTime(o)) || "TBC")}</td>
+            <td>${esc(o.name || "(no name)")}<div class="sub">${esc(o.phone || "")}</div></td>
+            <td class="addr">${esc(o.fulfillment === "pickup" ? "Pick-up" : (o.address || "Address not given"))}</td>
+            <td class="num">${esc(orderTotalLabel(o))}</td>
+            <td class="num">${b === null ? "" : esc(money(b))}</td>
+          </tr>`;
+        }).join("")}</tbody>
+        <tfoot><tr><td colspan="3">Totals</td><td class="num">${esc(money(totals.total))}</td><td class="num">${esc(money(totals.balance))}</td></tr></tfoot>
+      </table>
+    </section>`;
+  }
+
   async function printDaySheet(iso) {
     if (!/^\d{4}-\d{2}-\d{2}$/.test(iso || "")) {
       adminToast("Pick a date for the day sheet first.", { kind: "info" });
       return;
     }
-    const title = `Day sheet — ${friendlyOrderDay(iso)}`;
+    const title = `Day sheet - ${friendlyOrderDay(iso)}`;
     const w = openPrintWindow(title);
     if (!w) return;
     const client = getSupabaseClient();
@@ -212,11 +260,10 @@
     const orders = (data || []).filter((o) => orderEventIso(o) === iso)
       .sort((a, b) => timeSortKey(a).localeCompare(timeSortKey(b)));
     const urls = await photoUrlsFor(orders);
-    const summary = orders.length
-      ? `<p class="meta">${orders.length} order${orders.length === 1 ? "" : "s"}: ${orders.map((o) => `${esc(formatOrderTime(orderEventTime(o)) || "time TBC")} ${esc(o.name || "")}`).join(" · ")}</p>`
-      : "";
-    writeAndPrint(w, title, `<h1>${esc(title)}</h1>${summary}${orders.length ? orders.map((o) => orderBlock(o, urls)).join("") : `<p class="empty">No orders on this date.</p>`}`);
+    writeAndPrint(w, title, orders.length
+      ? scheduleHtml(title, orders) + orders.map((o) => orderBlock(o, urls)).join("")
+      : `<h1>${esc(title)}</h1><p class="empty">No orders on this date.</p>`);
   }
 
-  window.AdminOrderPrint = { printOrder, printDaySheet };
+  window.AdminOrderPrint = { printOrder, printDaySheet, _css: PRINT_CSS, _orderBlock: orderBlock, _schedule: scheduleHtml };
 })();
