@@ -176,14 +176,29 @@
     el.className = `form-status restore-status${kind ? " " + kind : ""}`;
   }
 
+  /* Stepper: 1 Choose file, 2 Review, 3 Confirm. n = 4 marks everything done. */
+  function setRestoreStep(n) {
+    const steps = document.querySelectorAll("#restoreSteps li");
+    steps.forEach((li, i) => {
+      li.classList.toggle("is-done", i + 1 < n);
+      li.classList.toggle("is-current", i + 1 === n);
+      if (i + 1 === n) li.setAttribute("aria-current", "step"); else li.removeAttribute("aria-current");
+    });
+  }
+
   function mount() {
     const root = $("restoreAdmin");
     if (!root || root.dataset.ready || !window.AdminBackup) return;
     root.dataset.ready = "1";
     root.innerHTML = `
       <h3>Restore from backup</h3>
+      <ol class="restore-steps" id="restoreSteps" aria-label="Restore steps">
+        <li class="is-current" aria-current="step"><span class="restore-step-n">1</span> Choose file</li>
+        <li><span class="restore-step-n">2</span> Review</li>
+        <li><span class="restore-step-n">3</span> Confirm</li>
+      </ol>
       <p class="backup-intro">Put the site back to how it was in a backup file. You choose what to restore and see exactly what would change first. A fresh backup of what you have now is downloaded automatically before anything is touched. Photos aren't inside the file, so they aren't brought back; you'll be told if any are missing.</p>
-      <label class="btn btn-outline" for="restoreFileInput">Restore from backup...</label>
+      <label class="btn btn-outline" for="restoreFileInput">Choose a backup file</label>
       <input id="restoreFileInput" type="file" accept=".json,application/json" hidden/>
       <div class="form-status restore-status" id="restoreStatus" role="status" aria-live="polite"></div>
       <div id="restorePanel" hidden></div>
@@ -246,7 +261,7 @@
       const d = preview[t.name];
       const usable = d && !d.missing && !d.error;
       const cells = usable
-        ? `<td>${d.inFile.toLocaleString()}</td><td>${d.now.toLocaleString()}</td><td>${d.add.toLocaleString()}</td><td>${d.change.toLocaleString()}</td><td class="restore-only-now">${d.onlyNow.toLocaleString()}</td>`
+        ? `<td data-label="In file">${d.inFile.toLocaleString()}</td><td data-label="Now">${d.now.toLocaleString()}</td><td data-label="Would add">${d.add.toLocaleString()}</td><td data-label="Would change">${d.change.toLocaleString()}</td><td data-label="Only on site" class="restore-only-now">${d.onlyNow.toLocaleString()}</td>`
         : `<td colspan="5" class="restore-unavailable">${d && d.missing ? "table not set up on this site" : escapeHtml((d && d.error) || "can't be compared")}</td>`;
       return `<tr><td><label><input type="checkbox" class="restore-pick" data-table="${escapeHtml(t.name)}" ${usable && !OFF_BY_DEFAULT.has(t.name) ? "checked" : ""} ${usable ? "" : "disabled"}/> ${escapeHtml(t.name)}</label></td>${cells}</tr>`;
     }).join("");
@@ -258,26 +273,29 @@
         <tbody>${rowsHtml}</tbody>
       </table>
       <fieldset class="restore-modes">
-        <legend>How</legend>
-        <label><input type="radio" name="restoreMode" value="merge" checked/> <strong>Merge</strong>: add what's missing and overwrite rows that differ. Rows that are only on the site now (the "Only on site" column) are kept.</label>
-        <label><input type="radio" name="restoreMode" value="replace"/> <strong>Replace</strong>: the same, then delete every "Only on site" row, so the chosen tables end up exactly like the file.</label>
+        <legend>How should it be restored?</legend>
+        <label class="restore-mode"><input type="radio" name="restoreMode" value="merge" checked/><span class="restore-mode-body"><strong>Merge <span class="a-badge a-badge--success">Safer</span></strong><span>Adds what is missing and overwrites rows that differ. Rows that are only on the site now (the "Only on site" column) are kept.</span></span></label>
+        <label class="restore-mode"><input type="radio" name="restoreMode" value="replace"/><span class="restore-mode-body"><strong>Replace <span class="a-badge a-badge--danger">Deletes rows</span></strong><span>Does the same, then deletes every "Only on site" row, so the chosen tables end up exactly like the file.</span></span></label>
       </fieldset>
-      <div class="restore-danger" id="restoreModeWarn" hidden></div>
-      <div class="field">
+      <div class="restore-danger" id="restoreModeWarn" role="alert" hidden></div>
+      <div class="field restore-confirm">
         <label for="restoreConfirm">To go ahead, type <strong>RESTORE</strong></label>
         <input id="restoreConfirm" type="text" autocomplete="off" spellcheck="false" placeholder="RESTORE"/>
       </div>
-      <button type="button" class="btn btn-primary btn-delete-danger" id="restoreGoBtn" disabled>Restore now</button>
-      <button type="button" class="btn btn-outline" id="restoreCancelBtn">Cancel</button>
+      <div class="restore-actions">
+        <button type="button" class="btn btn-outline" id="restoreCancelBtn">Cancel</button>
+        <button type="button" class="btn btn-primary btn-delete-danger" id="restoreGoBtn" disabled>Restore now</button>
+      </div>
       <div id="restoreProgress" class="restore-progress" role="status" aria-live="polite"></div>
       <div id="restoreResult" class="restore-result" hidden></div>
     `;
     panel.hidden = false;
+    setRestoreStep(2);
     panel.querySelectorAll(".restore-pick, input[name=restoreMode], #restoreConfirm").forEach((el) => {
       el.addEventListener("input", syncRestoreControls);
       el.addEventListener("change", syncRestoreControls);
     });
-    $("restoreCancelBtn").addEventListener("click", () => { if (!busy) { panel.hidden = true; loaded = null; preview = null; } });
+    $("restoreCancelBtn").addEventListener("click", () => { if (!busy) { panel.hidden = true; loaded = null; preview = null; setRestoreStep(1); } });
     $("restoreGoBtn").addEventListener("click", runRestore);
     syncRestoreControls();
   }
@@ -304,6 +322,7 @@
       warn.hidden = true;
     }
     $("restoreGoBtn").disabled = busy || !names.length || $("restoreConfirm").value.trim() !== "RESTORE";
+    if (!busy && !$("restoreResult").hidden === false) setRestoreStep($("restoreConfirm").value.trim() ? 3 : 2);
   }
 
   function progress(message) {
@@ -375,6 +394,7 @@
       const missing = await findMissingPhotos(client, names, safety);
 
       renderResult(results, missing, mode);
+      setRestoreStep(4);
       setStatus(results.some((r) => r.error) ? "Restore finished with problems (see below)." : "Restore finished.", results.some((r) => r.error) ? "error" : "success");
       refreshAfterRestore(names);
     } catch (err) {
@@ -412,15 +432,20 @@
 
   function renderResult(results, missing, mode) {
     const el = $("restoreResult");
-    const rows = results.map((r) => `<tr${r.error ? ' class="backup-row-failed"' : ""}><td>${escapeHtml(r.name)}</td><td>${r.inserted.toLocaleString()}</td><td>${r.updated.toLocaleString()}</td><td>${r.unchanged.toLocaleString()}</td><td>${mode === "replace" ? r.deleted.toLocaleString() : "-"}</td></tr>${r.error ? `<tr class="backup-row-failed"><td colspan="5">${escapeHtml(r.error)}</td></tr>` : ""}`).join("");
+    const badge = (kind, n, label) => `<span class="a-badge a-badge--${kind}">${n.toLocaleString()} ${label}</span>`;
+    const rows = results.map((r) => `<li class="restore-result-row${r.error ? " is-failed" : ""}">
+        <span class="restore-result-name">${escapeHtml(r.name)}</span>
+        <span class="restore-result-badges">${r.error ? '<span class="a-badge a-badge--danger">Failed</span>' : ""}${badge("success", r.inserted, "added")}${badge("info", r.updated, "changed")}${badge("neutral", r.unchanged, "already right")}${mode === "replace" ? badge(r.deleted ? "danger" : "neutral", r.deleted, "deleted") : ""}</span>
+        ${r.error ? `<span class="restore-result-error">${escapeHtml(r.error)}</span>` : ""}
+      </li>`).join("");
     el.innerHTML = `
       <h4>Summary</h4>
-      <table class="backup-table"><thead><tr><th>Table</th><th>Added</th><th>Changed</th><th>Already right</th><th>Deleted</th></tr></thead><tbody>${rows}</tbody></table>
+      <ul class="restore-results">${rows}</ul>
       ${missing.length
-        ? `<div class="restore-danger"><strong>${missing.length} photo${missing.length === 1 ? " is" : "s are"} missing from storage.</strong> The restored data points to ${missing.length === 1 ? "it" : "them"}, but the file isn't there, so ${missing.length === 1 ? "it" : "they"} will show as broken images. Photo files aren't part of a backup; re-upload them in the Library.
+        ? `<div class="restore-danger" role="alert"><strong>${missing.length} photo${missing.length === 1 ? " is" : "s are"} missing from storage.</strong> The restored data points to ${missing.length === 1 ? "it" : "them"}, but the file isn't there, so ${missing.length === 1 ? "it" : "they"} will show as broken images. Photo files aren't part of a backup; re-upload them in the Library.
            <ul>${missing.slice(0, 40).map((m) => `<li><code>${escapeHtml(m.bucket)}/${escapeHtml(m.path)}</code>${m.wasInBackupList ? "" : " (wasn't in the backup's photo list either)"}</li>`).join("")}</ul>
            ${missing.length > 40 ? `<p>...and ${missing.length - 40} more.</p>` : ""}</div>`
-        : "<p>Every photo the restored data points to is still in storage.</p>"}
+        : '<p class="restore-ok"><span class="a-badge a-badge--success">Photos OK</span> Every photo the restored data points to is still in storage.</p>'}
       <p class="restore-note">Reload the page to see everything fresh. The activity log shows each restored row.</p>
     `;
     el.hidden = false;

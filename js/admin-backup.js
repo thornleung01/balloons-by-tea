@@ -124,7 +124,24 @@
     const iso = knownIso || await readLastBackup(client);
     note.textContent = iso ? `Last backup: ${describeAge(iso)} (${new Date(iso).toLocaleDateString()})` : "Last backup: never. Download one now.";
     if (nudge) nudge.hidden = !needsBackupNudge(iso);
+    renderBackupBadge(iso);
     renderDashboardNudge(iso);
+  }
+
+  /* Status badge in the card header: green up to a week, amber up to the
+     14-day nudge, red after that or when there has never been one. */
+  function renderBackupBadge(iso) {
+    const badge = document.getElementById("backupBadge");
+    if (!badge) return;
+    const days = daysSince(iso);
+    let kind = "danger";
+    let text = "No backup yet";
+    if (days !== null) {
+      text = `Last backup ${describeAge(iso)}`;
+      kind = days <= 7 ? "success" : days <= NUDGE_AFTER_DAYS ? "warning" : "danger";
+    }
+    badge.className = `a-badge a-badge--${kind}`;
+    badge.textContent = text;
   }
 
   /* A slim banner at the top of the dashboard (dismissible for the rest of
@@ -142,7 +159,7 @@
       bar.className = "backup-nudge-bar";
       dash.insertBefore(bar, dash.firstChild);
     }
-    bar.innerHTML = `<span>${iso ? `Your last backup was ${escapeHtml(describeAge(iso))}.` : "You haven't downloaded a backup yet."} Take one now (Settings, at the bottom).</span><button type="button" class="btn btn-outline btn-sm" id="backupNudgeDismiss">Dismiss</button>`;
+    bar.innerHTML = `<span class="backup-nudge-text"><span class="a-badge a-badge--warning">Backup due</span> ${iso ? `Your last backup was ${escapeHtml(describeAge(iso))}.` : "You haven't downloaded a backup yet."} Take one now in Settings, under Backup.</span><button type="button" class="btn btn-outline btn-sm" id="backupNudgeDismiss">Dismiss</button>`;
     bar.querySelector("#backupNudgeDismiss").addEventListener("click", () => {
       try { sessionStorage.setItem("admin-backup-nudge-dismissed", "1"); } catch (e) { /* ignore */ }
       bar.remove();
@@ -151,12 +168,12 @@
 
   function renderShell(root) {
     root.innerHTML = `
-      <h2>Backup</h2>
+      <div class="sys-head"><h2>Backup</h2><span class="a-badge a-badge--neutral" id="backupBadge">Checking</span></div>
       <p class="backup-intro">Download a copy of everything stored for the site: products, orders, settings, categories, nav, FAQ, layout, analytics, delivery dates and areas, plus a list of every uploaded photo (names and links, not the image files themselves). It only reads your data; nothing is changed.</p>
       <p class="backup-warning">Keep this file somewhere safe (e.g. Google Drive). It contains customer contact details.</p>
       <p class="backup-last" id="lastBackupNote" role="status">Last backup: checking...</p>
       <p class="backup-nudge" id="backupNudge" hidden>It's been a while. A backup takes a few seconds and is your safety net.</p>
-      <button type="button" class="btn btn-primary" id="downloadBackupBtn">Download backup</button>
+      <div class="sys-actions"><button type="button" class="btn btn-primary" id="downloadBackupBtn">Download backup</button></div>
       <div class="form-status backup-status" id="backupStatus" role="status" aria-live="polite"></div>
       <div class="backup-summary" id="backupSummary" hidden></div>
       <div id="restoreAdmin" class="restore-section" data-owner-only></div>
@@ -299,7 +316,7 @@
       ? `<ul class="backup-errors">${backup.errors.map((e) => `<li><strong>${escapeHtml(e.source)}</strong>: ${escapeHtml(e.message)}</li>`).join("")}</ul>`
       : "";
     el.innerHTML = `
-      ${backup.complete ? "" : `<p class="backup-incomplete-banner">INCOMPLETE BACKUP: some data could not be read, so this file is missing parts of your data. Don't rely on it; try again.</p>`}
+      ${backup.complete ? "" : `<p class="backup-incomplete-banner" role="alert"><span class="a-badge a-badge--danger">Incomplete</span> Some data could not be read, so this file is missing parts of your data. Don't rely on it. Try again.</p>`}
       ${errorsHtml}
       <p class="backup-filename">Saved as <code>${escapeHtml(filename)}</code></p>
       <table class="backup-table">

@@ -36,6 +36,9 @@
     delivery_areas: "delivery area", layout_overrides: "layout tweak"
   };
 
+  const KIND_LABEL = { insert: "Added", update: "Edited", delete: "Deleted" };
+  const KIND_BADGE = { insert: "a-badge--success", update: "a-badge--info", delete: "a-badge--danger" };
+
   const COLUMN_LABELS = {
     price: "price", name: "name", description: "description", style: "style",
     image_url: "main photo", images: "photos", collection: "category",
@@ -238,19 +241,22 @@
 
   function renderShell(panel) {
     panel.innerHTML = `
-      <div class="orders-head">
+      <div class="activity-head">
         <h2>Activity</h2>
-        <button type="button" class="orders-export-btn" id="activityRefreshBtn">Refresh</button>
+        <button type="button" class="btn btn-outline btn-sm" id="activityRefreshBtn">Refresh</button>
       </div>
-      <p class="panel-subtitle">Every change made in the admin, newest first, with who made it. Deletes are recorded even when they don't come from the admin page. Click an entry to see exactly what changed.</p>
-      <div class="activity-filters">
+      <p class="panel-subtitle">Every change made in the admin, newest first, with who made it. Deletes are recorded even when they don't come from the admin page. Select an entry to see exactly what changed.</p>
+      <div class="activity-filters" role="group" aria-label="Filter activity">
         <label>Area<select id="activityTable" class="filter-select"><option value="">Everything</option>${Object.keys(TABLE_LABELS).map((t) => `<option value="${t}">${escapeHtml(TABLE_LABELS[t])}</option>`).join("")}</select></label>
         <label>Change<select id="activityAction" class="filter-select"><option value="">Any change</option><option value="insert">Added</option><option value="update">Edited</option><option value="delete">Deleted</option></select></label>
         <label>Person<select id="activityPerson" class="filter-select"><option value="">Anyone</option><option value="__none">No admin login</option></select></label>
         <label>From<input type="date" id="activityFrom"/></label>
         <label>To<input type="date" id="activityTo"/></label>
+        <button type="button" class="btn btn-ghost btn-sm activity-clear" id="activityClearBtn" hidden>Clear filters</button>
       </div>
       <div class="form-status" id="activityStatus" role="status" aria-live="polite"></div>
+      <div class="activity-notice" id="activityNotice" role="status" hidden></div>
+      <div id="activityState"></div>
       <ol class="activity-list" id="activityList"></ol>
       <div class="activity-pager">
         <button type="button" class="btn btn-outline btn-sm" id="activityPrevBtn">Newer</button>
@@ -268,6 +274,11 @@
     `;
     ["activityTable", "activityAction", "activityPerson", "activityFrom", "activityTo"].forEach((id) => {
       $(id).addEventListener("change", () => { state.page = 0; load(); });
+    });
+    $("activityClearBtn").addEventListener("click", () => {
+      ["activityTable", "activityAction", "activityPerson", "activityFrom", "activityTo"].forEach((id) => { $(id).value = ""; });
+      state.page = 0;
+      load();
     });
     $("activityRefreshBtn").addEventListener("click", () => load());
     $("activityPrevBtn").addEventListener("click", () => { if (state.page > 0) { state.page -= 1; load(); } });
@@ -298,16 +309,25 @@
     if (select.value !== current) select.value = "";
   }
 
+  function filtersActive() {
+    return ["activityTable", "activityAction", "activityPerson", "activityFrom", "activityTo"].some((id) => $(id) && $(id).value);
+  }
+
+  function showState(html) { $("activityState").innerHTML = html || ""; }
+
   async function load() {
     const client = getSupabaseClient();
     if (!client || state.loading) return;
     if (typeof window.getAdminRole === "function" && window.getAdminRole() === "staff") {
       $("activityList").innerHTML = "";
-      setStatus("activityStatus", "Only owners can see the activity log.", "");
+      showState(adminEmptyHtml("Owners only", "Only owners can see the activity log."));
       return;
     }
     state.loading = true;
-    setStatus("activityStatus", "Loading...", "");
+    setStatus("activityStatus", "", "");
+    $("activityNotice").hidden = true;
+    if (!state.entries.length) { $("activityList").innerHTML = ""; showState(adminSkeletonList(5)); }
+    $("activityClearBtn").hidden = !filtersActive();
     try {
       let query = client.from("audit_log").select("*", { count: "exact" })
         .order("created_at", { ascending: false })
@@ -330,7 +350,10 @@
         if (isMissingTableError(error, "audit_log")) {
           state.migrationMissing = true;
           $("activityList").innerHTML = "";
-          setStatus("activityStatus", "The activity log needs the database update: run supabase-migrations/30-safety.sql in the Supabase SQL editor (see docs/admin-safety.md).", "error");
+          showState("");
+          const notice = $("activityNotice");
+          notice.innerHTML = "<strong>The activity log is not set up yet.</strong> Run <code>supabase-migrations/30-safety.sql</code> in the Supabase SQL editor, then reload this tab. Steps are in <code>docs/DATABASE.md</code> and <code>docs/admin-safety.md</code>. Everything else in the admin keeps working in the meantime.";
+          notice.hidden = false;
           return;
         }
         throw error;
@@ -338,9 +361,15 @@
       state.entries = data || [];
       state.total = typeof count === "number" ? count : state.entries.length;
       render();
-      setStatus("activityStatus", state.total ? "" : "Nothing here yet. Changes you make from now on will show up in this list.", "");
+      if (state.total) showState("");
+      else if (filtersActive()) showState(adminEmptyHtml("Nothing matches these filters", "Try a wider date range, or clear the filters to see everything."));
+      else showState(adminEmptyHtml("No changes recorded yet", "Edits you make in the admin appear here."));
     } catch (err) {
-      setStatus("activityStatus", `Couldn't load activity: ${err.message || err}`, "error");
+      state.entries = [];
+      $("activityList").innerHTML = "";
+      showState(adminErrorHtml(`Couldn't load activity: ${err.message || err}`, "Try again"));
+      const retry = $("activityState").querySelector("[data-retry]");
+      if (retry) retry.addEventListener("click", () => load());
     } finally {
       state.loading = false;
     }
@@ -360,20 +389,26 @@
       const undo = isOwner ? buildUndo(entry) : null;
       const when = new Date(entry.created_at);
       const table = entry.action === "update"
-        ? `<table class="activity-diff"><thead><tr><th>What</th><th>Before</th><th>After</th></tr></thead><tbody>${rows.map((r) => `<tr><td>${escapeHtml(columnLabel(r.column))}</td><td>${valueCell(r.before)}</td><td>${valueCell(r.after)}</td></tr>`).join("")}</tbody></table>`
-        : `<table class="activity-diff"><thead><tr><th>What</th><th>${entry.action === "delete" ? "Value before it was deleted" : "Value"}</th></tr></thead><tbody>${rows.map((r) => `<tr><td>${escapeHtml(columnLabel(r.column))}</td><td>${valueCell(r.value)}</td></tr>`).join("")}</tbody></table>`;
+        ? `<table class="activity-diff"><thead><tr><th>What</th><th>Before</th><th>After</th></tr></thead><tbody>${rows.map((r) => `<tr><th scope="row">${escapeHtml(columnLabel(r.column))}</th><td data-label="Before">${valueCell(r.before)}</td><td data-label="After">${valueCell(r.after)}</td></tr>`).join("")}</tbody></table>`
+        : `<table class="activity-diff"><thead><tr><th>What</th><th>${entry.action === "delete" ? "Value before it was deleted" : "Value"}</th></tr></thead><tbody>${rows.map((r) => `<tr><th scope="row">${escapeHtml(columnLabel(r.column))}</th><td data-label="${entry.action === "delete" ? "Before it was deleted" : "Value"}">${valueCell(r.value)}</td></tr>`).join("")}</tbody></table>`;
       return `
         <li class="activity-item activity-${escapeHtml(entry.action)}">
           <details>
             <summary>
               <span class="activity-dot" aria-hidden="true"></span>
-              <span class="activity-text">${escapeHtml(describeAuditEntry(entry, state.team))}</span>
-              <time datetime="${escapeHtml(entry.created_at)}" title="${escapeHtml(when.toLocaleString())}">${escapeHtml(relativeTime(entry.created_at))}</time>
+              <span class="activity-main">
+                <span class="activity-text">${escapeHtml(describeAuditEntry(entry, state.team))}</span>
+                <span class="activity-sub">
+                  <span class="a-badge ${KIND_BADGE[entry.action] || "a-badge--neutral"}">${escapeHtml(KIND_LABEL[entry.action] || entry.action)}</span>
+                  <span class="activity-area">${escapeHtml(TABLE_LABELS[entry.table_name] || entry.table_name)}</span>
+                  <time datetime="${escapeHtml(entry.created_at)}" title="${escapeHtml(when.toLocaleString())}">${escapeHtml(relativeTime(entry.created_at))}</time>
+                </span>
+              </span>
             </summary>
             <div class="activity-body">
               <p class="activity-meta">${escapeHtml(TABLE_LABELS[entry.table_name] || entry.table_name)} · ${escapeHtml(when.toLocaleString())}${entry.actor_email ? ` · ${escapeHtml(entry.actor_email)}` : ""}</p>
               ${table}
-              ${undo ? `<button type="button" class="btn btn-outline btn-sm activity-undo-btn" data-index="${i}">${entry.action === "delete" ? "Undo: put it back" : "Undo this change"}</button>` : ""}
+              ${undo ? `<button type="button" class="btn btn-outline btn-sm activity-undo-btn" data-index="${i}">${entry.action === "delete" ? "Put it back" : "Undo this change"}</button>` : ""}
               <span class="form-status activity-undo-status" data-undo-status="${i}"></span>
             </div>
           </details>

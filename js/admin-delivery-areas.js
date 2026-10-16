@@ -47,7 +47,7 @@
         </div>
       </form>
       <h3 class="delivery-area-list-title">Current areas <span id="deliveryAreaCount"></span></h3>
-      <div id="deliveryAreaList"><p class="empty-note">Loading...</p></div>
+      <div id="deliveryAreaList">${adminSkeletonList(2)}</div>
     `;
     root.querySelector("#deliveryAreaForm").addEventListener("submit", handleAdd);
     rendered = true;
@@ -66,20 +66,12 @@
     if (!listEl) return;
     if (countEl) countEl.textContent = areasCache.length ? `(${areasCache.length})` : "";
     if (!areasCache.length) {
-      listEl.innerHTML = `<p class="empty-note">No areas yet. The delivery check is off and all addresses are accepted.</p>`;
+      listEl.innerHTML = adminEmptyHtml("No delivery areas yet", "Type postal areas like M5V above and press Add areas. While the list is empty, the delivery check is off and every address is accepted.");
       return;
     }
-    listEl.innerHTML = areasCache.map((a) => `
-      <div class="admin-item-row" data-fsa="${escapeHtml(a.fsa)}">
-        <div class="admin-item-body">
-          <div class="name">${escapeHtml(a.fsa)}</div>
-          ${a.label ? `<div class="meta">${escapeHtml(a.label)}</div>` : ""}
-        </div>
-        <div class="admin-item-actions">
-          <button type="button" class="danger delivery-area-remove" data-fsa="${escapeHtml(a.fsa)}" aria-label="Remove ${escapeHtml(a.fsa)}">Remove</button>
-        </div>
-      </div>
-    `).join("");
+    listEl.innerHTML = `<div class="fsa-chips">${areasCache.map((a) => `
+      <span class="fsa-chip" data-fsa="${escapeHtml(a.fsa)}">${escapeHtml(a.fsa)}${a.label ? ` <span class="fsa-chip-label">${escapeHtml(a.label)}</span>` : ""}<button type="button" class="delivery-area-remove" data-fsa="${escapeHtml(a.fsa)}" aria-label="Remove ${escapeHtml(a.fsa)}">&times;</button></span>
+    `).join("")}</div>`;
     listEl.querySelectorAll(".delivery-area-remove").forEach((btn) => {
       btn.addEventListener("click", () => handleRemove(btn.dataset.fsa, btn));
     });
@@ -91,7 +83,7 @@
     const missing = isMissingTableError(error, "delivery_areas");
     if (form) form.hidden = missing;
     if (listEl) {
-      listEl.innerHTML = `<p class="form-status error">${missing
+      listEl.innerHTML = `<p class="a-inline-error" role="alert">${missing
         ? "The delivery_areas table doesn't exist yet. Run the latest supabase-setup.sql in your Supabase SQL Editor to turn on the delivery-area check. Until then, every address is accepted."
         : "Couldn't load delivery areas: " + escapeHtml(error.message || String(error))}</p>`;
     }
