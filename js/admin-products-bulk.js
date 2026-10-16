@@ -48,11 +48,11 @@ function ensureBulkModal() {
         <button type="button" class="icon-btn" data-close-bulk aria-label="Close">&times;</button>
       </div>
       <div class="modal-body">
-        <div class="orders-filter bulk-tabs" id="bulkTabs" role="tablist">
-          <button type="button" class="orders-filter-btn" data-bulk-tab="price">Change price</button>
-          <button type="button" class="orders-filter-btn" data-bulk-tab="sale">Sale price</button>
-          <button type="button" class="orders-filter-btn" data-bulk-tab="tags">Tags</button>
-          <button type="button" class="orders-filter-btn" data-bulk-tab="featured">Featured</button>
+        <div class="orders-filter bulk-tabs" id="bulkTabs" role="tablist" aria-label="What to change">
+          <button type="button" class="orders-filter-btn" role="tab" data-bulk-tab="price">Change price</button>
+          <button type="button" class="orders-filter-btn" role="tab" data-bulk-tab="sale">Sale price</button>
+          <button type="button" class="orders-filter-btn" role="tab" data-bulk-tab="tags">Tags</button>
+          <button type="button" class="orders-filter-btn" role="tab" data-bulk-tab="featured">Featured</button>
         </div>
         <div id="bulkToolsBody"></div>
         <p class="form-status" id="bulkToolsStatus" role="status" aria-live="polite"></p>
@@ -99,8 +99,8 @@ function renderBulkTab() {
 }
 
 function bulkPreviewTable(rows) {
-  return `<div class="csv-preview-scroll"><table class="csv-preview-table"><thead><tr><th>Item</th><th>Now</th><th></th><th>New</th></tr></thead><tbody>${rows.map((r) =>
-    `<tr class="${r.warn ? "is-error" : ""}"><td>${escapeHtml(r.name)}</td><td>${r.before}</td><td>&rarr;</td><td>${r.after}${r.warn ? ` <span class="csv-warning">${escapeHtml(r.warn)}</span>` : ""}</td></tr>`).join("")}</tbody></table></div>`;
+  return `<div class="csv-preview-scroll"><table class="csv-preview-table bulk-preview-table"><caption class="a-visually-hidden">Old and new values for each selected product</caption><thead><tr><th scope="col">Item</th><th scope="col">Now</th><th scope="col"><span class="a-visually-hidden">Changes to</span></th><th scope="col">New</th></tr></thead><tbody>${rows.map((r) =>
+    `<tr class="${r.warn ? "is-warn" : ""}"><td class="bulk-item-name">${escapeHtml(r.name)}</td><td class="bulk-old">${r.before}</td><td class="bulk-arrow" aria-hidden="true">&rarr;</td><td class="bulk-new">${r.after}${r.warn ? ` <span class="a-badge a-badge--warning a-badge--xs">${escapeHtml(r.warn)}</span>` : ""}</td></tr>`).join("")}</tbody></table></div>`;
 }
 
 /* updatesById: { productId: { column: value } }. */
@@ -246,11 +246,14 @@ onAdminInit(() => {
   const bar = document.getElementById("bulkActionBar");
   const del = document.getElementById("bulkDeleteBtn");
   if (!bar || !del) return;
-  [["price", "Price…"], ["sale", "Sale…"], ["tags", "Tags…"], ["featured", "Featured…"]].forEach(([tab, label]) => {
+  // The bar's "Edit" group (admin.html) holds these; they open the dialog below.
+  const group = document.getElementById("bulkEditGroup") || bar;
+  [["price", "Price"], ["sale", "Sale price"], ["tags", "Tags"], ["featured", "Featured"]].forEach(([tab, label]) => {
     const b = document.createElement("button");
     b.type = "button";
     b.textContent = label;
+    b.setAttribute("aria-haspopup", "dialog");
     b.addEventListener("click", () => openBulkTools(tab));
-    bar.insertBefore(b, del);
+    group.appendChild(b);
   });
 });

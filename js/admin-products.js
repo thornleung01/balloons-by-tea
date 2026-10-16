@@ -19,6 +19,10 @@ function setFormStatus(message, kind) {
 /* ===== Item list ===== */
 
 let productsCache = [];
+let productsLoadedOnce = false;
+// After a keyboard reorder the list re-renders; this puts focus back on the
+// same Move button of the same product.
+let pendingProductMoveFocus = null;
 let itemSearchQuery = "";
 let itemFilterSlug = "all";
 let itemSortMode = "collection";
@@ -97,6 +101,9 @@ const PRODUCT_MIGRATION_HINT = "Run supabase-migrations/40-products.sql in Supab
 async function refreshItemList() {
   const client = getSupabaseClient();
   const listEl = document.getElementById("itemList");
+  // First load only: skeleton rows shaped like the final list. Later reloads
+  // (after a save, toggle, drag) keep the current rows on screen.
+  if (!productsLoadedOnce) listEl.innerHTML = productSkeletonRows(6);
   const { data, error } = await client
     .from("products")
     .select("*")
@@ -104,9 +111,16 @@ async function refreshItemList() {
     .order("created_at", { ascending: true });
 
   if (error) {
-    listEl.innerHTML = `<p class="form-status error">Couldn't load items: ${escapeHtml(error.message)}</p>`;
+    listEl.innerHTML = `
+      <div class="a-inline-error product-load-error" role="alert">
+        <span>Couldn't load items: ${escapeHtml(error.message)}</span>
+        <button type="button" class="btn btn-outline btn-sm" id="retryProductsBtn">Try again</button>
+      </div>`;
+    document.getElementById("retryProductsBtn").addEventListener("click", refreshItemList);
+    syncBulkSelectionUI([]);
     return;
   }
+  productsLoadedOnce = true;
 
   const rows = data || [];
   if (rows.length) productExtrasAvailable = "deleted_at" in rows[0];
@@ -139,6 +153,12 @@ function productListBadges(item) {
   return badges;
 }
 
+/* Badge kind -> the .a-badge--status-<name> variant it uses. */
+const PRODUCT_BADGE_STATUS = { hidden: "hidden", scheduled: "scheduled", expired: "expired", sale: "sale", featured: "featured", out: "outofstock", low: "lowstock", purge: "outofstock" };
+function productBadgeHtml(kind, label, title) {
+  return `<span class="a-badge a-badge--status-${PRODUCT_BADGE_STATUS[kind] || "neutral"}"${title ? ` title="${escapeHtml(title)}"` : ""}>${escapeHtml(label)}</span>`;
+}
+
 function formatAdminDateTime(value) {
   const d = value ? new Date(value) : null;
   if (!d || Number.isNaN(d.getTime())) return "";
@@ -148,8 +168,8 @@ function formatAdminDateTime(value) {
 function productListPriceText(item) {
   const fmt = (n) => formatCatalogMoney(n);
   const sale = toNumberOrNull(item.sale_price);
-  if (sale !== null && sale < Number(item.price)) return `<s>${fmt(item.price)}</s> ${fmt(sale)}`;
-  return fmt(Number(item.price) || 0);
+  if (sale !== null && sale < Number(item.price)) return `<span class="product-price"><s><span class="a-visually-hidden">Was </span>${fmt(item.price)}</s> <strong><span class="a-visually-hidden">Now </span>${fmt(sale)}</strong></span>`;
+  return `<span class="product-price"><strong>${fmt(Number(item.price) || 0)}</strong></span>`;
 }
 
 /* Manual order within a collection: sort_order, then the original
@@ -170,11 +190,85 @@ function populateItemFilterOptions() {
   if ([...select.options].some((o) => o.value === prev)) select.value = prev;
 }
 
+const PRODUCT_THUMB_PLACEHOLDER = '<svg class="admin-item-thumb-empty" viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="3"/><circle cx="9" cy="10" r="1.6"/><path d="M4 18l5-5 4 4 3-3 4 4" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+const PRODUCT_ICONS = {
+  copy: '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V6a2 2 0 0 1 2-2h8" stroke-linecap="round"/></svg>',
+  trash: '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13M10 11v6M14 11v6" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+  view: '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5" stroke-linecap="round" stroke-linejoin="round"/></svg>'
+};
+const PRODUCT_GRIP_ICON = '<svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor" aria-hidden="true"><circle cx="9" cy="6" r="1.6"/><circle cx="15" cy="6" r="1.6"/><circle cx="9" cy="12" r="1.6"/><circle cx="15" cy="12" r="1.6"/><circle cx="9" cy="18" r="1.6"/><circle cx="15" cy="18" r="1.6"/></svg>';
+
+/* Placeholder rows with the same shape as a real row, for the first load. */
+function productSkeletonRows(count) {
+  const row = `
+    <div class="admin-item-row product-row is-skeleton" aria-hidden="true">
+      <span class="a-skeleton row-select-skeleton"></span>
+      <span class="a-skeleton admin-item-thumb"></span>
+      <div class="admin-item-body">
+        <span class="a-skeleton a-skeleton--line product-skeleton-name"></span>
+        <span class="a-skeleton a-skeleton--line product-skeleton-meta"></span>
+      </div>
+      <span class="a-skeleton a-skeleton--pill"></span>
+    </div>`;
+  return `<div class="product-skeleton" role="status" aria-label="Loading items">${row.repeat(count)}</div>`;
+}
+
+function productEmptyState(kind) {
+  if (kind === "none") {
+    return `
+      <div class="a-empty product-empty">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M3 7l9-4 9 4-9 4-9-4zM3 7v10l9 4 9-4V7M12 11v10" stroke-linejoin="round"/></svg>
+        <p class="a-empty-title">No products yet</p>
+        <p class="a-empty-text">Add your first item with the form, or bring in a whole catalog from a spreadsheet with Import CSV.</p>
+        <div class="product-empty-actions">
+          <button type="button" class="btn btn-primary btn-sm" id="emptyAddItemBtn">Add item</button>
+          <button type="button" class="btn btn-outline btn-sm" id="emptyImportBtn">Import CSV</button>
+        </div>
+      </div>`;
+  }
+  return `
+    <div class="a-empty product-empty">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.35-4.35" stroke-linecap="round"/></svg>
+      <p class="a-empty-title">No matches</p>
+      <p class="a-empty-text">No items fit this search and category. Try a different word, or clear the filters.</p>
+      <div class="product-empty-actions"><button type="button" class="btn btn-outline btn-sm" id="clearItemFiltersBtn">Clear filters</button></div>
+    </div>`;
+}
+
+function wireProductEmptyState(listEl) {
+  const add = listEl.querySelector("#emptyAddItemBtn");
+  if (add) add.addEventListener("click", () => {
+    const form = document.getElementById("itemForm");
+    const name = document.getElementById("f-name");
+    if (form) form.scrollIntoView({ behavior: "smooth", block: "start" });
+    if (name) name.focus({ preventScroll: true });
+  });
+  const imp = listEl.querySelector("#emptyImportBtn");
+  if (imp) imp.addEventListener("click", () => { const b = document.getElementById("importProductsCsvBtn"); if (b) b.click(); });
+  const clear = listEl.querySelector("#clearItemFiltersBtn");
+  if (clear) clear.addEventListener("click", () => {
+    itemSearchQuery = "";
+    itemFilterSlug = "all";
+    document.getElementById("itemSearch").value = "";
+    document.getElementById("itemFilter").value = "all";
+    renderProductList();
+  });
+}
+
+function updateProductCount(visible) {
+  const el = document.getElementById("productCount");
+  if (!el) return;
+  if (!productsCache.length) { el.textContent = ""; return; }
+  el.textContent = visible === productsCache.length ? `${productsCache.length}` : `${visible} of ${productsCache.length}`;
+}
+
 function renderProductList() {
   const listEl = document.getElementById("itemList");
 
   if (!productsCache.length) {
-    listEl.innerHTML = `<p class="empty-note">No items yet — add your first one on the left.</p>`;
+    listEl.innerHTML = productEmptyState("none");
+    wireProductEmptyState(listEl);
+    updateProductCount(0);
     syncBulkSelectionUI([]);
     return;
   }
@@ -185,36 +279,49 @@ function renderProductList() {
     if (query && !productMatchesSearch(item, query)) return false;
     return true;
   });
+  updateProductCount(items.length);
 
   if (itemSortMode === "alpha") items = items.slice().sort((a, b) => a.name.localeCompare(b.name));
   else if (itemSortMode === "price-asc") items = items.slice().sort((a, b) => a.price - b.price);
   else if (itemSortMode === "price-desc") items = items.slice().sort((a, b) => b.price - a.price);
   else if (itemSortMode === "newest") items = items.slice().sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
 
-  const renderRow = (item) => {
+  /* pos = { i, n } when the row sits in a reorderable category folder. */
+  const renderRow = (item, pos) => {
     const viewHref = collectionHrefForAdmin(item.collection);
     const badges = productListBadges(item);
     const offSite = item.active === false || productAvailabilityState(item.available_from, item.available_until) !== "live";
+    const selected = selectedProductIds.has(String(item.id));
+    const stock = toNumberOrNull(item.stock);
+    const metaParts = [productListPriceText(item)];
+    if (itemSortMode !== "collection") metaParts.push(escapeHtml(collectionTitle(item.collection)));
+    if (item.sku) metaParts.push(escapeHtml(item.sku));
+    if (stock !== null && stock > 2) metaParts.push(`${stock} in stock`);
+    const name = escapeHtml(item.name);
+    const photoCount = Array.isArray(item.images) && item.images.length > 1 ? `<span class="admin-item-thumb-count">${item.images.length}</span>` : "";
     return `
-    <div class="admin-item-row ${offSite ? "inactive" : ""}" data-id="${item.id}">
-      <input type="checkbox" class="admin-item-select" data-select-id="${item.id}" aria-label="Select ${escapeHtml(item.name)}" ${selectedProductIds.has(String(item.id)) ? "checked" : ""}/>
-      <div class="admin-item-thumb">${item.image_url ? `<img src="${escapeHtml(item.image_url)}" alt=""/>` : ""}${Array.isArray(item.images) && item.images.length > 1 ? `<span class="admin-item-thumb-count">${item.images.length}</span>` : ""}</div>
+    <div class="admin-item-row product-row ${offSite ? "inactive" : ""} ${selected ? "is-selected" : ""}" data-id="${item.id}">
+      <label class="row-select"><input type="checkbox" class="admin-item-select" data-select-id="${item.id}" aria-label="Select ${name}" ${selected ? "checked" : ""}/></label>
+      <div class="admin-item-thumb">${item.image_url ? `<img src="${escapeHtml(item.image_url)}" alt=""/>` : PRODUCT_THUMB_PLACEHOLDER}${photoCount}</div>
       <div class="admin-item-body">
-        <div class="name">${escapeHtml(item.name)}</div>
-        <div class="meta">${productListPriceText(item)}${item.sku ? ` &middot; ${escapeHtml(item.sku)}` : ""}</div>
-        ${badges.length ? `<div class="product-badges">${badges.map(([kind, label, title]) => `<span class="product-status-badge is-${kind}"${title ? ` title="${escapeHtml(title)}"` : ""}>${escapeHtml(label)}</span>`).join("")}</div>` : ""}
+        <div class="name">${name}</div>
+        <div class="meta">${metaParts.join('<span class="meta-sep" aria-hidden="true">&middot;</span>')}</div>
+        ${badges.length ? `<div class="product-badges">${badges.map(([kind, label, title]) => productBadgeHtml(kind, label, title)).join("")}</div>` : ""}
       </div>
       <div class="admin-item-actions">
-        <label class="toggle-switch" title="${item.active === false ? "Hidden, click to show on site" : "Live on site, click to hide"}">
-          <input type="checkbox" class="active-toggle" data-id="${item.id}" ${item.active !== false ? "checked" : ""}/>
-          <span class="toggle-slider"></span>
+        <label class="product-switch" title="${item.active === false ? "Hidden, click to show on site" : "Live on site, click to hide"}">
+          <span class="toggle-switch"><input type="checkbox" class="active-toggle" data-id="${item.id}" aria-label="Show ${name} on site" ${item.active !== false ? "checked" : ""}/><span class="toggle-slider"></span></span>
+          <span class="product-switch-label">${item.active === false ? "Hidden" : "On site"}</span>
         </label>
-        <button type="button" class="edit-btn" data-id="${item.id}">Edit</button>
-        <button type="button" class="duplicate-btn" data-id="${item.id}">Duplicate</button>
-        <button type="button" class="danger delete-btn" data-id="${item.id}">Delete</button>
-        ${viewHref ? (item.active === false
-          ? `<a class="view-link is-hidden-item" href="${escapeHtml(viewHref)}" target="_blank" rel="noopener" title="This item is hidden, so it won't appear on that page until you switch it on">View (hidden)</a>`
-          : `<a class="view-link" href="${escapeHtml(viewHref)}" target="_blank" rel="noopener">View</a>`) : ""}
+        <button type="button" class="edit-btn" data-id="${item.id}" aria-label="Edit ${name}">Edit</button>
+        <button type="button" class="icon-action duplicate-btn" data-id="${item.id}" aria-label="Duplicate ${name}" title="Duplicate">${PRODUCT_ICONS.copy}</button>
+        <button type="button" class="icon-action danger delete-btn" data-id="${item.id}" aria-label="Delete ${name}" title="Move to Trash">${PRODUCT_ICONS.trash}</button>
+        ${viewHref ? `<a class="icon-action view-link${item.active === false ? " is-hidden-item" : ""}" href="${escapeHtml(viewHref)}" target="_blank" rel="noopener" aria-label="${item.active === false ? `View ${name}'s category on the site (this item is hidden)` : `View ${name}'s category on the site`}" title="${item.active === false ? "This item is hidden, so it won't appear on that page until you switch it on" : "View on site"}">${PRODUCT_ICONS.view}</a>` : ""}
+        ${pos ? `<span class="product-order" role="group" aria-label="Reorder ${name}">
+          <button type="button" class="product-move-btn" data-product-move="-1" data-id="${item.id}" aria-label="Move ${name} up" title="Move up" ${pos.i === 0 ? "disabled" : ""}>&uarr;</button>
+          <button type="button" class="product-move-btn" data-product-move="1" data-id="${item.id}" aria-label="Move ${name} down" title="Move down" ${pos.i === pos.n - 1 ? "disabled" : ""}>&darr;</button>
+          <span class="product-drag" aria-hidden="true" title="Drag to reorder">${PRODUCT_GRIP_ICON}</span>
+        </span>` : ""}
       </div>
     </div>
   `;
@@ -231,7 +338,7 @@ function renderProductList() {
     const knownSlugs = new Set(collectionsCache.map((c) => c.slug));
     const searching = query.length > 0;
     // With the search box empty and no category filter applied, render a
-    // folder for every category — even ones with zero items right now —
+    // folder for every category, even ones with zero items right now,
     // so they stay around as valid drag-drop targets. While actively
     // searching, only show folders that actually matched something, so a
     // long list of empty folders doesn't bury the results. A category
@@ -241,15 +348,18 @@ function renderProductList() {
 
     const renderGroup = (slug, title, groupItems, isDropTarget) => {
       const collapsed = collapsedCollectionGroups.has(slug);
+      const rowsId = `cg-rows-${String(slug).replace(/[^a-z0-9_-]/gi, "-")}`;
       return `
         <div class="collection-group" ${isDropTarget ? `data-drop-slug="${escapeHtml(slug)}"` : ""}>
-          <button type="button" class="collection-group-toggle" data-group-toggle="${escapeHtml(slug)}" aria-expanded="${collapsed ? "false" : "true"}">
-            <svg class="collection-group-chevron ${collapsed ? "is-collapsed" : ""}" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>
-            <h3>${escapeHtml(title)}</h3>
-            <span class="collection-group-count">${groupItems.length}</span>
-          </button>
-          <div class="collection-group-rows ${collapsed ? "is-collapsed" : ""}">
-            ${groupItems.length ? groupItems.map(renderRow).join("") : `<p class="collection-group-empty">No items${isDropTarget ? " — drag one here" : ""}.</p>`}
+          <h3 class="collection-group-heading">
+            <button type="button" class="collection-group-toggle" data-group-toggle="${escapeHtml(slug)}" aria-expanded="${collapsed ? "false" : "true"}" aria-controls="${rowsId}">
+              <svg class="collection-group-chevron ${collapsed ? "is-collapsed" : ""}" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>
+              <span class="collection-group-title">${escapeHtml(title)}</span>
+              <span class="collection-group-count a-badge a-badge--neutral">${groupItems.length}<span class="a-visually-hidden"> item${groupItems.length === 1 ? "" : "s"}</span></span>
+            </button>
+          </h3>
+          <div class="collection-group-rows ${collapsed ? "is-collapsed" : ""}" id="${rowsId}">
+            ${groupItems.length ? groupItems.map((it, i) => renderRow(it, isDropTarget ? { i, n: groupItems.length } : null)).join("") : `<p class="collection-group-empty">No items${isDropTarget ? ". Drag one here to move it into this category." : "."}</p>`}
           </div>
         </div>
       `;
@@ -262,27 +372,29 @@ function renderProductList() {
 
     // Safety net: a product whose `collection` doesn't match any known
     // slug (e.g. a category that was since renamed/deleted) would
-    // otherwise silently vanish from the list. Not a valid drop target —
-    // there's no slug here to assign — just somewhere for it to show up.
+    // otherwise silently vanish from the list. Not a valid drop target:
+    // there's no slug here to assign, just somewhere for it to show up.
     const uncategorizedItems = sortByManualOrder(items.filter((item) => !knownSlugs.has(item.collection)));
     if (uncategorizedItems.length) {
       groupsHtml += renderGroup("__uncategorized__", "Uncategorized", uncategorizedItems, false);
     }
 
     if (!groupsHtml) {
-      listEl.innerHTML = `<p class="empty-note">No items match. Try a different search or category.</p>`;
+      listEl.innerHTML = productEmptyState("nomatch");
+      wireProductEmptyState(listEl);
       syncBulkSelectionUI([]);
       return;
     }
 
-    listEl.innerHTML = `<p class="product-drag-hint">Drag a product onto another one in the same category to change the order shoppers see; drop it on a different category to move it there.</p>` + groupsHtml;
+    listEl.innerHTML = `<p class="product-drag-hint">Reorder with the arrows or by dragging a row onto another in the same category. Drop a row on a different category's header to move it there.</p>` + groupsHtml;
   } else {
     if (!items.length) {
-      listEl.innerHTML = `<p class="empty-note">No items match. Try a different search or category.</p>`;
+      listEl.innerHTML = productEmptyState("nomatch");
+      wireProductEmptyState(listEl);
       syncBulkSelectionUI([]);
       return;
     }
-    listEl.innerHTML = items.map(renderRow).join("");
+    listEl.innerHTML = `<div class="product-flat-rows">${items.map((item) => renderRow(item, null)).join("")}</div>`;
   }
 
   if (itemSortMode === "collection") {
@@ -305,15 +417,42 @@ function renderProductList() {
   listEl.querySelectorAll(".active-toggle").forEach((toggle) => {
     toggle.addEventListener("change", () => handleToggleActive(toggle.dataset.id, toggle.checked, toggle));
   });
+  listEl.querySelectorAll(".product-move-btn").forEach((btn) => {
+    btn.addEventListener("click", () => moveProductByButton(btn.dataset.id, Number(btn.dataset.productMove)));
+  });
   listEl.querySelectorAll(".admin-item-select").forEach((box) => {
     box.addEventListener("change", () => {
       if (box.checked) selectedProductIds.add(box.dataset.selectId);
       else selectedProductIds.delete(box.dataset.selectId);
+      const row = box.closest(".product-row");
+      if (row) row.classList.toggle("is-selected", box.checked);
       syncBulkSelectionUI(items);
     });
   });
   syncBulkSelectionUI(items);
+
+  if (pendingProductMoveFocus) {
+    const { id, delta } = pendingProductMoveFocus;
+    pendingProductMoveFocus = null;
+    const row = listEl.querySelector(`.product-row[data-id="${CSS.escape(String(id))}"]`);
+    const target = row && (row.querySelector(`.product-move-btn[data-product-move="${delta}"]:not(:disabled)`) || row.querySelector(".product-move-btn:not(:disabled)"));
+    if (target) target.focus();
+  }
 }
+
+/* Move up / Move down buttons: the keyboard and touch way to reorder a
+   product inside its category (same write as dragging a row). */
+function moveProductByButton(id, delta) {
+  const item = productsCache.find((p) => String(p.id) === String(id));
+  if (!item) return;
+  const group = sortByManualOrder(productsCache.filter((p) => p.collection === item.collection));
+  const index = group.findIndex((p) => String(p.id) === String(id));
+  const target = group[index + delta];
+  if (!target) return;
+  if (!itemSearchQuery.trim() && productExtrasAvailable !== false) pendingProductMoveFocus = { id, delta };
+  reorderProductWithinCollection(id, target.id, delta > 0);
+}
+
 
 /* Disclosure toggle for each category folder header in the "By Category"
    product view. Collapsed/expanded state is tracked in
@@ -598,8 +737,13 @@ function itemFormState() {
     extras: typeof productExtrasFormState === "function" ? productExtrasFormState() : null
   });
 }
-function markItemFormClean() { itemFormSnapshot = itemFormState(); }
+function markItemFormClean() { itemFormSnapshot = itemFormState(); updateItemFormDirtyUI(); }
 function itemFormIsDirty() { return itemFormSnapshot !== null && itemFormState() !== itemFormSnapshot; }
+/* "Unsaved changes" marker in the sticky save bar. */
+function updateItemFormDirtyUI() {
+  const el = document.getElementById("pfDirty");
+  if (el) el.hidden = !itemFormIsDirty();
+}
 /* Resolves true when it's safe to replace the form's contents. */
 async function confirmDiscardItemEdits() {
   return !itemFormIsDirty() || adminConfirm({ title: "Discard unsaved changes?", message: "You have unsaved changes to this item. Discard them?", confirmLabel: "Discard changes", danger: true });
@@ -623,6 +767,7 @@ async function startEdit(item) {
   if (typeof loadProductExtrasIntoForm === "function") loadProductExtrasIntoForm(item);
   renderPhotoGallery();
 
+  setPhotoDropError("");
   document.getElementById("formTitle").textContent = "Edit Item";
   document.getElementById("saveBtn").textContent = "Update Item";
   show(document.getElementById("cancelEditBtn"));
@@ -637,6 +782,7 @@ function resetForm() {
   document.getElementById("itemForm").reset();
   if (typeof loadProductExtrasIntoForm === "function") loadProductExtrasIntoForm(null);
   renderPhotoGallery();
+  setPhotoDropError("");
   document.getElementById("formTitle").textContent = "Add Item";
   document.getElementById("saveBtn").textContent = "Add Item";
   hide(document.getElementById("cancelEditBtn"));
@@ -644,11 +790,42 @@ function resetForm() {
   markItemFormClean();
 }
 
-function handlePhotoChange(e) {
-  const files = Array.from(e.target.files || []);
-  files.forEach((file) => currentPhotoEntries.push({ type: "file", value: file }));
-  e.target.value = "";
+function setPhotoDropError(message) {
+  const el = document.getElementById("photoDropError");
+  const zone = document.getElementById("photoDropzone");
+  if (el) { el.textContent = message || ""; el.hidden = !message; }
+  if (zone) zone.classList.toggle("is-error", !!message);
+}
+
+function addPhotoFiles(fileList) {
+  const all = Array.from(fileList || []);
+  const images = all.filter((file) => /^image\//.test(file.type));
+  setPhotoDropError(images.length < all.length ? `${all.length - images.length} file${all.length - images.length === 1 ? " wasn't an image and was" : "s weren't images and were"} skipped. Use PNG or JPG.` : "");
+  images.forEach((file) => currentPhotoEntries.push({ type: "file", value: file }));
   renderPhotoGallery();
+}
+
+function handlePhotoChange(e) {
+  addPhotoFiles(e.target.files);
+  e.target.value = "";
+}
+
+/* Drag files onto the dropzone (the click-to-pick path is unchanged). */
+function wirePhotoDropzone() {
+  const zone = document.getElementById("photoDropzone");
+  if (!zone) return;
+  zone.addEventListener("dragover", (e) => {
+    if (!e.dataTransfer || !Array.from(e.dataTransfer.types || []).includes("Files")) return;
+    e.preventDefault();
+    zone.classList.add("is-dragover");
+  });
+  zone.addEventListener("dragleave", () => zone.classList.remove("is-dragover"));
+  zone.addEventListener("drop", (e) => {
+    zone.classList.remove("is-dragover");
+    if (!e.dataTransfer || !e.dataTransfer.files || !e.dataTransfer.files.length) return;
+    e.preventDefault();
+    addPhotoFiles(e.dataTransfer.files);
+  });
 }
 
 function photoEntryPreviewUrl(entry) {
@@ -660,11 +837,11 @@ function renderPhotoGallery() {
   if (!gallery) return;
   gallery.innerHTML = currentPhotoEntries.map((entry, i) => `
     <div class="photo-gallery-item ${i === 0 ? "is-primary" : ""}" data-index="${i}" draggable="true">
-      <img src="${photoEntryPreviewUrl(entry)}" alt="" data-preview="${i}"/>
-      ${i === 0 ? '<span class="photo-gallery-primary-tag">Thumbnail</span>' : ""}
-      <button type="button" class="photo-gallery-move move-left" data-move="-1" data-index="${i}" ${i === 0 ? "disabled" : ""} aria-label="Move photo earlier">&lsaquo;</button>
-      <button type="button" class="photo-gallery-move move-right" data-move="1" data-index="${i}" ${i === currentPhotoEntries.length - 1 ? "disabled" : ""} aria-label="Move photo later">&rsaquo;</button>
-      <button type="button" class="photo-gallery-remove" data-remove="${i}" aria-label="Remove photo">&times;</button>
+      <img src="${photoEntryPreviewUrl(entry)}" alt="" data-preview="${i}" tabindex="0" role="button" aria-label="Preview photo ${i + 1} of ${currentPhotoEntries.length}"/>
+      ${i === 0 ? '<span class="photo-gallery-primary-tag">Cover</span>' : ""}
+      <button type="button" class="photo-gallery-move move-left" data-move="-1" data-index="${i}" ${i === 0 ? "disabled" : ""} aria-label="Move photo ${i + 1} earlier"><span aria-hidden="true">&lsaquo;</span></button>
+      <button type="button" class="photo-gallery-move move-right" data-move="1" data-index="${i}" ${i === currentPhotoEntries.length - 1 ? "disabled" : ""} aria-label="Move photo ${i + 1} later"><span aria-hidden="true">&rsaquo;</span></button>
+      <button type="button" class="photo-gallery-remove" data-remove="${i}" aria-label="Remove photo ${i + 1}"><span aria-hidden="true">&times;</span></button>
     </div>
   `).join("");
 
@@ -686,20 +863,37 @@ function renderPhotoGallery() {
     });
   });
   gallery.querySelectorAll("[data-preview]").forEach((img) => {
-    img.addEventListener("click", () => openPhotoPreview(Number(img.dataset.preview)));
+    img.addEventListener("click", () => openPhotoPreview(Number(img.dataset.preview), img));
+    img.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" || e.key === " ") { e.preventDefault(); openPhotoPreview(Number(img.dataset.preview), img); }
+    });
   });
 
   wireUpRowReorder(gallery, ".photo-gallery-item", currentPhotoEntries, () => renderPhotoGallery());
   if (typeof scheduleProductPreview === "function") scheduleProductPreview();
+  if (typeof pfUpdateSummaries === "function") pfUpdateSummaries();
+  updateItemFormDirtyUI();
 }
 
-/* Opens the shared lightbox (js/admin-core.js) on the item form's photos. */
-function openPhotoPreview(index) {
+/* Opens the shared lightbox (js/admin-core.js) on the item form's photos.
+   Focus moves into the lightbox and goes back to the photo that opened it. */
+function openPhotoPreview(index, opener) {
   previewUrls = currentPhotoEntries.map(photoEntryPreviewUrl);
   previewIndex = index;
   const modal = ensurePhotoPreviewModal();
   renderPhotoPreviewFrame();
   modal.classList.add("open");
+  const origin = opener || document.activeElement;
+  const target = modal.querySelector("button, [tabindex]");
+  if (target) target.focus({ preventScroll: true });
+  if (origin && origin !== document.body) {
+    const watcher = new MutationObserver(() => {
+      if (modal.classList.contains("open")) return;
+      watcher.disconnect();
+      if (document.contains(origin)) origin.focus({ preventScroll: true });
+    });
+    watcher.observe(modal, { attributes: true, attributeFilter: ["class"] });
+  }
 }
 
 async function handleSaveItem(e) {
@@ -741,10 +935,14 @@ async function handleSaveItem(e) {
 
   try {
     const finalUrls = [];
+    const newPhotoCount = currentPhotoEntries.filter((e) => e.type === "file").length;
+    let uploadedCount = 0;
+    setPhotoUploadProgress(newPhotoCount ? 0 : null);
     for (const entry of currentPhotoEntries) {
       if (entry.type === "url") {
         finalUrls.push(entry.value);
       } else {
+        setFormStatus(`Uploading photo ${uploadedCount + 1} of ${newPhotoCount}...`, null);
         const compressed = await compressImageFile(entry.value);
         const safeName = compressed.name.replace(/[^a-zA-Z0-9.-]/g, "_");
         const path = `${Date.now()}-${safeName}`;
@@ -754,8 +952,11 @@ async function handleSaveItem(e) {
         if (uploadError) throw new Error("Photo upload failed: " + uploadError.message);
         const { data: pub } = client.storage.from("product-photos").getPublicUrl(path);
         finalUrls.push(pub.publicUrl);
+        uploadedCount++;
+        setPhotoUploadProgress(Math.round((uploadedCount / newPhotoCount) * 100));
       }
     }
+    setPhotoUploadProgress(null);
     payload.images = finalUrls;
     payload.image_url = finalUrls[0] || null;
 
@@ -769,10 +970,23 @@ async function handleSaveItem(e) {
     setFormStatus(message, extrasDropped && usedExtras ? "error" : "success");
     await refreshItemList();
   } catch (err) {
+    setPhotoUploadProgress(null);
+    if (/^Photo upload failed/.test(err.message || "")) setPhotoDropError(err.message);
     setFormStatus(err.message || "Something went wrong saving this item.", "error");
   } finally {
     saveBtn.disabled = false;
   }
+}
+
+/* Progress bar in the save bar while new photos upload. null hides it. */
+function setPhotoUploadProgress(percent) {
+  const bar = document.getElementById("pfUploadProgress");
+  const fill = document.getElementById("pfUploadProgressBar");
+  if (!bar || !fill) return;
+  bar.hidden = percent === null;
+  if (percent === null) return;
+  bar.setAttribute("aria-valuenow", String(percent));
+  fill.style.width = percent + "%";
 }
 
 async function handleDelete(id, allItems) {
@@ -839,6 +1053,8 @@ registerAdminDirtyCheck(itemFormIsDirty);
 onAdminInit(() => {
   document.getElementById("itemForm").addEventListener("submit", handleSaveItem);
   document.getElementById("f-photo").addEventListener("change", handlePhotoChange);
+  wirePhotoDropzone();
+  ["input", "change"].forEach((type) => document.getElementById("itemForm").addEventListener(type, updateItemFormDirtyUI));
   document.getElementById("cancelEditBtn").addEventListener("click", async () => {
     if (await confirmDiscardItemEdits()) resetForm();
   });

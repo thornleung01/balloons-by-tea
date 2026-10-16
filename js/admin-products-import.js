@@ -737,11 +737,12 @@ async function runCsvImport() {
 onAdminInit(() => {
   const controls = document.querySelector("#productsPanel .admin-catalog-controls");
   if (!controls || document.getElementById("productCsvTools")) return;
-  controls.insertAdjacentHTML("afterend", `
-    <div class="product-tools" id="productCsvTools">
-      <button type="button" class="orders-export-btn" id="importProductsCsvBtn">Import CSV</button>
-      <button type="button" class="orders-export-btn" id="exportProductsCsvBtn">Export products CSV</button>
-    </div>`);
+  const toolsHtml = `
+      <button type="button" class="btn btn-outline btn-sm" id="importProductsCsvBtn">Import CSV</button>
+      <button type="button" class="btn btn-outline btn-sm" id="exportProductsCsvBtn">Export CSV</button>`;
+  const slot = document.getElementById("productCsvSlot");
+  if (slot) { slot.id = "productCsvTools"; slot.insertAdjacentHTML("beforeend", toolsHtml); }
+  else controls.insertAdjacentHTML("afterend", `<div class="product-tools" id="productCsvTools">${toolsHtml}</div>`);
   document.getElementById("importProductsCsvBtn").addEventListener("click", openCsvImport);
   document.getElementById("exportProductsCsvBtn").addEventListener("click", exportProductsCsv);
 });
