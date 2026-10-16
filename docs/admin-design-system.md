@@ -289,3 +289,51 @@ The visual check serves the repo, injects a fake Supabase client with sample dat
 - No `opacity` to dim text. It breaks contrast in one of the themes. Change the text color instead.
 - No pure black or pure white page backgrounds in dark mode.
 - Do not edit `css/styles.css` or any public page for admin work.
+
+## Phase 2 shared patterns
+
+Owned by the shell pass (`css/admin-tokens.css` section 4, `css/admin.css` "Phase 2 shared", `css/admin-shell.css` "Page titles").
+
+### Page titles
+
+| Level | Look | Where it applies |
+|---|---|---|
+| `.a-page-title` | Display face, `--a-text-2xl` (xl under 420px) | Each tab's own heading. Applied by selector, so tab markup needs no class: `#overviewPanel .overview-title`, `#productsPanel > .admin-card > h2`, `#trashPanel > h2`, `#trashPanel .orders-head > h2`, `#ordersPanel .orders-head > h2`, `#analyticsPanel .orders-head > h2`, `#deliveryPanel > .admin-card > h2`, `#collectionsPanel > .admin-card > h2`, `#libraryPanel > .admin-card > h2`, `#galleryPanel .gallery-admin-head h2`, `#navPanel > .admin-card > h2`, `#faqPanel > .admin-card > h2`, `#settingsPanel .settings-head h2`, `#activityPanel .orders-head > h2` |
+| `.a-panel-title` | Display face, `--a-text-xl` | Sub-pages inside Settings: `#settingsPanel > :not(.settings-head) > h2` and `#settingsPanel .settings-fieldset > legend` |
+| `.a-section-title` | UI face 600, `--a-text-md` | Subheadings inside cards: `.safety-block h3`, `.team-add h3`, `.restore-section h3`, `.availability-section h3`, `.analytics-card h3`, `.unused-photos-head h3`, `.delivery-area-list-title`, `.notify-subheading` |
+
+Use the classes directly on new markup. Dialog titles (`.modal-head h2`, `.aui-title`) are UI face bold. The title selectors use IDs on purpose, so a surface should not restyle them; change the shared rule instead. Between a title and the first control use `--a-space-3`.
+
+### Form controls
+
+One look for `input`, `select`, `textarea` (44px tall, 16px text, `--a-field-border` 1.5px, `--a-radius-sm`). Plain controls use a `:where()` selector (specificity of one class, so a later surface rule can still change a width); controls inside `.field` beat the public `.field input` rule.
+
+- `select`: native arrow removed, caret from `--a-chevron` (one token per theme, in `admin-tokens.css`). `.filter-select` is included.
+- `--a-field-border` is at least 3:1 on the card and on the page in both themes (checked by `check-admin-tokens.js`). Use it for any new control border.
+- States: hover (border darkens), focus (`--a-focus` border plus ring), `:disabled` (sunken fill, faint text, `not-allowed`), `[aria-invalid="true"]` or `.is-invalid` (danger border), `.is-valid` (success border).
+- Checkbox and radio: `accent-color` coral, 20px on desktop, 24px on touch. Switch (`.toggle-switch`): off track is `--a-text-faint`, on is `--a-success-solid`, 44px hit area on touch.
+- File, color and date inputs are themed; `color-scheme` makes the native pickers follow the theme.
+- `.field` layout: label above (13px, 600), `.field-note` helper below, `.field-error` below that (danger text). Keep the error element in the DOM so the form does not jump.
+- Password fields: wrap in `.input-with-action` and add `<button type="button" class="input-action-btn" data-pw-toggle="inputId" aria-label="Show password" aria-pressed="false">`. `js/admin-auth-extras.js` wires it.
+
+### Buttons
+
+`.btn-primary` (coral fill, brown label), `.btn-outline` (`--a-field-border`), `.btn-ghost`, `.btn-danger` (solid danger), `.btn-sm`. Buttons are 44px tall (`.btn-sm` is 40px on desktop and 44px on phones and touch). Press feedback is `translateY(1px)`. Disabled buttons change fill and text color, never opacity. Busy: set `aria-busy="true"` and a spinner shows before the label (static ring with reduced motion); the button ignores clicks while busy. Icon-only buttons: `.icon-btn` (44px, always an `aria-label`).
+
+### Dialogs
+
+`.modal` > `.modal-panel` > `.modal-head`, `.modal-body` (scrolls), and `.modal-actions` inside the body (sticky footer). Header and footer are fixed, the body scrolls. `.modal-close` and `.modal-head .icon-btn` are 44px.
+
+### Count badge, spinner, panel error
+
+- `.a-badge.a-badge--count`: solid danger pill for tab counts (replaces the old `.admin-tab-badge` colors).
+- `.a-spinner`: small ring following the text color.
+- `.a-panel-error` (`.a-panel-error-title`, `.a-panel-error-text`, then a `.btn`): use when a panel or card cannot load. Put `role="alert"` on it and a "Try again" button that re-runs the load.
+
+```html
+<div class="a-panel-error" role="alert">
+  <h3 class="a-panel-error-title">Couldn't load orders</h3>
+  <p class="a-panel-error-text">Check your connection and try again.</p>
+  <button type="button" class="btn btn-outline btn-sm">Try again</button>
+</div>
+```

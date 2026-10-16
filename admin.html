@@ -76,9 +76,12 @@
         </div>
         <div class="field">
           <label for="loginPassword">Password</label>
-          <input id="loginPassword" name="password" type="password" required autocomplete="current-password"/>
+          <div class="input-with-action">
+            <input id="loginPassword" name="password" type="password" required autocomplete="current-password"/>
+            <button type="button" class="input-action-btn" data-pw-toggle="loginPassword" aria-label="Show password" aria-pressed="false"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg></button>
+          </div>
         </div>
-        <div class="form-status error" id="loginError"></div>
+        <div class="form-status error" id="loginError" role="alert"></div>
         <button type="submit" class="btn btn-primary btn-block">Log in</button>
         <button type="button" class="login-link-btn" id="forgotPasswordBtn">Forgot password?</button>
       </form>
@@ -119,12 +122,18 @@
       <form id="newPasswordForm" novalidate>
         <div class="field">
           <label for="newPassword">New password</label>
-          <input id="newPassword" name="password" type="password" required autocomplete="new-password" minlength="10"/>
+          <div class="input-with-action">
+            <input id="newPassword" name="password" type="password" required autocomplete="new-password" minlength="10"/>
+            <button type="button" class="input-action-btn" data-pw-toggle="newPassword" aria-label="Show password" aria-pressed="false"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg></button>
+          </div>
           <div class="password-meter" id="newPasswordMeter" aria-live="polite"></div>
         </div>
         <div class="field">
           <label for="newPasswordConfirm">Type it again</label>
-          <input id="newPasswordConfirm" name="confirm" type="password" required autocomplete="new-password"/>
+          <div class="input-with-action">
+            <input id="newPasswordConfirm" name="confirm" type="password" required autocomplete="new-password"/>
+            <button type="button" class="input-action-btn" data-pw-toggle="newPasswordConfirm" aria-label="Show password" aria-pressed="false"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg></button>
+          </div>
         </div>
         <div class="form-status" id="newPasswordStatus" role="status" aria-live="polite"></div>
         <button type="submit" class="btn btn-primary btn-block" id="newPasswordBtn">Save new password</button>
@@ -144,16 +153,20 @@
         <div class="overview-actions">
           <button type="button" class="btn btn-primary btn-sm" id="ovAddProductBtn">Add product</button>
           <button type="button" class="btn btn-outline btn-sm" id="ovBlockDateBtn">Block a date</button>
-          <a href="index.html" class="btn btn-outline btn-sm" target="_blank" rel="noopener">View site</a>
+          <a href="index.html" class="btn btn-ghost btn-sm" target="_blank" rel="noopener">View site</a>
         </div>
       </div>
-      <div class="overview-grid" id="overviewGrid">
+      <div class="overview-stats" id="overviewStats">
         <div class="ov-card ov-stat" id="ovNewOrders"></div>
         <div class="ov-card ov-stat" id="ovUnpaid" hidden></div>
         <div class="ov-card ov-stat" id="ovRevenue"></div>
-        <div class="ov-card ov-wide" id="ovEvents"></div>
-        <div class="ov-card" id="ovHeadsUp"></div>
-        <div class="ov-card" id="ovTopProducts"></div>
+      </div>
+      <div class="overview-grid" id="overviewGrid">
+        <div class="ov-card" id="ovEvents"></div>
+        <div class="overview-side">
+          <div class="ov-card" id="ovHeadsUp"></div>
+          <div class="ov-card" id="ovTopProducts"></div>
+        </div>
       </div>
     </section>
 
@@ -375,37 +388,43 @@
     </div>
 
     <div id="analyticsPanel" class="admin-card" hidden>
-      <div class="orders-head">
+      <div class="orders-head an-head">
         <h2>Analytics</h2>
-        <div class="orders-filter" id="analyticsRangeFilter">
-          <button type="button" class="orders-filter-btn" data-range="7">Last 7 days</button>
-          <button type="button" class="orders-filter-btn active" data-range="30">Last 30 days</button>
-          <button type="button" class="orders-filter-btn" data-range="90">Last 90 days</button>
-          <button type="button" class="orders-filter-btn" data-range="all">All time</button>
-          <button type="button" class="orders-filter-btn" data-range="custom" aria-controls="analyticsCustomRange">Custom range</button>
-          <button type="button" class="orders-export-btn" id="analyticsExportBtn">Export CSV</button>
-        </div>
+        <button type="button" class="orders-export-btn" id="analyticsExportBtn">Export CSV</button>
+      </div>
+      <div class="orders-filter an-ranges" id="analyticsRangeFilter" role="group" aria-label="Date range">
+        <button type="button" class="orders-filter-btn" data-range="7">Last 7 days</button>
+        <button type="button" class="orders-filter-btn active" data-range="30">Last 30 days</button>
+        <button type="button" class="orders-filter-btn" data-range="90">Last 90 days</button>
+        <button type="button" class="orders-filter-btn" data-range="all">All time</button>
+        <button type="button" class="orders-filter-btn" data-range="custom" aria-controls="analyticsCustomRange">Custom range</button>
       </div>
       <form class="analytics-custom-range" id="analyticsCustomRange" hidden>
         <label for="analyticsFrom">From</label>
         <input type="date" id="analyticsFrom" required/>
         <label for="analyticsTo">To</label>
         <input type="date" id="analyticsTo" required/>
-        <button type="submit" class="orders-filter-btn">Apply</button>
+        <button type="submit" class="btn btn-primary btn-sm">Apply</button>
       </form>
-      <div class="analytics-clear-row">
-        <label for="analyticsClearRange">Clear old events</label>
-        <select id="analyticsClearRange" class="order-status-select">
-          <option value="30">Older than 30 days</option>
-          <option value="90">Older than 90 days</option>
-          <option value="180">Older than 180 days</option>
-          <option value="365">Older than 1 year</option>
-        </select>
-        <button type="button" id="analyticsClearBtn" class="orders-filter-btn">Clear</button>
-        <span id="analyticsClearStatus" class="form-status"></span>
-      </div>
-      <p class="panel-subtitle">Pairs with <a href="https://clarity.microsoft.com" target="_blank" rel="noopener">Microsoft Clarity</a> (session recordings/heatmaps) for the "why" behind these numbers.</p>
+      <p class="panel-subtitle">Pairs with <a href="https://clarity.microsoft.com" target="_blank" rel="noopener">Microsoft Clarity</a> (session recordings and heatmaps) for the "why" behind these numbers.</p>
       <div id="analyticsContent"></div>
+      <details class="an-maintenance">
+        <summary>Maintenance</summary>
+        <div class="an-maintenance-body">
+          <p class="an-maintenance-warning"><strong>Delete old tracking events.</strong> This permanently removes visit events older than the age you pick. It can't be undone, and totals for those dates will drop. Export a CSV first if you want to keep them.</p>
+          <div class="analytics-clear-row">
+            <label for="analyticsClearRange">Delete events</label>
+            <select id="analyticsClearRange" class="order-status-select">
+              <option value="30">Older than 30 days</option>
+              <option value="90">Older than 90 days</option>
+              <option value="180">Older than 180 days</option>
+              <option value="365">Older than 1 year</option>
+            </select>
+            <button type="button" id="analyticsClearBtn" class="btn btn-outline btn-sm an-danger-btn">Clear old events</button>
+            <span id="analyticsClearStatus" class="form-status"></span>
+          </div>
+        </div>
+      </details>
     </div>
 
     <div id="deliveryPanel" class="admin-grid" hidden>
