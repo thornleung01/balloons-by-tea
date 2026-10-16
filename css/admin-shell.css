@@ -344,8 +344,7 @@
 
 /* Empty, error and loading states inside a card. */
 .ov-empty { flex: 1; justify-content: center; padding: var(--a-space-5) var(--a-space-3); border-radius: var(--a-radius-md); }
-.ov-error { margin: 0; }
-.ov-retry { display: flex; }
+.ov-error { margin: 0; padding: var(--a-space-3); }
 .ov-sk-stat { display: flex; flex-direction: column; gap: var(--a-space-2); padding-bottom: var(--a-space-2); }
 .ov-sk-big { width: 96px; height: 34px; }
 .ov-sk-w70 { width: 70%; }
