@@ -236,7 +236,7 @@
           a.remove();
         } else {
           const ok = await copyText(text);
-          if (!ok) return setStatus("Couldn't copy — select the text and copy it by hand.", "error");
+          if (!ok) return setStatus("Couldn't copy. Select the text and copy it by hand.", "error");
         }
         setStatus(channel === "copy" ? "Copied. Logged in the timeline." : "Opened. Logged in the timeline.", "success");
         const err = await logOrderEvent(order.id, { kind: "message", from_value: channel, to_value: select.value, note: text.slice(0, 300) });

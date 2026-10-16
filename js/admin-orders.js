@@ -132,7 +132,7 @@ function formatOrderMoney(value) {
 
 // Shown when a write touches something the live database doesn't have yet.
 const ORDERS_SQL_HINT = "run it in the Supabase SQL Editor";
-const ORDERS_V2_HINT = `needs ${ORDERS_MIGRATION_FILE} — ${ORDERS_SQL_HINT}`;
+const ORDERS_V2_HINT = `needs ${ORDERS_MIGRATION_FILE}, ${ORDERS_SQL_HINT}`;
 
 /* True when a Supabase error means a column doesn't exist yet — PostgREST
    PGRST204 ("Could not find the 'x' column ... in the schema cache") or
@@ -153,7 +153,7 @@ function isMissingColumnError(error, column) {
 function orderStatusErrorMessage(error, status) {
   const isCheck = error && (error.code === "23514" || /orders_status_check/.test(error.message || ""));
   if (status === "quoted" && isCheck) return `The Quoted status ${ORDERS_V2_HINT}.`;
-  if (status === "cancelled" && isCheck) return `The Cancelled status needs the latest supabase-setup.sql — ${ORDERS_SQL_HINT}.`;
+  if (status === "cancelled" && isCheck) return `The Cancelled status needs the latest supabase-setup.sql, ${ORDERS_SQL_HINT}.`;
   return error.message;
 }
 
@@ -725,7 +725,7 @@ async function handleDeleteOrder(id) {
   const order = findLoadedOrder(id);
   const photoCount = order ? orderAttachmentPaths(order).length : 0;
   const photoNote = photoCount ? ` Its ${photoCount === 1 ? "photo" : `${photoCount} photos`} will be deleted too.` : "";
-  const who = order ? [orderRef(order), order.name].filter(Boolean).join(" — ") : "";
+  const who = order ? [orderRef(order), order.name].filter(Boolean).join(" - ") : "";
   if (!(await adminConfirm({ title: who ? `Delete order ${who}?` : "Delete this order?", message: `${photoNote} This can't be undone.`.trim(), confirmLabel: "Delete order", danger: true }))) return false;
   const client = getSupabaseClient();
   const { data, error } = await mustAffect(client.from("orders").delete().eq("id", id));
@@ -770,7 +770,7 @@ async function saveOrderAdminNote(id, value, explicit) {
   if (error) {
     // The draft is kept, so the text isn't lost and the next blur retries.
     setOrderNoteStatus(id, isMissingColumnError(error, "admin_notes")
-      ? `Admin notes need the latest supabase-setup.sql — ${ORDERS_SQL_HINT}.`
+      ? `Admin notes need the latest supabase-setup.sql, ${ORDERS_SQL_HINT}.`
       : "Couldn't save note: " + error.message, "error");
     return;
   }
@@ -1229,7 +1229,7 @@ function updateDrawerBalance() {
   if (!out) return;
   const total = orderAmountNumber(document.getElementById("odTotal").value);
   const paid = orderAmountNumber(document.getElementById("odPaid").value) || 0;
-  out.textContent = total === null ? "—" : formatOrderMoney(Math.max(0, total - paid)) || ORDERS_CURRENCY + "0";
+  out.textContent = total === null ? "Not set" : formatOrderMoney(Math.max(0, total - paid)) || ORDERS_CURRENCY + "0";
 }
 
 function wireOrderDrawerEditors(order) {
@@ -1458,7 +1458,7 @@ async function loadOrderAttachmentThumbs(root) {
   const { error } = await signOrderPhotoUrls(paths);
   if (error) {
     const message = /bucket not found/i.test(error.message || "")
-      ? `${ORDER_PHOTOS_SQL_HINT} — ${ORDERS_SQL_HINT}.`
+      ? `${ORDER_PHOTOS_SQL_HINT}, ${ORDERS_SQL_HINT}.`
       : `Couldn't load photos: ${error.message || error}`;
     root.querySelectorAll(".order-attachments").forEach((wrap) => {
       wrap.querySelectorAll(".order-attachment[data-path]").forEach((a) => {
@@ -1518,7 +1518,7 @@ async function checkOrderPhotosSchema() {
   const btn = document.getElementById("cleanupOrderPhotosBtn");
   if (missing) {
     if (btn) btn.disabled = true;
-    setOrderPhotoToolsStatus(`${ORDER_PHOTOS_SQL_HINT} — ${ORDERS_SQL_HINT}.`, "");
+    setOrderPhotoToolsStatus(`${ORDER_PHOTOS_SQL_HINT}, ${ORDERS_SQL_HINT}.`, "");
   }
 }
 
@@ -1583,7 +1583,7 @@ async function handleCleanupOrderPhotos() {
       candidates = await findUnusedOrderPhotoFolders();
     } catch (err) {
       const message = isMissingColumnError(err, "attachments") || /bucket not found/i.test(err.message || "")
-        ? `${ORDER_PHOTOS_SQL_HINT} — ${ORDERS_SQL_HINT}.`
+        ? `${ORDER_PHOTOS_SQL_HINT}, ${ORDERS_SQL_HINT}.`
         : `Couldn't check for unused photos (${err.message || err}), so nothing was deleted.`;
       setOrderPhotoToolsStatus(message, "error");
       return;

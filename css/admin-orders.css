@@ -168,7 +168,7 @@
 .order-row-meta { font-size: var(--a-text-xs); color: var(--a-text-soft); white-space: nowrap; }
 .order-row-pills { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: var(--a-space-1); }
 .order-row-total {
-  min-width: 4.5rem; max-width: 8rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: right;
+  min-width: 4.5rem; max-width: 10rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: right;
   font-size: var(--a-text-md); font-weight: var(--a-weight-bold); color: var(--a-text); font-variant-numeric: tabular-nums;
 }
 .order-row-total.is-empty { font-weight: var(--a-weight-regular); color: var(--a-text-faint); }
@@ -185,7 +185,7 @@
 .order-row-compact .order-row-pills { grid-column: 2 / 5; grid-row: 2; justify-content: flex-start; padding-bottom: var(--a-space-2); }
 /* Wide: everything on one line. */
 @container (min-width: 760px) {
-  .order-row.order-row-compact { grid-template-columns: var(--a-tap) minmax(0, 1fr) auto 5.5rem; padding-block: var(--a-space-1); }
+  .order-row.order-row-compact { grid-template-columns: var(--a-tap) minmax(0, 1fr) auto 7rem; padding-block: var(--a-space-1); }
   .order-row-compact .order-select-wrap { grid-row: 1; align-self: center; }
   .order-row-compact .order-row-main { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); align-items: center; gap: var(--a-space-3); }
   .order-row-compact .order-row-total { grid-column: 4; }
@@ -207,15 +207,6 @@
 /* Empty and error states */
 #orderList .a-empty { padding-block: var(--a-space-6); }
 #orderList .a-empty .btn { margin-top: var(--a-space-2); }
-/* FALLBACK: delete this block when .a-panel-error lands in css/admin-tokens.css */
-#ordersPanel .a-panel-error, .order-drawer-wrap .a-panel-error {
-  display: flex; flex-direction: column; align-items: flex-start; gap: var(--a-space-2);
-  padding: var(--a-space-4); color: var(--a-danger-fg); background: var(--a-danger-bg);
-  border: var(--a-border-w) solid var(--a-danger-line); border-radius: var(--a-radius-lg);
-}
-#ordersPanel .a-panel-error-title, .order-drawer-wrap .a-panel-error-title { margin: 0; font-size: var(--a-text-md); font-weight: var(--a-weight-bold); color: var(--a-danger-fg); }
-#ordersPanel .a-panel-error-text, .order-drawer-wrap .a-panel-error-text { margin: 0; font-size: var(--a-text-sm); line-height: var(--a-leading-normal); color: var(--a-danger-fg); }
-/* END FALLBACK */
 
 /* ----- Bulk bar: sticky above the phone bottom bar ----- */
 .orders-bulk-bar {
