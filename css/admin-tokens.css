@@ -43,6 +43,9 @@ body.admin-body {
   --a-on-accent: #4A3028;                    /* label on a coral fill: 4.9:1 (white is only 2.4:1: never use it) */
   --a-accent-text: #B34848;                  /* coral used AS TEXT or link: 5.3:1 on white, 4.9:1 on cream */
   --a-focus: #C9484A;                        /* focus ring: >= 3:1 on white, cream and tints */
+  --a-field-border: #9A857A;                 /* input, select and outline-button border: >= 3:1 on white and cream */
+  /* Select caret. A data URI cannot read currentColor, so there is one per theme. */
+  --a-chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%235E4A41' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
 
   /* ---- Semantic status pairs: fg is text, bg is its soft fill (all >= 4.5:1) ---- */
   --a-success-fg: #2F6B47;  --a-success-bg: #E5F3EA;  --a-success-line: #B9DCC7;
@@ -232,6 +235,8 @@ body.admin-body {
     --a-on-accent: #2B1812;
     --a-accent-text: #FFA39C;
     --a-focus: #FFA39C;
+    --a-field-border: #8C7B6E;
+    --a-chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23CDBEB2' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
 
     --a-success-fg: #8ED8A8;  --a-success-bg: #1F3326;  --a-success-line: #345A42;
     --a-warning-fg: #F2CB6B;  --a-warning-bg: #382E14;  --a-warning-line: #5E4E1E;
@@ -294,6 +299,8 @@ body.admin-body {
   --a-on-accent: #2B1812;
   --a-accent-text: #FFA39C;
   --a-focus: #FFA39C;
+  --a-field-border: #8C7B6E;
+  --a-chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23CDBEB2' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
 
   --a-success-fg: #8ED8A8;  --a-success-bg: #1F3326;  --a-success-line: #345A42;
   --a-warning-fg: #F2CB6B;  --a-warning-bg: #382E14;  --a-warning-line: #5E4E1E;
@@ -360,6 +367,8 @@ body.admin-body {
     --a-on-accent: #4A3028;
     --a-accent-text: #B34848;
     --a-focus: #C9484A;
+    --a-field-border: #9A857A;
+    --a-chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%235E4A41' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
     --a-success-fg: #2F6B47;
     --a-success-bg: #E5F3EA;
     --a-success-line: #B9DCC7;
@@ -503,3 +512,66 @@ body.admin-body {
 .a-inline, .form-status.a-inline { display: inline; }
 .a-inline-flex-center, .field label.a-inline-flex-center { display: inline-flex; align-items: center; gap: var(--a-space-2); }
 .a-width-auto, .field input.a-width-auto { width: auto; min-height: auto; }
+
+/* -------------------------------------------------------------------------
+   4. Phase 2 shared patterns: titles, count badge, spinner, panel error
+   ------------------------------------------------------------------------- */
+
+/* Titles. Level 1 is the tab's own heading (display face); level 2 is the title of a
+   card or sub-page inside a tab (display face, smaller); a section title is a UI-face
+   subheading inside a card. The shell applies these to the existing headings by
+   selector (css/admin-shell.css), so tab markup does not need the classes. */
+.a-page-title, .a-panel-title {
+  margin: 0 0 var(--a-space-3);
+  font-family: var(--a-font-display); font-weight: var(--a-weight-semibold);
+  line-height: var(--a-leading-tight); letter-spacing: 0; color: var(--a-text);
+}
+.a-page-title { font-size: var(--a-text-2xl); }
+.a-panel-title { font-size: var(--a-text-xl); }
+.a-section-title {
+  margin: 0 0 var(--a-space-2);
+  font-family: var(--a-font-ui); font-weight: var(--a-weight-semibold); font-size: var(--a-text-md);
+  line-height: var(--a-leading-snug); letter-spacing: 0; text-transform: none; color: var(--a-text);
+}
+@media (max-width: 420px) {
+  .a-page-title { font-size: var(--a-text-xl); }
+  .a-panel-title { font-size: var(--a-text-lg); }
+}
+
+/* Count badge: solid danger pill for "5 new". Used on tabs and the phone bar. */
+.a-badge--count {
+  --a-badge-fg: var(--a-on-danger); --a-badge-bg: var(--a-danger-solid); --a-badge-line: var(--a-danger-solid);
+  min-width: 20px; justify-content: center; padding: 3px 6px;
+  font-size: var(--a-text-2xs); font-variant-numeric: tabular-nums;
+}
+.a-badge--count[hidden] { display: none; }
+
+/* Spinner: a small ring that follows the text color. Static (still a ring) with reduced motion. */
+@keyframes a-spin { to { transform: rotate(360deg); } }
+.a-spinner, .admin-body :is(.btn, .input-action-btn)[aria-busy="true"]::before {
+  content: ""; display: inline-block; flex: none; box-sizing: border-box;
+  width: 1em; height: 1em; border-radius: 50%;
+  border: 2px solid currentColor; border-right-color: transparent;
+  animation: a-spin 700ms linear infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .a-spinner, .admin-body :is(.btn, .input-action-btn)[aria-busy="true"]::before { animation: none; }
+}
+
+/* Panel error with Retry: use when a whole panel or card could not load.
+   <div class="a-panel-error" role="alert">
+     <h3 class="a-panel-error-title">Couldn't load orders</h3>
+     <p class="a-panel-error-text">Check your connection and try again.</p>
+     <button type="button" class="btn btn-outline btn-sm">Try again</button>
+   </div> */
+.a-panel-error {
+  display: flex; flex-direction: column; align-items: flex-start; gap: var(--a-space-2);
+  padding: var(--a-space-4);
+  color: var(--a-text);
+  background: var(--a-danger-bg);
+  border: var(--a-border-w) solid var(--a-danger-line); border-radius: var(--a-radius-lg);
+}
+.a-panel-error-title { margin: 0; font-family: var(--a-font-ui); font-size: var(--a-text-md); font-weight: var(--a-weight-bold); color: var(--a-danger-fg); }
+.a-panel-error-text { margin: 0; max-width: 60ch; font-size: var(--a-text-sm); line-height: var(--a-leading-normal); color: var(--a-text); }
+.a-panel-error .btn { margin-top: var(--a-space-1); }
+.a-panel-error[hidden] { display: none; }

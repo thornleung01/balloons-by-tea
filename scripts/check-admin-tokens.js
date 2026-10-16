@@ -154,6 +154,8 @@ PAIRS.push(["danger text on card", "--color-destructive", "--color-surface-solid
 PAIRS.push(["success text on card", "--color-success", "--color-surface-solid", 4.5]);
 PAIRS.push(["focus ring on card", "--a-focus", "--color-surface-solid", 3]);
 PAIRS.push(["focus ring on page", "--a-focus", "--color-bg-alt", 3]);
+PAIRS.push(["field border on card", "--a-field-border", "--color-surface-solid", 3]);
+PAIRS.push(["field border on page", "--a-field-border", "--color-bg-alt", 3]);
 for (let i = 1; i <= 5; i++) PAIRS.push(["chart-" + i + " on card", "--a-chart-" + i, "--color-surface-solid", 3]);
 for (let i = 1; i <= 4; i++) {
   PAIRS.push(["seq-" + i + " on card", "--a-seq-" + i, "--color-surface-solid", 3]);
