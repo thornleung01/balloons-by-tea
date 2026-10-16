@@ -76,9 +76,12 @@
         </div>
         <div class="field">
           <label for="loginPassword">Password</label>
-          <input id="loginPassword" name="password" type="password" required autocomplete="current-password"/>
+          <div class="input-with-action">
+            <input id="loginPassword" name="password" type="password" required autocomplete="current-password"/>
+            <button type="button" class="input-action-btn" data-pw-toggle="loginPassword" aria-label="Show password" aria-pressed="false"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg></button>
+          </div>
         </div>
-        <div class="form-status error" id="loginError"></div>
+        <div class="form-status error" id="loginError" role="alert"></div>
         <button type="submit" class="btn btn-primary btn-block">Log in</button>
         <button type="button" class="login-link-btn" id="forgotPasswordBtn">Forgot password?</button>
       </form>
@@ -119,12 +122,18 @@
       <form id="newPasswordForm" novalidate>
         <div class="field">
           <label for="newPassword">New password</label>
-          <input id="newPassword" name="password" type="password" required autocomplete="new-password" minlength="10"/>
+          <div class="input-with-action">
+            <input id="newPassword" name="password" type="password" required autocomplete="new-password" minlength="10"/>
+            <button type="button" class="input-action-btn" data-pw-toggle="newPassword" aria-label="Show password" aria-pressed="false"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg></button>
+          </div>
           <div class="password-meter" id="newPasswordMeter" aria-live="polite"></div>
         </div>
         <div class="field">
           <label for="newPasswordConfirm">Type it again</label>
-          <input id="newPasswordConfirm" name="confirm" type="password" required autocomplete="new-password"/>
+          <div class="input-with-action">
+            <input id="newPasswordConfirm" name="confirm" type="password" required autocomplete="new-password"/>
+            <button type="button" class="input-action-btn" data-pw-toggle="newPasswordConfirm" aria-label="Show password" aria-pressed="false"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg></button>
+          </div>
         </div>
         <div class="form-status" id="newPasswordStatus" role="status" aria-live="polite"></div>
         <button type="submit" class="btn btn-primary btn-block" id="newPasswordBtn">Save new password</button>

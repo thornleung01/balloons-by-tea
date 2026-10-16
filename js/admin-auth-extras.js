@@ -688,6 +688,39 @@
     setRoleClasses(null);
   });
 
+  /* Show/hide button inside each password field (markup in admin.html:
+     <button data-pw-toggle="inputId" aria-pressed>). Only flips the input type. */
+  function wirePasswordToggles() {
+    document.querySelectorAll("[data-pw-toggle]").forEach((btn) => {
+      const input = $(btn.getAttribute("data-pw-toggle"));
+      if (!input || btn.dataset.pwWired) return;
+      btn.dataset.pwWired = "1";
+      btn.addEventListener("click", () => {
+        const show = input.type === "password";
+        input.type = show ? "text" : "password";
+        btn.setAttribute("aria-pressed", show ? "true" : "false");
+        btn.setAttribute("aria-label", show ? "Hide password" : "Show password");
+        btn.classList.toggle("is-on", show);
+        input.focus();
+      });
+    });
+  }
+
+  /* A login error should be announced and not leave focus on the button. */
+  function wireLoginErrorFocus() {
+    const err = $("loginError");
+    const pw = $("loginPassword");
+    if (!err || !pw || typeof MutationObserver !== "function") return;
+    new MutationObserver(() => {
+      const bad = err.textContent.trim() !== "";
+      pw.setAttribute("aria-invalid", bad ? "true" : "false");
+      if (bad && document.activeElement && document.activeElement.type === "submit") pw.focus();
+    }).observe(err, { childList: true, characterData: true, subtree: true });
+  }
+
+  wirePasswordToggles();
+  wireLoginErrorFocus();
+
   onAdminInit((client) => {
     wireForgotPassword(client);
     wireNewPassword(client);
