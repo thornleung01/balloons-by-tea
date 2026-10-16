@@ -55,25 +55,30 @@ function faqHistoryAfterWrite(note) {
 
 async function refreshFaqList() {
   const client = getSupabaseClient();
-  const { data, error } = await client.from("faq_items").select("*").order("sort_order", { ascending: true });
   const listEl = document.getElementById("faqList");
+  if (!listEl.children.length) listEl.innerHTML = adminSkeletonList(3);
+  const { data, error } = await client.from("faq_items").select("*").order("sort_order", { ascending: true });
   if (faqFormSnapshot === null) markFaqFormClean();
   if (error) {
-    listEl.innerHTML = `<p class="form-status error">Couldn't load FAQ items: ${escapeHtml(error.message)}</p>`;
+    listEl.innerHTML = adminErrorHtml("Couldn't load FAQ items: " + error.message, "Try again");
+    listEl.querySelector("[data-retry]").addEventListener("click", refreshFaqList);
     return;
   }
   faqCache = data || [];
   if (!faqCache.length) {
-    listEl.innerHTML = `<p class="empty-note">No FAQ items yet.</p>`;
+    listEl.innerHTML = adminEmptyHtml("No questions yet", "Add the questions customers ask most, with a short answer. They appear on the public FAQ page.");
     return;
   }
 
   listEl.innerHTML = faqCache.map((f, i) => `
     <div class="admin-item-row draggable-row" data-id="${f.id}" data-index="${i}" draggable="${!isRowLocked("faq", f.id)}">
-      ${lockHandleMarkup("faq", f.id)}
-      <span class="drag-handle" aria-hidden="true" title="Drag to reorder">&#8942;&#8942;</span>
+      <div class="row-ctl">
+        ${lockHandleMarkup("faq", f.id)}
+        <span class="drag-handle" aria-hidden="true" title="Drag to reorder">&#8942;&#8942;</span>
+      </div>
       <div class="admin-item-body">
-        <div class="name">${escapeHtml(f.question)} ${f.is_open_default ? '<span class="form-status a-inline">(open by default)</span>' : ""}</div>
+        <div class="site-row-name">${escapeHtml(f.question)}${f.is_open_default ? ' <span class="a-badge a-badge--info">Open by default</span>' : ""}</div>
+        <div class="site-row-preview">${escapeHtml(String(f.answer || "").replace(/\s+/g, " ").trim())}</div>
       </div>
       <div class="admin-item-actions">
         <button type="button" class="edit-btn" data-id="${f.id}">Edit</button>

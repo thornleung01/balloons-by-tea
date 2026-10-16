@@ -66,7 +66,7 @@
     if (!listEl) return;
     if (countEl) countEl.textContent = areasCache.length ? `(${areasCache.length})` : "";
     if (!areasCache.length) {
-      listEl.innerHTML = `<p class="empty-note">No areas yet — the delivery check is off and all addresses are accepted.</p>`;
+      listEl.innerHTML = `<p class="empty-note">No areas yet. The delivery check is off and all addresses are accepted.</p>`;
       return;
     }
     listEl.innerHTML = areasCache.map((a) => `
@@ -92,7 +92,7 @@
     if (form) form.hidden = missing;
     if (listEl) {
       listEl.innerHTML = `<p class="form-status error">${missing
-        ? "The delivery_areas table doesn't exist yet — run the latest supabase-setup.sql in your Supabase SQL Editor to turn on the delivery-area check. Until then, every address is accepted."
+        ? "The delivery_areas table doesn't exist yet. Run the latest supabase-setup.sql in your Supabase SQL Editor to turn on the delivery-area check. Until then, every address is accepted."
         : "Couldn't load delivery areas: " + escapeHtml(error.message || String(error))}</p>`;
     }
   }
@@ -128,7 +128,7 @@
     const notes = [];
     if (already.length) notes.push(`already listed: ${already.join(", ")}`);
     if (invalid.length) notes.push(`not a valid area (use letter-number-letter, like M5V): ${invalid.join(", ")}`);
-    const notesText = notes.length ? ` Skipped — ${notes.join("; ")}.` : "";
+    const notesText = notes.length ? ` Skipped: ${notes.join("; ")}.` : "";
 
     if (!toAdd.length) {
       setStatus(valid.length || invalid.length
@@ -148,7 +148,7 @@
 
     if (error) {
       setStatus(isMissingTableError(error, "delivery_areas")
-        ? "The delivery_areas table doesn't exist yet — run the latest supabase-setup.sql first."
+        ? "The delivery_areas table doesn't exist yet. Run the latest supabase-setup.sql first."
         : `Couldn't add areas: ${error.message}`, "error");
       return;
     }

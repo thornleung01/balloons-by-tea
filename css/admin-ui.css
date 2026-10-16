@@ -1,82 +1,107 @@
-/* Admin UI helpers: toasts + confirm/alert/prompt dialogs. Script: js/admin-ui.js */
+/* Admin UI helpers: toasts + confirm/alert/prompt dialogs. Script: js/admin-ui.js
+   Toast kinds carry an icon AND text (never colour alone). Motion is a 150ms
+   fade/slide on enter only, and is off under prefers-reduced-motion. */
 
 /* ----- Toasts ----- */
 .aui-toasts {
-  position: fixed; z-index: var(--a-z-toast); right: 16px; bottom: 16px;
-  display: flex; flex-direction: column; gap: 8px;
-  width: min(380px, calc(100vw - 32px));
+  --aui-toast-gap: var(--a-space-2);
+  position: fixed; z-index: var(--a-z-toast); right: var(--a-space-4); bottom: var(--a-space-4);
+  display: flex; flex-direction: column; gap: var(--aui-toast-gap);
+  width: min(380px, calc(100vw - 2 * var(--a-space-4)));
   pointer-events: none;
 }
 .aui-toast {
   pointer-events: auto;
-  display: flex; align-items: flex-start; gap: 10px;
-  padding: 12px 12px 12px 14px;
-  background: var(--a-surface-raised); color: var(--color-fg);
-  border: 1px solid var(--color-border); border-left: 4px solid var(--color-fg-soft);
-  border-radius: var(--radius-md);
+  display: flex; align-items: flex-start; gap: var(--a-space-3);
+  padding: var(--a-space-3) var(--a-space-2) var(--a-space-3) var(--a-space-4);
+  background: var(--a-surface-raised); color: var(--a-text);
+  border: var(--a-border-w) solid var(--a-border); border-left: 4px solid var(--a-neutral-fg);
+  border-radius: var(--a-radius-md);
   box-shadow: var(--a-elev-2);
-  font-size: var(--a-text-base); line-height: 1.4;
-  animation: aui-in 160ms ease-out;
+  font-family: var(--a-font-ui); font-size: var(--a-text-base); line-height: var(--a-leading-snug);
+  animation: aui-in 150ms var(--a-ease);
 }
-.aui-toast-success { border-left-color: var(--color-success); }
-.aui-toast-error { border-left-color: var(--color-destructive); }
-.aui-toast-info { border-left-color: var(--baby-blue); }
-.aui-toast-msg { flex: 1; min-width: 0; overflow-wrap: anywhere; white-space: pre-wrap; }
+.aui-toast-success { border-left-color: var(--a-success-fg); }
+.aui-toast-error { border-left-color: var(--a-danger-fg); }
+.aui-toast-info { border-left-color: var(--a-info-fg); }
+.aui-toast-icon { flex: none; display: inline-flex; width: 20px; height: 20px; margin-top: 1px; color: var(--a-neutral-fg); }
+.aui-toast-success .aui-toast-icon { color: var(--a-success-fg); }
+.aui-toast-error .aui-toast-icon { color: var(--a-danger-fg); }
+.aui-toast-info .aui-toast-icon { color: var(--a-info-fg); }
+.aui-toast-icon svg { width: 100%; height: 100%; }
+.aui-toast-msg { flex: 1; min-width: 0; padding-top: 2px; overflow-wrap: anywhere; white-space: pre-wrap; }
 .aui-toast-action {
-  flex: none; padding: 4px 12px; min-height: 36px;
-  background: none; border: 1px solid var(--color-accent); border-radius: var(--radius-pill);
-  color: var(--color-fg); font: inherit; font-weight: 700; cursor: pointer;
+  flex: none; padding: 0 var(--a-space-3); min-height: var(--a-tap);
+  background: none; border: var(--a-border-w) solid var(--a-border-strong); border-radius: var(--a-radius-pill);
+  color: var(--a-text); font: inherit; font-weight: var(--a-weight-bold); cursor: pointer;
 }
-.aui-toast-action:hover { background: var(--color-accent-tint); }
+.aui-toast-action:hover { background: var(--color-accent-tint); border-color: var(--a-accent); }
 .aui-toast-close {
-  flex: none; width: 36px; height: 36px; margin: -8px -6px -8px 0;
+  flex: none; width: var(--a-tap); height: var(--a-tap); margin: -6px 0 -6px 0;
+  display: inline-flex; align-items: center; justify-content: center;
   background: none; border: 0; border-radius: 50%; cursor: pointer;
-  color: var(--color-fg-soft); font-size: 1.3rem; line-height: 1;
+  color: var(--a-text-soft); font-size: 1.4rem; line-height: 1;
 }
-.aui-toast-close:hover { background: var(--color-bg-alt); }
+.aui-toast-close:hover { background: var(--a-surface-sunken); color: var(--a-text); }
 .aui-toast button:focus-visible, .aui-dialog button:focus-visible, .aui-input:focus-visible {
   outline: var(--a-ring-w) solid var(--a-focus); outline-offset: var(--a-ring-offset);
 }
 
-/* ----- Dialogs ----- */
+/* ----- Dialogs -----
+   Hierarchy: title, message, optional typed confirmation, then buttons with
+   cancel (secondary) on the left and the main action (primary) on the right. */
 .aui-backdrop {
   position: fixed; inset: 0; z-index: var(--a-z-modal);
   display: flex; align-items: center; justify-content: center;
-  padding: 16px; overflow-y: auto; overscroll-behavior: contain;
+  padding: var(--a-space-4); overflow-y: auto; overscroll-behavior: contain;
   background: var(--a-scrim);
-  animation: aui-fade 120ms ease-out;
+  animation: aui-fade 120ms var(--a-ease);
 }
 .aui-dialog {
   width: min(440px, 100%); max-height: calc(100vh - 32px); max-height: calc(100dvh - 32px);
   overflow-y: auto; overscroll-behavior: contain; box-sizing: border-box;
-  padding: 22px 22px 18px;
-  background: var(--a-surface-raised); color: var(--color-fg);
-  border-radius: var(--radius-lg);
+  padding: var(--a-space-5) var(--a-space-5) var(--a-space-4);
+  background: var(--a-surface-raised); color: var(--a-text);
+  border: var(--a-border-w) solid var(--a-border);
+  border-radius: var(--a-radius-lg);
   box-shadow: var(--a-elev-modal);
-  animation: aui-in 160ms ease-out;
+  animation: aui-in 150ms var(--a-ease);
 }
 .aui-dialog:focus { outline: none; }
-.aui-title { margin: 0 0 8px; font-family: var(--a-font-ui); font-weight: var(--a-weight-bold); font-size: var(--a-text-lg); line-height: 1.25; }
-.aui-danger .aui-title { color: var(--color-destructive); }
-.aui-message { margin: 0 0 14px; line-height: 1.5; white-space: pre-wrap; overflow-wrap: anywhere; }
-.aui-field { display: block; margin: 0 0 14px; font-size: var(--a-text-base); font-weight: 700; }
+.aui-title { margin: 0 0 var(--a-space-2); font-family: var(--a-font-ui); font-weight: var(--a-weight-bold); font-size: var(--a-text-lg); line-height: var(--a-leading-tight); }
+.aui-danger .aui-title { color: var(--a-danger-fg); }
+.aui-danger { border-top: 3px solid var(--a-danger-solid); }
+.aui-message { margin: 0 0 var(--a-space-4); line-height: var(--a-leading-normal); color: var(--a-text-soft); white-space: pre-wrap; overflow-wrap: anywhere; }
+.aui-field { display: block; margin: 0 0 var(--a-space-4); font-size: var(--a-text-sm); font-weight: var(--a-weight-bold); }
 .aui-input {
-  display: block; width: 100%; margin-top: 6px; padding: 10px 12px; min-height: 44px;
-  font: inherit; font-weight: 400; color: inherit; box-sizing: border-box;
-  background: var(--color-bg); border: 1px solid var(--color-border-input); border-radius: var(--radius-sm);
+  display: block; width: 100%; margin-top: var(--a-space-2); padding: var(--a-space-2) var(--a-space-3); min-height: var(--a-tap);
+  font: inherit; font-size: var(--a-text-md); font-weight: var(--a-weight-regular); color: var(--a-text); box-sizing: border-box;
+  background: var(--color-bg); border: var(--a-border-w-strong) solid var(--a-border-strong); border-radius: var(--a-radius-sm);
 }
-.aui-actions { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: 8px; margin-top: 4px; }
-.aui-actions .btn { min-height: 44px; }
+.aui-danger .aui-input { border-color: var(--a-danger-solid); }
+.aui-actions { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: var(--a-space-2); margin-top: var(--a-space-1); }
+.aui-actions .btn { min-height: var(--a-tap); }
 .aui-danger .aui-ok { color: var(--a-on-danger); }
-.aui-ok:disabled { opacity: 0.5; cursor: not-allowed; }
+.aui-ok:disabled { cursor: not-allowed; }
 
+/* Phones: toasts sit above the bottom tab bar and the safe area; dialogs
+   become a bottom sheet with its own scroll, primary action first. */
+@media (max-width: 799.98px) {
+  .aui-toasts { left: var(--a-space-4); right: var(--a-space-4); width: auto; bottom: calc(var(--admin-bottombar-h, 62px) + var(--a-space-3) + env(safe-area-inset-bottom, 0px)); }
+}
 @media (max-width: 520px) {
-  /* sit above the fixed mobile tab bar */
-  .aui-toasts { left: 16px; right: 16px; width: auto; bottom: calc(76px + env(safe-area-inset-bottom, 0px)); }
+  .aui-backdrop { align-items: flex-end; padding: 0; }
+  .aui-dialog {
+    width: 100%; max-height: 85vh; max-height: 85dvh;
+    border-radius: var(--a-radius-lg) var(--a-radius-lg) 0 0; border-bottom: 0;
+    padding-bottom: calc(var(--a-space-4) + env(safe-area-inset-bottom, 0px));
+    animation-name: aui-sheet;
+  }
   .aui-actions { flex-direction: column-reverse; }
   .aui-actions .btn { width: 100%; }
 }
 @keyframes aui-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+@keyframes aui-sheet { from { opacity: 0; transform: translateY(24px); } to { opacity: 1; transform: none; } }
 @keyframes aui-fade { from { opacity: 0; } to { opacity: 1; } }
 @media (prefers-reduced-motion: reduce) {
   .aui-toast, .aui-dialog, .aui-backdrop { animation: none; }

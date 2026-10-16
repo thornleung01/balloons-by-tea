@@ -68,7 +68,7 @@
             <option value="Vacation"></option>
             <option value="Closed"></option>
           </datalist>
-          <p class="field-note">Visible to anyone who looks closely — keep it short, nothing private.</p>
+          <p class="field-note">Visible to anyone who looks closely, so keep it short and nothing private.</p>
         </div>
         <div class="form-status" id="blockDatesStatus" role="status"></div>
         <button type="submit" class="btn btn-primary btn-block" id="blockDatesBtn">Block date</button>
@@ -157,7 +157,7 @@
   function showMissingTable() {
     root().innerHTML = `
       <h2>Unavailable dates</h2>
-      <p class="form-status error">The blocked_dates table doesn't exist yet — run the latest supabase-setup.sql in your Supabase SQL Editor to turn on date blocking and the daily order limit. Until then, customers can order for any future date.</p>`;
+      <p class="form-status error">The blocked_dates table doesn't exist yet. Run the latest supabase-setup.sql in your Supabase SQL Editor to turn on date blocking and the daily order limit. Until then, customers can order for any future date.</p>`;
   }
 
   async function loadBlocked() {
@@ -197,7 +197,7 @@
     const { data, error } = await client.rpc("fully_booked_dates", { from_day: from, to_day: localIsoDate(toDate) });
     if (error) {
       el.innerHTML = isMissingTableError(error, "fully_booked_dates")
-        ? `<p class="form-status error">The fully_booked_dates function doesn't exist yet — run the latest supabase-setup.sql so the limit takes effect.</p>`
+        ? `<p class="form-status error">The fully_booked_dates function doesn't exist yet. Run the latest supabase-setup.sql so the limit takes effect.</p>`
         : `<p class="form-status error">Couldn't check fully booked dates: ${escapeHtml(error.message)}</p>`;
       return;
     }
@@ -221,7 +221,7 @@
     if (from < todayIso()) return setStatus("blockDatesStatus", "That date has already passed.", "error");
     if (to < from) return setStatus("blockDatesStatus", "\"Until\" must be on or after the first date.", "error");
     const span = daysBetween(from, to) + 1;
-    if (span > MAX_RANGE_DAYS) return setStatus("blockDatesStatus", `That's ${span} days — block at most ${MAX_RANGE_DAYS} at a time.`, "error");
+    if (span > MAX_RANGE_DAYS) return setStatus("blockDatesStatus", `That's ${span} days. Block at most ${MAX_RANGE_DAYS} at a time.`, "error");
 
     const rows = [];
     for (let d = from; d <= to; d = nextIso(d)) rows.push({ day: d, reason });
@@ -276,7 +276,7 @@
     btn.disabled = false;
     if (error) return setStatus("capacityStatus", "Couldn't save: " + error.message, "error");
     input.value = value;
-    setStatus("capacityStatus", value ? `Limit saved: ${value} order${value === "1" ? "" : "s"} per day.` : "Limit removed — no daily cap.", "success");
+    setStatus("capacityStatus", value ? `Limit saved: ${value} order${value === "1" ? "" : "s"} per day.` : "Limit removed. No daily cap.", "success");
     await loadFullyBooked(!!value);
   }
 
