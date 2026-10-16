@@ -63,23 +63,64 @@
 }
 .admin-tab {
   display: flex; align-items: center; gap: 10px;
-  width: 100%; min-height: 40px; padding: 8px 12px;
+  width: 100%; min-height: var(--a-tap); padding: 8px 12px;
   font-size: var(--a-text-base); font-weight: 600; text-align: left;
   color: var(--color-fg-soft);
   border-radius: var(--radius-sm);
   border: none; background: none;
 }
-.admin-tab .admin-icon { flex-shrink: 0; opacity: 0.75; }
+.admin-tab .admin-icon { flex-shrink: 0; color: var(--a-text-faint); }
 .admin-tab-label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .admin-tab:hover { color: var(--color-fg); background: var(--color-bg-alt); }
-.admin-tab.active { color: var(--color-fg); background: var(--color-accent-tint); }
-.admin-tab.active .admin-icon { color: var(--a-accent-text); opacity: 1; }
-.admin-tab-badge {
-  background: var(--a-danger-solid); color: var(--a-on-danger);
-  font-size: var(--a-text-2xs); font-weight: 700; line-height: 1;
-  padding: 3px 6px; border-radius: var(--radius-pill);
-}
+.admin-tab.active { color: var(--color-fg); background: var(--color-accent-tint); box-shadow: inset 3px 0 0 var(--a-accent); }
+.admin-tab.active .admin-icon { color: var(--a-accent-text); }
+/* Count badge look comes from .a-badge.a-badge--count (css/admin-tokens.css); this only hides it. */
 .admin-tab-badge[hidden] { display: none; }
+
+/* ---------- Page titles (Phase 2) ----------
+   One look for each tab's own heading, applied by selector so tab markup needs no class.
+   Level 1 = .a-page-title, level 2 (sub-pages inside Settings) = .a-panel-title,
+   subheadings inside cards = .a-section-title. IDs keep these ahead of per-surface h2 rules. */
+#overviewPanel .overview-title,
+#productsPanel > .admin-card > h2,
+#trashPanel > h2, #trashPanel .orders-head > h2,
+#ordersPanel .orders-head > h2,
+#analyticsPanel .orders-head > h2,
+#deliveryPanel > .admin-card > h2,
+#collectionsPanel > .admin-card > h2,
+#libraryPanel > .admin-card > h2,
+#galleryPanel .gallery-admin-head h2,
+#navPanel > .admin-card > h2,
+#faqPanel > .admin-card > h2,
+#settingsPanel .settings-head h2,
+#activityPanel .orders-head > h2 {
+  margin: 0 0 var(--a-space-3);
+  font-family: var(--a-font-display); font-weight: var(--a-weight-semibold); font-size: var(--a-text-2xl);
+  line-height: var(--a-leading-tight); letter-spacing: 0; text-transform: none; color: var(--a-text);
+}
+#settingsPanel > :not(.settings-head) > h2,
+#settingsPanel .settings-fieldset > legend {
+  margin: 0 0 var(--a-space-3); padding: 0;
+  font-family: var(--a-font-display); font-weight: var(--a-weight-semibold); font-size: var(--a-text-xl);
+  line-height: var(--a-leading-tight); letter-spacing: 0; color: var(--a-text);
+}
+#ordersPanel .orders-head > h2, #analyticsPanel .orders-head > h2, #activityPanel .orders-head > h2,
+#trashPanel .orders-head > h2, #settingsPanel .settings-head h2, #overviewPanel .overview-title { margin-bottom: 0; }
+.admin-body :is(.safety-block, .team-add, .restore-section, .availability-section, .analytics-card, .unused-photos-head) h3,
+.admin-body .delivery-area-list-title, .admin-body .notify-subheading {
+  margin: 0 0 var(--a-space-2);
+  font-family: var(--a-font-ui); font-weight: var(--a-weight-semibold); font-size: var(--a-text-md);
+  line-height: var(--a-leading-snug); letter-spacing: 0; text-transform: none; color: var(--a-text);
+}
+@media (max-width: 420px) {
+  #overviewPanel .overview-title,
+  #productsPanel > .admin-card > h2, #trashPanel > h2, #trashPanel .orders-head > h2,
+  #ordersPanel .orders-head > h2, #analyticsPanel .orders-head > h2,
+  #deliveryPanel > .admin-card > h2, #collectionsPanel > .admin-card > h2, #libraryPanel > .admin-card > h2,
+  #galleryPanel .gallery-admin-head h2, #navPanel > .admin-card > h2, #faqPanel > .admin-card > h2,
+  #settingsPanel .settings-head h2, #activityPanel .orders-head > h2 { font-size: var(--a-text-xl); }
+  #settingsPanel > :not(.settings-head) > h2, #settingsPanel .settings-fieldset > legend { font-size: var(--a-text-lg); }
+}
 
 @media (min-width: 800px) {
   .admin-frame {
@@ -119,11 +160,11 @@
   .admin-header .brand-mark { padding: 3px 8px; font-size: var(--a-text-2xs); }
   .admin-header-actions { gap: 6px; margin-left: auto; justify-content: flex-end; }
   #whoAmI.admin-who:not([hidden]) { display: inline-block; max-width: 34vw; }
-  .admin-view-site { padding: 6px 8px; min-height: 36px; }
+  .admin-view-site { padding: 0 var(--a-space-2); min-height: var(--a-tap); min-width: var(--a-tap); }
   .admin-view-site-label { display: none; }
   .admin-theme-label { display: none; }
-  .admin-theme-btn { min-height: 36px; min-width: 36px; padding: 6px 8px; }
-  #logoutBtn { padding: 6px 12px; }
+  .admin-theme-btn { min-height: var(--a-tap); min-width: var(--a-tap); padding: 0 var(--a-space-2); }
+  #logoutBtn { padding: 0 var(--a-space-3); }
 
   .admin-main { padding: var(--space-3) var(--space-3) var(--space-6); }
   body.admin-signed-in { padding-bottom: calc(var(--admin-bottombar-h) + env(safe-area-inset-bottom, 0px)); }
@@ -144,12 +185,13 @@
   .admin-nav-group.is-active-group { display: flex; }
   .admin-nav-heading { display: none; }
   .admin-tab {
-    width: auto; flex-shrink: 0; min-height: 36px; padding: 6px 14px; gap: 6px;
+    width: auto; flex-shrink: 0; min-height: var(--a-tap); padding: 0 var(--a-space-4); gap: 6px;
+    box-shadow: none;
     font-size: var(--a-text-sm); border-radius: var(--radius-pill);
     border: 1px solid var(--color-border); background: var(--color-surface-solid);
   }
   .admin-tab .admin-icon { display: none; }
-  .admin-tab.active { background: var(--color-accent); border-color: var(--color-accent); color: var(--a-on-accent); }
+  .admin-tab.active { background: var(--color-accent); border-color: var(--color-accent); color: var(--a-on-accent); box-shadow: none; }
 
   .admin-bottombar {
     position: fixed; left: 0; right: 0; bottom: 0; z-index: var(--a-z-nav);
@@ -162,7 +204,7 @@
   .admin-bottombar[hidden] { display: none; }
 }
 .admin-bottom-btn {
-  flex: 1 1 0; min-width: 0; min-height: 54px;
+  flex: 1 1 0; min-width: 0; min-height: 54px; padding: var(--a-space-1) 0;
   display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px;
   border: none; background: none; border-radius: var(--radius-sm);
   color: var(--color-fg-faint); font-size: var(--a-text-xs); font-weight: 700;
