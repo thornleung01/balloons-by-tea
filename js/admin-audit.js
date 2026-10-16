@@ -241,7 +241,7 @@
 
   function renderShell(panel) {
     panel.innerHTML = `
-      <div class="activity-head">
+      <div class="orders-head activity-head">
         <h2>Activity</h2>
         <button type="button" class="btn btn-outline btn-sm" id="activityRefreshBtn">Refresh</button>
       </div>

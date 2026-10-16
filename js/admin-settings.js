@@ -99,7 +99,10 @@ function renderSeoPageFields() {
       <summary>
         <span class="seo-page-name">${escapeHtml(p.label)}</span>
         <span class="seo-page-file">${escapeHtml(p.file)}</span>
-        <span class="seo-page-state" data-seo-state="${p.key}"></span>
+        <span class="seo-page-meta">
+          <span class="seo-page-count" data-seo-count="${p.key}"></span>
+          <span class="seo-page-state a-badge a-badge--neutral" data-seo-state="${p.key}"></span>
+        </span>
       </summary>
       <div class="seo-page-body">
         <div class="field">

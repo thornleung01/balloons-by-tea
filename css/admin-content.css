@@ -47,7 +47,6 @@
   padding-bottom: var(--a-space-4); margin-bottom: var(--a-space-4);
   border-bottom: var(--a-border-w) solid var(--a-border);
 }
-.settings-head h2 { margin-bottom: var(--a-space-1); }
 .settings-head .panel-subtitle { margin: 0; max-width: 56ch; }
 .settings-head-actions { display: flex; flex-wrap: wrap; gap: var(--a-space-2); }
 .settings-head-actions .btn { min-height: 40px; }
@@ -76,7 +75,6 @@
 
 /* ----- Field groups ----- */
 .settings-fieldset { min-width: 0; }
-.settings-fieldset legend { font-size: var(--a-text-xl); margin-bottom: var(--a-space-1); }
 .settings-panel .settings-section-note { margin: 0 0 var(--a-space-4); line-height: var(--a-leading-normal); max-width: 62ch; color: var(--a-text-soft); font-size: var(--a-text-sm); }
 .settings-subgroup {
   margin-top: var(--a-space-4); padding: var(--a-space-3) var(--a-space-4);
@@ -429,8 +427,6 @@
   .row-ctl .row-move-btn, .row-ctl .lock-toggle, .gallery-admin-order .row-move-btn, .gallery-admin-order .lock-toggle { width: var(--a-tap); height: var(--a-tap); }
   #navList .admin-item-actions button, #faqList .admin-item-actions button, #galleryAdminList .admin-item-actions button,
   #blockedDatesList .admin-item-actions button, #deliveryAreaList .admin-item-actions button { min-height: var(--a-tap); }
-  /* A bigger invisible hit area around the 38px switch. */
-  #navList .toggle-switch input, #galleryAdminList .toggle-switch input { top: -11px; bottom: -11px; left: -4px; right: -4px; width: auto; height: auto; }
   .site-switch { min-height: var(--a-tap); }
 }
 @media (max-width: 560px) {

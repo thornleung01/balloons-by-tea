@@ -1,18 +1,31 @@
-/* ===== New-order notifications card (Settings tab, js/admin-notifications.js) ===== */
-.notify-subheading { font-size: var(--a-text-md); margin: var(--space-4, 24px) 0 var(--space-2, 8px); }
-.notify-status-list { list-style: none; margin: 0 0 var(--space-3, 16px); padding: 0; font-size: var(--a-text-base); }
-.notify-status-item { display: flex; gap: 10px; align-items: flex-start; padding: 6px 0; border-bottom: 1px solid var(--color-border); line-height: 1.45; }
+/* ===== New-order notifications card (Settings, js/admin-notifications.js) =====
+   Setup checklist = steps with a status badge (text, not colour alone), the
+   connection secret is a monospace token, the customer email template is a
+   plain form. Card head, description and badge come from css/admin-safety.css. */
+.notify-subheading { margin: var(--a-space-5) 0 var(--a-space-2); }
+.notify-status-list {
+  list-style: none; margin: 0 0 var(--a-space-4); padding: 0; font-size: var(--a-text-base);
+  border: var(--a-border-w) solid var(--a-border); border-radius: var(--a-radius-md); background: var(--a-surface); overflow: hidden;
+}
+.notify-status-item { display: flex; gap: var(--a-space-3); align-items: flex-start; padding: var(--a-space-3) var(--a-space-4); border-bottom: var(--a-border-w) solid var(--a-border); line-height: var(--a-leading-snug); }
 .notify-status-item:last-child { border-bottom: 0; }
-.notify-status-icon { flex: 0 0 22px; height: 22px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; font-weight: 700; font-size: var(--a-text-sm); background: var(--color-border); color: var(--color-fg-soft); }
-.notify-ok .notify-status-icon { background: var(--a-success-solid); color: var(--a-on-success); }
-.notify-bad .notify-status-icon { background: var(--a-danger-solid); color: var(--a-on-danger); }
-.notify-warn .notify-status-icon { background: var(--a-warning-fg); color: var(--a-warning-bg); }
-.notify-status-detail { display: block; color: var(--color-fg-soft); font-size: var(--a-text-sm); word-break: break-word; }
-.notify-actions { display: flex; flex-wrap: wrap; gap: var(--space-2, 8px); align-items: center; }
+.notify-status-icon { flex: 0 0 4.75rem; justify-content: center; }
+.notify-status-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.notify-status-detail { display: block; color: var(--a-text-soft); font-size: var(--a-text-sm); overflow-wrap: anywhere; }
+.notify-actions { display: flex; flex-wrap: wrap; gap: var(--a-space-2); align-items: center; }
 .notify-actions .notify-status-detail { display: inline; }
-.notify-details { margin-top: var(--space-3, 16px); border: 1px solid var(--color-border); border-radius: var(--radius-md); padding: var(--space-2, 8px) var(--space-3, 16px); }
-.notify-details summary { cursor: pointer; font-weight: 600; padding: 4px 0; }
-.notify-details[open] summary { margin-bottom: var(--space-2, 8px); }
-.notify-inline { display: flex; flex-wrap: wrap; gap: var(--space-2, 8px); }
-.notify-inline input { flex: 1 1 220px; min-width: 0; font-family: ui-monospace, Menlo, Consolas, monospace; }
-.notify-section code { font-size: 0.85em; background: var(--color-border); padding: 1px 5px; border-radius: var(--a-radius-xs); }
+.notify-details { margin-top: var(--a-space-4); border: var(--a-border-w) solid var(--a-border); border-radius: var(--a-radius-md); padding: var(--a-space-2) var(--a-space-4); background: var(--a-surface); }
+.notify-details summary { cursor: pointer; font-weight: var(--a-weight-bold); padding: var(--a-space-2) 0; min-height: var(--a-tap); display: flex; align-items: center; }
+.notify-details summary:focus-visible { outline: var(--a-ring-w) solid var(--a-focus); outline-offset: 2px; border-radius: var(--a-radius-sm); }
+.notify-details[open] summary { margin-bottom: var(--a-space-2); }
+.notify-details[open] { padding-bottom: var(--a-space-4); }
+.notify-inline { display: flex; flex-wrap: wrap; gap: var(--a-space-2); }
+.notify-inline input { flex: 1 1 220px; min-width: 0; }
+.notify-token { font-family: var(--a-font-mono); font-size: var(--a-text-sm); letter-spacing: 0.02em; background: var(--a-surface-sunken); }
+.notify-inline .btn { min-height: var(--a-tap); }
+.notify-section code { font-family: var(--a-font-mono); font-size: 0.85em; background: var(--a-surface-sunken); padding: 1px 5px; border-radius: var(--a-radius-xs); color: var(--a-text); }
+@media (max-width: 560px) {
+  .notify-status-item { flex-direction: column; gap: var(--a-space-2); }
+  .notify-status-icon { flex: none; }
+  .notify-actions .btn { flex: 1 1 100%; min-height: var(--a-tap); }
+}
