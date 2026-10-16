@@ -147,7 +147,7 @@
     const ranges = groupRanges(blockedCache);
     listEl.innerHTML = ranges.map((r, i) => {
       const count = daysBetween(r.from, r.to) + 1;
-      const label = count === 1 ? friendly(r.from) : `${friendly(r.from)} – ${friendly(r.to)}`;
+      const label = count === 1 ? friendly(r.from) : `${friendly(r.from)} to ${friendly(r.to)}`;
       const fullyBooked = /^fully booked$/i.test(r.reason || "");
       return `
         <div class="admin-item-row">
@@ -251,14 +251,14 @@
     document.getElementById("blockDatesForm").reset();
     document.getElementById("bd-to").min = todayIso();
     btn.textContent = "Block date";
-    setStatus("blockDatesStatus", span === 1 ? `Blocked ${friendly(from)}.` : `Blocked ${span} days (${friendly(from)} – ${friendly(to)}).`, "success");
+    setStatus("blockDatesStatus", span === 1 ? `Blocked ${friendly(from)}.` : `Blocked ${span} days (${friendly(from)} to ${friendly(to)}).`, "success");
     await refreshList();
   }
 
   async function handleUnblock(range, btn) {
     if (!range || busy) return;
     const count = daysBetween(range.from, range.to) + 1;
-    const label = count === 1 ? friendly(range.from) : `${friendly(range.from)} – ${friendly(range.to)} (${count} days)`;
+    const label = count === 1 ? friendly(range.from) : `${friendly(range.from)} to ${friendly(range.to)} (${count} days)`;
     if (!(await adminConfirm({ title: `Unblock ${label}?`, message: `Customers will be able to order for ${count === 1 ? "it" : "these dates"} again.`, confirmLabel: "Unblock" }))) return;
     busy = true;
     btn.disabled = true;

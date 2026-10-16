@@ -693,7 +693,7 @@ function renderOrdersPager() {
   const to = Math.min(ordersTotalMatching, from + ORDERS_PAGE_SIZE - 1);
   el.innerHTML = `
     <button type="button" class="orders-export-btn" data-page="prev" ${ordersPage === 0 ? "disabled" : ""}>&lsaquo; Newer</button>
-    <span class="orders-pager-info">${from}–${to} of ${ordersTotalMatching} · page ${ordersPage + 1} of ${pages}</span>
+    <span class="orders-pager-info">${from}-${to} of ${ordersTotalMatching} · page ${ordersPage + 1} of ${pages}</span>
     <button type="button" class="orders-export-btn" data-page="next" ${ordersPage >= pages - 1 ? "disabled" : ""}>Older &rsaquo;</button>`;
 }
 
@@ -1122,7 +1122,7 @@ function renderOrderDrawer() {
   const eventHtml = v2 ? `
     <div class="order-event-grid">
       <label>Date<input type="date" id="odEventOn" value="${escapeHtml(eventIso)}"/></label>
-      <label>Time<input type="text" id="odEventTime" maxlength="100" value="${escapeHtml(eventTime)}" placeholder="e.g. 14:00 or 2–4pm"/></label>
+      <label>Time<input type="text" id="odEventTime" maxlength="100" value="${escapeHtml(eventTime)}" placeholder="e.g. 14:00 or 2-4pm"/></label>
       <label>Fulfilment
         <select id="odFulfillment" class="order-status-select">
           <option value="delivery" ${order.fulfillment !== "pickup" ? "selected" : ""}>Delivery</option>

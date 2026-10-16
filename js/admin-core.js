@@ -642,7 +642,7 @@ async function mustAffect(query) {
       data,
       // Either the row no longer exists (deleted elsewhere) or RLS blocked
       // the write (login expired) — the response can't tell which.
-      error: { message: "Nothing was changed — it may already have been deleted, or your login may have expired. Refresh the page and try again." }
+      error: { message: "Nothing was changed. It may already have been deleted, or your login may have expired. Refresh the page and try again." }
     };
   }
   return { data, error: null };
@@ -696,7 +696,7 @@ function watchForLostSession(client) {
     if (document.getElementById("dashboardView").hidden) return;
     showLoginView();
     document.getElementById("loginError").textContent =
-      "Your login expired — please log in again. Anything you hadn't saved is still in the form.";
+      "Your login expired. Please log in again. Anything you hadn't saved is still in the form.";
   });
 }
 
