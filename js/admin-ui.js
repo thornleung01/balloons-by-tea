@@ -113,10 +113,14 @@
     if (lockCount++ === 0) {
       savedOverflow = doc.documentElement.style.overflow;
       doc.documentElement.style.overflow = "hidden";
+      doc.documentElement.classList.add("aui-modal-open");
     }
   }
   function unlockScroll() {
-    if (lockCount > 0 && --lockCount === 0) doc.documentElement.style.overflow = savedOverflow;
+    if (lockCount > 0 && --lockCount === 0) {
+      doc.documentElement.style.overflow = savedOverflow;
+      doc.documentElement.classList.remove("aui-modal-open");
+    }
   }
 
   var FOCUSABLE = 'button:not([disabled]), input:not([disabled]), [href], select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';

@@ -406,7 +406,7 @@
               </span>
             </summary>
             <div class="activity-body">
-              <p class="activity-meta">${escapeHtml(TABLE_LABELS[entry.table_name] || entry.table_name)} · ${escapeHtml(when.toLocaleString())}${entry.actor_email ? ` · ${escapeHtml(entry.actor_email)}` : ""}</p>
+              <p class="activity-meta">${escapeHtml(when.toLocaleString())}${entry.actor_email ? ` · ${escapeHtml(entry.actor_email)}` : ""}</p>
               ${table}
               ${undo ? `<button type="button" class="btn btn-outline btn-sm activity-undo-btn" data-index="${i}">${entry.action === "delete" ? "Put it back" : "Undo this change"}</button>` : ""}
               <span class="form-status activity-undo-status" data-undo-status="${i}"></span>

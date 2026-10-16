@@ -99,6 +99,8 @@
   }
   .aui-actions { flex-direction: column-reverse; }
   .aui-actions .btn { width: 100%; }
+  /* While a bottom sheet is open, toasts move to the top so they never cover its buttons. */
+  .aui-modal-open .aui-toasts { bottom: auto; top: calc(var(--a-space-3) + env(safe-area-inset-top, 0px)); }
 }
 @keyframes aui-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
 @keyframes aui-sheet { from { opacity: 0; transform: translateY(24px); } to { opacity: 1; transform: none; } }
