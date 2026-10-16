@@ -43,6 +43,17 @@ Sale prices show the old price crossed out; a "Sale" badge; sold-out products sh
 
 Cart lines saved before this still work. A line with options looks like `{id, name, price (unit, includes options), collection, qty, variant: {name, price}, addons: [{name, price}], key}`.
 
+## Design notes (catalog surfaces)
+
+Styles for Products, Trash, Collections and the Photo Library live in `css/admin-products.css` and use only `--a-*` tokens. Local custom properties: `--cat-row-pad`, `--cat-thumb`, `--cat-tile-min` (set on the four panels).
+
+- **Product row**: select, thumbnail, name, price (a sale shows the old price struck through), badges (`.a-badge--status-*`), then an actions line: show/hide switch, Edit, Duplicate, Delete, View, and in "By Category" Move up / Move down plus a drag grip.
+- **Bulk bar** (`#bulkActionBar`): sticky, above the phone bottom bar. Groups: Visibility, Edit (buttons added by `js/admin-products-bulk.js` into `#bulkEditGroup`), Delete (separated).
+- **Item form**: collapsible `<details class="pf-section">` sections with a summary line when closed. The live preview is pinned at the top of the form on desktop and collapsed above the save bar on phones. `#pfSaveBar` is sticky and shows "Unsaved changes".
+- **Tags**: `#f-tags` is a hidden input holding the committed list; `#f-tag-input` is where a tag is typed.
+- **CSV import**: four steps (Upload, Map columns, Review, Import), see `csvStepperHtml()`.
+- **Library tiles**: each tile has one transparent `.library-tile-open` button (keyboard access and a name). The alt-text chip from `js/admin-content-alt.js` is still appended to the tile root.
+
 ## Future work
 
 Stock is not decremented on order; that could be added to the order flow later.

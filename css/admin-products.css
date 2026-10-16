@@ -63,8 +63,10 @@
 .pf-section[open] > summary .pf-summary-meta:not(#pfVisibilitySummary) { display: none; }
 .pf-body { padding: var(--a-space-1) var(--a-space-3) var(--a-space-2); }
 .pf-optional { font-weight: var(--a-weight-regular); color: var(--a-text-faint); }
-.pf-row { display: grid; grid-template-columns: 1fr 1fr; gap: var(--a-space-2); }
-@media (max-width: 480px) { .pf-row { grid-template-columns: 1fr; } }
+.pf-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: var(--a-space-2); }
+.pf-row > .field { min-width: 0; }
+@media (max-width: 480px) { .pf-row { grid-template-columns: minmax(0, 1fr); } }
+.pf-body .field > label.a-inline-flex-center { min-height: var(--a-tap); color: var(--a-text); font-size: var(--a-text-base); }
 label.pf-check, .field label.pf-check { display: inline-flex; align-items: center; gap: var(--a-space-2); min-height: var(--a-tap); font-size: var(--a-text-base); color: var(--a-text); }
 .pf-check input, .field .pf-check input { width: 24px; min-height: 0; }
 .pf-subhead { margin: var(--a-space-3) 0 var(--a-space-1); font-family: var(--a-font-ui); font-size: var(--a-text-base); font-weight: var(--a-weight-bold); }
@@ -170,6 +172,7 @@ label.pf-check, .field label.pf-check { display: inline-flex; align-items: cente
 .pf-progress-bar { display: block; width: 0; height: 100%; background: var(--a-accent-text); transition: width var(--a-dur) var(--a-ease); }
 @media (max-width: 480px) {
   .pf-savebar { flex-direction: column; align-items: stretch; }
+  .pf-savebar-status { flex: 0 0 auto; }
   .pf-savebar .modal-actions { justify-content: flex-end; margin-top: var(--a-space-1); }
   .pf-savebar-status:has(.pf-dirty:not([hidden])), .pf-savebar-status:has(.form-status:not(:empty)) { margin-bottom: var(--a-space-1); }
 }
@@ -214,6 +217,8 @@ label.pf-check, .field label.pf-check { display: inline-flex; align-items: cente
   position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
   overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0;
 }
+/* `.field label` (public) is display:block; the dropzone label has to stay a flex column. */
+.field .photo-upload-dropzone { display: flex; cursor: pointer; }
 .photo-upload-dropzone span { font-size: var(--a-text-xs); color: var(--a-text-soft); }
 .photo-upload-dropzone.is-error { border-color: var(--a-danger-solid); background: var(--a-danger-bg); }
 .photo-upload-dropzone.is-error strong { color: var(--a-danger-fg); }
@@ -255,8 +260,8 @@ label.pf-check, .field label.pf-check { display: inline-flex; align-items: cente
 /* A product row: [select][thumb][name, price, badges] then the actions line. */
 #productsPanel .product-row, #trashPanel .product-row {
   display: grid; grid-template-columns: var(--a-tap) var(--cat-thumb) minmax(0, 1fr);
-  grid-template-areas: "sel thumb body" ". actions actions";
-  align-items: center; column-gap: var(--a-space-2); row-gap: var(--a-space-1);
+  grid-template-areas: "sel thumb body" "actions actions actions";
+  position: relative; align-items: center; column-gap: var(--a-space-2); row-gap: var(--a-space-1);
   padding: var(--cat-row-pad) var(--a-space-3) var(--cat-row-pad) var(--a-space-1);
   background: var(--a-surface); border: var(--a-border-w) solid var(--a-border); border-radius: var(--a-radius-sm);
   transition: background-color var(--a-dur-fast) var(--a-ease), border-color var(--a-dur-fast) var(--a-ease);
@@ -301,7 +306,9 @@ label.pf-check, .field label.pf-check { display: inline-flex; align-items: cente
 .product-order { display: inline-flex; align-items: center; gap: 2px; margin-left: auto; }
 #productsPanel .product-row .product-move-btn { width: 36px; padding: 0; font-size: var(--a-text-md); }
 #productsPanel .product-row .product-move-btn:disabled { color: var(--a-text-faint); background: transparent; border-color: var(--a-border); cursor: default; }
-.product-drag { display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 36px; color: var(--a-text-faint); cursor: grab; }
+/* The grip sits in the row's top-right corner so it never takes room from the actions. */
+.product-drag { position: absolute; top: var(--a-space-2); right: var(--a-space-1); display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; color: var(--a-text-faint); cursor: grab; }
+.product-row:has(.product-drag) .admin-item-body .name { padding-right: var(--a-space-5); }
 .product-row:hover .product-drag { color: var(--a-text-soft); }
 #productsPanel .admin-item-row.drop-before { box-shadow: 0 -2px 0 0 var(--a-accent-text); }
 #productsPanel .admin-item-row.drop-after { box-shadow: 0 2px 0 0 var(--a-accent-text); }
@@ -310,12 +317,16 @@ label.pf-check, .field label.pf-check { display: inline-flex; align-items: cente
   #productsPanel .product-row .admin-item-actions :is(button, a) { min-height: var(--a-tap); }
   #productsPanel .product-row .icon-action, #productsPanel .product-row .product-move-btn { width: var(--a-tap); }
   .product-drag { display: none; }
+  .product-row:has(.product-drag) .admin-item-body .name { padding-right: 0; }
   .pf-tag-pill { min-height: var(--a-tap); }
   .pf-tag-remove { width: var(--a-tap); height: var(--a-tap); }
 }
 @media (max-width: 560px) {
-  #productsPanel .product-row { grid-template-areas: "sel thumb body" "actions actions actions"; }
-  .product-order { margin-left: 0; }
+  #productsPanel .product-row .admin-item-actions { gap: var(--a-space-1); }
+  #productsPanel .product-row .icon-action, #productsPanel .product-row .product-move-btn { width: 40px; }
+  .product-switch { gap: var(--a-space-1); }
+  .product-switch-label { min-width: 0; }
+  #productsPanel .product-row .edit-btn { padding: 0 var(--a-space-3); }
 }
 
 /* Loading, empty and error states */
@@ -362,11 +373,14 @@ label.pf-check, .field label.pf-check { display: inline-flex; align-items: cente
   .bulk-action-bar button { min-height: var(--a-tap); }
 }
 @media (max-width: 560px) {
-  .bulk-action-bar { gap: var(--a-space-1); }
+  /* One wrapping line of buttons: count, Clear, Show, Hide, Price... Delete last. */
+  .bulk-action-bar { gap: var(--a-space-1); padding: var(--a-space-2); }
+  .bulk-count, .bulk-groups, .bulk-group { display: contents; }
   .bulk-group-label { display: none; }
-  .bulk-group-danger { margin-left: 0; padding-left: 0; border-left: 0; }
-  .bulk-groups { gap: var(--a-space-1) var(--a-space-3); }
-  .bulk-action-bar button { padding: 0 var(--a-space-2); }
+  .bulk-group-danger { margin-left: auto; padding-left: 0; border-left: 0; }
+  .bulk-action-bar button { padding: 0 var(--a-space-3); }
+  #bulkSelectedCount { margin-right: var(--a-space-1); }
+  .bulk-action-bar .bulk-group-danger button { margin-left: auto; }
 }
 
 /* Staff see the list read-only: the owner-only controls added here stay hidden too. */
