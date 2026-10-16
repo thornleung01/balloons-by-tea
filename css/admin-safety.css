@@ -5,12 +5,12 @@
 
 /* ===== Login extras ===== */
 .login-link-btn {
-  display: block; margin: var(--space-2) auto 0; padding: 4px 8px;
+  display: block; margin: var(--space-2) auto 0; padding: 0 var(--a-space-3); min-height: var(--a-tap);
   background: none; border: 0; cursor: pointer;
-  font: inherit; font-size: var(--a-text-sm); color: var(--a-accent-text); text-decoration: underline;
+  font: inherit; font-size: var(--a-text-sm); color: var(--a-accent-text); text-decoration: underline; text-underline-offset: 3px;
 }
-.login-link-btn:hover { color: var(--color-accent-hover); }
-.mfa-code-input { font-size: var(--a-text-xl); letter-spacing: 0.35em; text-align: center; max-width: 12em; font-variant-numeric: tabular-nums; }
+.login-link-btn:hover { color: var(--a-text); }
+.admin-body .mfa-code-input { font-family: var(--a-font-mono); font-size: var(--a-text-2xl); font-weight: var(--a-weight-semibold); letter-spacing: 0.4em; text-indent: 0.4em; text-align: center; width: 100%; padding: 0 var(--a-space-3); font-variant-numeric: tabular-nums; }
 .password-meter { margin-top: var(--space-1); font-size: var(--a-text-sm); color: var(--color-fg-soft); }
 .password-meter-bar { display: block; height: 5px; border-radius: var(--a-radius-xs); background: var(--color-bg-alt); overflow: hidden; margin-bottom: 4px; }
 .password-meter-bar > span { display: block; height: 100%; background: var(--color-destructive); transition: width 160ms var(--ease, ease); }

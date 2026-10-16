@@ -142,7 +142,11 @@
       bar.className = "backup-nudge-bar";
       dash.insertBefore(bar, dash.firstChild);
     }
-    bar.innerHTML = `<span>${iso ? `Your last backup was ${escapeHtml(describeAge(iso))}.` : "You haven't downloaded a backup yet."} Take one now (Settings, at the bottom).</span><button type="button" class="btn btn-outline btn-sm" id="backupNudgeDismiss">Dismiss</button>`;
+    bar.innerHTML = `<span class="backup-nudge-text">${typeof adminIconSvg === "function" ? adminIconSvg("alert", 18) : ""}<span>${iso ? `Your last backup was ${escapeHtml(describeAge(iso))}.` : "You haven't downloaded a backup yet."} A backup takes a few seconds.</span></span><span class="backup-nudge-actions"><button type="button" class="btn btn-outline btn-sm" id="backupNudgeGo">Back up now</button><button type="button" class="btn btn-ghost btn-sm" id="backupNudgeDismiss">Dismiss</button></span>`;
+    bar.querySelector("#backupNudgeGo").addEventListener("click", () => {
+      if (typeof window.adminNavigate === "function") window.adminNavigate("settings");
+      setTimeout(() => { const b = document.getElementById("downloadBackupBtn"); if (b) { b.scrollIntoView({ block: "center" }); b.focus(); } }, 150);
+    });
     bar.querySelector("#backupNudgeDismiss").addEventListener("click", () => {
       try { sessionStorage.setItem("admin-backup-nudge-dismissed", "1"); } catch (e) { /* ignore */ }
       bar.remove();
