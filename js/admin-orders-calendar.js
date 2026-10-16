@@ -34,17 +34,19 @@
   function renderShell() {
     container.innerHTML = `
       <div class="orders-cal-toolbar">
-        <button type="button" class="orders-export-btn" data-cal="prev" aria-label="Previous month">&lsaquo;</button>
         <h3 class="orders-cal-title" id="ordersCalTitle" aria-live="polite"></h3>
-        <button type="button" class="orders-export-btn" data-cal="next" aria-label="Next month">&rsaquo;</button>
-        <button type="button" class="orders-export-btn" data-cal="today">Today</button>
+        <div class="orders-cal-nav" role="group" aria-label="Change month">
+          <button type="button" class="orders-export-btn orders-cal-step" data-cal="prev" aria-label="Previous month"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 6l-6 6 6 6"/></svg></button>
+          <button type="button" class="orders-export-btn" data-cal="today">Today</button>
+          <button type="button" class="orders-export-btn orders-cal-step" data-cal="next" aria-label="Next month"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg></button>
+        </div>
       </div>
-      <p class="orders-cal-legend">
-        <span class="orders-cal-chip status-new">Order</span>
-        <span class="orders-cal-flag is-blocked">Blocked</span>
-        <span class="orders-cal-flag is-full">Fully booked</span>
-      </p>
-      <div class="form-status" id="ordersCalStatus" role="status"></div>
+      <ul class="orders-cal-legend" aria-label="Legend">
+        ${["new", "contacted", "quoted", "fulfilled"].map((s) => `<li><span class="orders-cal-key status-${s}" aria-hidden="true"></span>${escapeHtml(orderStatusLabel(s))}</li>`).join("")}
+        <li><span class="a-badge a-badge--xs a-badge--warning">Blocked</span> closed in the Delivery tab</li>
+        <li><span class="a-badge a-badge--xs a-badge--danger">Full</span> daily order limit reached</li>
+      </ul>
+      <div id="ordersCalStatus" role="status"></div>
       <div id="ordersCalGrid" class="orders-cal-grid-wrap"></div>
       <div id="ordersCalAgenda" class="orders-cal-agenda"></div>`;
     container.addEventListener("click", (e) => {
@@ -97,15 +99,16 @@
     const time = formatOrderTime(orderEventTime(order));
     const due = orderHasBalanceDue(order) ? ` <span class="orders-cal-due" title="Balance due">${escapeHtml(formatOrderMoney(orderBalance(order)))}</span>` : "";
     return `<button type="button" class="orders-cal-chip status-${escapeHtml(status)}" data-cal-order="${escapeHtml(String(order.id))}" title="${escapeHtml(`${order.name || ""} · ${orderStatusLabel(status)}`)}">
-      ${time ? `<span class="orders-cal-time">${escapeHtml(time)}</span>` : ""}<span class="orders-cal-name">${escapeHtml(order.name || "(no name)")}</span>${due}</button>`;
+      ${time ? `<span class="orders-cal-time">${escapeHtml(time)}</span>` : ""}<span class="orders-cal-name">${escapeHtml(order.name || "(no name)")}</span>${due}<span class="orders-cal-status">${escapeHtml(orderStatusLabel(status))}</span></button>`;
   }
 
+  /* Blocked and Full use the warning and danger pairs; "2/3" is a quiet count. */
   function flagsHtml(day, info) {
     const parts = [];
-    if (info.blocked.has(day)) parts.push(`<span class="orders-cal-flag is-blocked" title="${escapeHtml(info.blocked.get(day) || "Blocked")}">${escapeHtml(info.blocked.get(day) || "Blocked")}</span>`);
-    if (info.full.has(day)) parts.push(`<span class="orders-cal-flag is-full">Full</span>`);
+    if (info.blocked.has(day)) parts.push(`<span class="a-badge a-badge--xs a-badge--warning orders-cal-flag" title="${escapeHtml(info.blocked.get(day) || "Blocked")}">${escapeHtml(info.blocked.get(day) || "Blocked")}</span>`);
+    if (info.full.has(day)) parts.push(`<span class="a-badge a-badge--xs a-badge--danger orders-cal-flag">Full</span>`);
     const count = (info.byDay.get(day) || []).length;
-    if (info.limit > 0 && count) parts.push(`<span class="orders-cal-cap">${count}/${info.limit}</span>`);
+    if (info.limit > 0 && count) parts.push(`<span class="a-badge a-badge--xs a-badge--neutral a-badge--outline orders-cal-flag" title="Orders that day of the daily limit">${count}/${info.limit}</span>`);
     return parts.join("");
   }
 
@@ -127,7 +130,7 @@
       if (info.full.has(day)) classes.push("is-full");
       cells += `<div class="${classes.join(" ")}">
         <div class="orders-cal-cell-head">
-          <span class="orders-cal-daynum">${d.getDate()}</span>
+          <time class="orders-cal-daynum" datetime="${day}"${day === today ? ` aria-current="date"` : ""}><span aria-hidden="true">${d.getDate()}</span><span class="a-visually-hidden">${escapeHtml(friendlyOrderDay(day))}${day === today ? " (today)" : ""}</span></time>
           ${orders.length ? `<button type="button" class="orders-cal-print" data-cal-print="${day}" title="Print day sheet" aria-label="Print day sheet for ${escapeHtml(friendlyOrderDay(day))}">Print</button>` : ""}
         </div>
         <div class="orders-cal-flags">${flagsHtml(day, info)}</div>
@@ -135,8 +138,8 @@
       </div>`;
     }
     document.getElementById("ordersCalGrid").innerHTML = `
-      <div class="orders-cal-grid" role="grid" aria-label="Orders by event date">
-        ${WEEKDAYS.map((w) => `<div class="orders-cal-weekday" role="columnheader">${w}</div>`).join("")}
+      <div class="orders-cal-grid" role="group" aria-label="Orders by event date">
+        ${WEEKDAYS.map((w) => `<div class="orders-cal-weekday" aria-hidden="true">${w}</div>`).join("")}
         ${cells}
       </div>`;
 
@@ -150,16 +153,17 @@
     document.getElementById("ordersCalAgenda").innerHTML = days.length
       ? days.map((day) => {
         const orders = info.byDay.get(day) || [];
-        return `<div class="orders-cal-agenda-day ${day === today ? "is-today" : ""} ${day < today ? "is-past" : ""}">
+        return `<section class="orders-cal-agenda-day ${day === today ? "is-today" : ""} ${day < today ? "is-past" : ""}" aria-label="${escapeHtml(friendlyOrderDay(day))}">
           <div class="orders-cal-agenda-head">
-            <strong>${escapeHtml(friendlyOrderDay(day))}</strong>
+            <strong class="orders-cal-agenda-date">${escapeHtml(friendlyOrderDay(day))}</strong>
+            ${day === today ? `<span class="a-badge a-badge--accent">Today</span>` : ""}
             <span class="orders-cal-flags">${flagsHtml(day, info)}</span>
-            ${orders.length ? `<button type="button" class="orders-cal-print" data-cal-print="${day}">Print day</button>` : ""}
+            ${orders.length ? `<button type="button" class="orders-cal-print" data-cal-print="${day}">Print day sheet</button>` : ""}
           </div>
-          <div class="orders-cal-chips">${orders.length ? orders.map(chipHtml).join("") : `<span class="field-note">No orders</span>`}</div>
-        </div>`;
+          <div class="orders-cal-chips">${orders.length ? orders.map(chipHtml).join("") : `<span class="orders-cal-none">No orders</span>`}</div>
+        </section>`;
       }).join("")
-      : `<p class="empty-note">Nothing booked this month.</p>`;
+      : `<div class="a-empty"><p class="a-empty-title">Nothing booked this month</p><p class="a-empty-text">Orders appear on their event date. Use the arrows to look at another month.</p></div>`;
   }
 
   async function refresh() {
@@ -169,8 +173,14 @@
     const startIso = iso(start);
     const endIso = iso(end);
     const statusEl = document.getElementById("ordersCalStatus");
-    statusEl.textContent = "Loading...";
-    statusEl.className = "form-status";
+    const gridEl = document.getElementById("ordersCalGrid");
+    // Skeleton shaped like the month grid only for the first paint; later months keep the old grid until the new one is ready.
+    if (!gridEl.firstElementChild) {
+      gridEl.innerHTML = `<div class="orders-cal-skel" aria-hidden="true">${'<span class="a-skeleton"></span>'.repeat(14)}</div>`;
+      document.getElementById("ordersCalAgenda").innerHTML = `<div aria-hidden="true">${'<span class="a-skeleton a-skeleton--block"></span>'.repeat(3)}</div>`;
+    }
+    statusEl.textContent = "";
+    statusEl.className = "";
     let result;
     try {
       result = await fetchMonth(startIso, endIso);
@@ -182,7 +192,7 @@
     if (result.orders.error) notes.push("Couldn't load orders: " + (result.orders.error.message || result.orders.error));
     if (ordersSchemaV2 === false) notes.push(`Dates are read from the customer's free-text date until ${ORDERS_MIGRATION_FILE} is run.`);
     statusEl.textContent = notes.join(" ");
-    statusEl.className = "form-status" + (result.orders.error ? " error" : "");
+    statusEl.className = notes.length ? (result.orders.error ? "a-inline-error" : "orders-notice") : "";
 
     const byDay = new Map();
     (result.orders.data || []).forEach((o) => {
