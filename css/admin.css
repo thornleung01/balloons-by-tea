@@ -288,31 +288,15 @@ body.admin-body {
 .photo-preview:has(img) { cursor: pointer; }
 .photo-preview:has(img):hover { opacity: 0.85; }
 
-.photo-gallery { display: flex; flex-wrap: wrap; gap: var(--space-2); margin-bottom: var(--space-2); }
-.photo-gallery:empty { display: none; }
-#f-photo, #c-photo, #s-hero_image, #s-logo_image {
-  position: absolute;
-  width: 1px; height: 1px;
-  padding: 0; margin: -1px;
-  overflow: hidden;
-  clip: rect(0, 0, 0, 0);
-  white-space: nowrap;
-  border: 0;
-}
-.field .photo-upload-dropzone {
-  display: flex;
-  cursor: pointer;
-  transition: border-color 160ms var(--ease), background 160ms var(--ease);
-}
-.photo-upload-dropzone:hover,
-.photo-upload-dropzone:focus-within {
-  border-color: var(--color-accent);
-  background: var(--color-accent-tint);
-}
-.photo-upload-dropzone span { font-size: var(--a-text-xs); color: var(--color-fg-faint); }
-.photo-library-trigger { margin-top: var(--space-2); }
 
-.photo-library-panel { width: min(680px, 100%); }
+
+
+
+
+
+
+
+
 
 /* The shared .lightbox-* classes (css/styles.css) cap the preview box at
    640px so the public customer-facing lightbox doesn't visibly change
@@ -328,92 +312,44 @@ body.admin-body {
 #adminPhotoPreview .lightbox-img-wrap {
   height: min(1200px, 88vh);
 }
-.photo-library-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(84px, 1fr));
-  gap: var(--space-2);
-  max-height: 50vh;
-  overflow-y: auto;
-  margin-bottom: var(--space-2);
-}
-.photo-library-item {
-  position: relative;
-  width: 100%; aspect-ratio: 1;
-  border-radius: var(--radius-sm);
-  overflow: hidden;
-  background: var(--color-bg-alt);
-  border: 1.5px solid var(--color-border);
-  padding: 0; cursor: pointer;
-  transition: border-color 140ms var(--ease), box-shadow 140ms var(--ease);
-}
-.photo-library-item img { width: 100%; height: 100%; object-fit: cover; display: block; }
-.photo-library-item.selected { border-color: var(--color-accent); box-shadow: 0 0 0 2px var(--color-accent); }
-.photo-library-item.selected::after {
-  content: "\2713";
-  position: absolute; top: 4px; right: 4px;
-  width: 18px; height: 18px; border-radius: 50%;
-  background: var(--color-accent); color: var(--a-on-accent);
-  font-size: var(--a-text-2xs); line-height: 18px; text-align: center;
-}
+
+
+
+
+
 
 .panel-subtitle { font-size: var(--a-text-sm); color: var(--color-fg-soft); margin-bottom: var(--space-3); }
 
-.library-breadcrumb {
-  display: flex; flex-wrap: wrap; align-items: center; gap: 4px;
-  font-size: var(--a-text-sm); margin-bottom: var(--space-2);
-}
-.library-breadcrumb-item {
-  background: none; border: none; padding: 2px 4px; cursor: pointer;
-  color: var(--a-accent-text); font: inherit; border-radius: var(--radius-sm);
-}
-.library-breadcrumb-item:hover:not(:disabled) { background: var(--color-accent-tint); }
-.library-breadcrumb-item:disabled { color: var(--color-fg); font-weight: 600; cursor: default; }
-.library-breadcrumb-sep { color: var(--color-fg-faint); }
 
-.library-toolbar { display: flex; gap: var(--space-2); margin-bottom: var(--space-2); }
 
-.library-folder-item {
-  position: relative;
-  width: 100%; aspect-ratio: 1;
-  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px;
-  border-radius: var(--radius-sm);
-  background: var(--color-bg-alt);
-  border: 1.5px dashed var(--color-border);
-  padding: 4px; cursor: pointer; color: var(--color-fg-soft);
-  transition: border-color 140ms var(--ease), background 140ms var(--ease);
-}
-.library-folder-item:hover { border-color: var(--color-accent); background: var(--color-accent-tint); }
-.library-folder-item span { font-size: var(--a-text-2xs); text-align: center; word-break: break-word; line-height: 1.2; max-width: 100%; }
-.library-up-item { border-style: solid; background: transparent; }
+
+
+
+
+
+
+
+
+
+
 
 /* Drop target while dragging a photo over a folder (or the up-tile) —
    reuses the same visual language as the product-folder drag-drop in the
    Products tab, for consistency. */
-.library-folder-item.drop-target-active {
-  background: var(--color-accent-tint);
-  outline: 1.5px dashed var(--color-accent);
-  outline-offset: 3px;
-}
+
 
 /* Small delete "x" overlaid on every photo/folder tile — matches the
    existing .photo-gallery-remove treatment used in the item form's own
    photo gallery, so the "delete a photo" affordance looks the same
    everywhere in the admin panel. */
-.library-item-delete {
-  position: absolute; top: 3px; right: 3px; z-index: var(--a-z-raised);
-  width: 18px; height: 18px; border-radius: 50%;
-  background: var(--a-media-scrim); color: var(--a-on-media);
-  border: none; font-size: var(--a-text-xs); line-height: 1;
-  display: flex; align-items: center; justify-content: center;
-  cursor: pointer; padding: 0;
-}
-.library-item-delete:hover { background: var(--a-media-scrim-hi); }
 
-.photo-library-item.dragging { opacity: 0.4; cursor: grabbing; }
+
+
+
 
 /* The Library tab's grid lives in the normal page flow, not a height-
    capped modal, so let it grow and the page scroll naturally. */
-#libraryPanel .photo-library-grid { max-height: none; overflow: visible; grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); }
+
 
 /* "Find unused photos" review panel — appended below the ordinary Library
    grid rather than a separate modal, since it's a one-off tool specific
@@ -421,62 +357,32 @@ body.admin-body {
    form too) and the admin benefits from seeing it alongside the regular
    grid for context. Hidden until the toolbar button is clicked; never
    auto-populated, never auto-selected. */
-.unused-photos-section {
-  margin-top: var(--space-4);
-  padding-top: var(--space-4);
-  border-top: 1px solid var(--color-border);
-}
-.unused-photos-head { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); margin-bottom: var(--space-2); }
-.unused-photos-head h3 { font-size: var(--a-text-md); margin: 0; }
-.unused-photos-status { font-size: var(--a-text-sm); color: var(--color-fg-soft); margin-bottom: var(--space-2); }
-.unused-photos-section .photo-library-grid { max-height: none; overflow: visible; grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); }
-.unused-photos-actions { display: flex; flex-wrap: wrap; gap: var(--space-2); align-items: center; margin-top: var(--space-2); }
+
+
+
+
+
+
 
 /* Reuses .btn btn-primary's shape but swaps in the shared destructive-red
    token, so an irreversible bulk-delete reads as clearly dangerous rather
    than looking like any other primary action. */
-.admin-body .btn-delete-danger { background: var(--a-danger-solid); border-color: var(--a-danger-solid); color: var(--a-on-danger); }
-.admin-body .btn-delete-danger:hover:not(:disabled) { background: var(--a-danger-solid); color: var(--a-on-danger); opacity: 0.88; }
-.btn-delete-danger:disabled { opacity: 0.5; cursor: default; }
 
-.photo-gallery-item {
-  position: relative;
-  width: 72px; height: 72px;
-  border-radius: var(--radius-sm);
-  overflow: hidden;
-  background: var(--color-bg-alt);
-  border: 1.5px solid var(--color-border);
-}
-.photo-gallery-item.is-primary { border-color: var(--color-accent); }
-.photo-gallery-item img { width: 100%; height: 100%; object-fit: cover; display: block; cursor: zoom-in; }
-.photo-gallery-item { cursor: grab; }
-.photo-gallery-item.dragging { opacity: 0.4; cursor: grabbing; }
-.photo-gallery-item.drag-over { box-shadow: 0 0 0 2px var(--color-accent); }
-.photo-gallery-primary-tag {
-  position: absolute; left: 0; bottom: 0; right: 0;
-  font-size: var(--a-text-2xs); font-weight: 700; text-align: center;
-  background: var(--color-accent); color: var(--a-on-accent);
-  padding: 1px 0;
-}
-.photo-gallery-remove {
-  position: absolute; top: 2px; right: 2px;
-  width: 18px; height: 18px; border-radius: 50%;
-  background: var(--a-media-scrim); color: var(--a-on-media);
-  border: none; font-size: var(--a-text-2xs); line-height: 1;
-  display: flex; align-items: center; justify-content: center;
-  cursor: pointer;
-}
-.photo-gallery-move {
-  position: absolute; top: 2px;
-  width: 18px; height: 18px; border-radius: 50%;
-  background: var(--a-media-scrim); color: var(--a-on-media);
-  border: none; font-size: var(--a-text-2xs); line-height: 1;
-  display: flex; align-items: center; justify-content: center;
-  cursor: pointer;
-}
-.photo-gallery-move.move-left { left: 2px; }
-.photo-gallery-move.move-right { left: 22px; }
-.photo-gallery-move:disabled { opacity: 0.35; cursor: default; }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 .toggle-switch {
   position: relative;
@@ -513,34 +419,18 @@ body.admin-body {
 .form-status.error { color: var(--color-destructive); }
 .form-status.success { color: var(--color-success); }
 
-.collection-group { margin-bottom: var(--space-4); }
-.collection-group h3 { font-size: var(--a-text-md); text-transform: uppercase; letter-spacing: 0.06em; color: var(--color-fg-faint); font-family: var(--font-body); font-weight: 600; margin: 0; }
-.collection-group.drop-target-active {
-  background: var(--color-accent-tint);
-  outline: 1.5px dashed var(--color-accent);
-  outline-offset: 6px;
-  border-radius: var(--radius-sm);
-}
-.collection-group-toggle {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  width: 100%;
-  background: none;
-  border: none;
-  padding: 0;
-  margin-bottom: var(--space-2);
-  cursor: pointer;
-  text-align: left;
-}
-.collection-group-toggle h3 { flex: 1; }
-.collection-group-chevron { flex-shrink: 0; color: var(--color-fg-faint); transition: transform 160ms var(--ease); }
-.collection-group-chevron.is-collapsed { transform: rotate(-90deg); }
-.collection-group-count { font-size: var(--a-text-xs); font-weight: 600; color: var(--color-fg-faint); flex-shrink: 0; }
-.collection-group-rows.is-collapsed { display: none; }
-.collection-group-empty { font-size: var(--a-text-sm); color: var(--color-fg-faint); font-style: italic; padding: var(--space-2) 0; }
-.admin-item-row.dragging { opacity: 0.4; cursor: grabbing; }
-.admin-item-row[draggable="true"] { cursor: grab; }
+
+
+
+
+
+
+
+
+
+
+
+
 
 .admin-item-row {
   display: flex;
@@ -620,49 +510,16 @@ body.admin-body {
 
 .empty-note { font-size: var(--a-text-base); color: var(--color-fg-faint); text-align: center; padding: var(--space-4) 0; }
 
-.admin-item-select {
-  flex-shrink: 0;
-  width: 17px; height: 17px;
-  cursor: pointer;
-  accent-color: var(--color-accent);
-}
 
-.bulk-select-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-2);
-  flex-wrap: wrap;
-  margin: var(--space-2) 0;
-  min-height: 30px;
-}
-.bulk-select-all {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-size: var(--a-text-sm);
-  color: var(--color-fg-soft);
-  cursor: pointer;
-}
-.bulk-select-all input { width: 16px; height: 16px; cursor: pointer; accent-color: var(--color-accent); }
-.bulk-action-bar {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  background: var(--color-accent-tint);
-  border: 1px solid var(--color-accent);
-  border-radius: var(--radius-pill);
-  padding: 6px 6px 6px 14px;
-}
-#bulkSelectedCount { font-size: var(--a-text-sm); font-weight: 600; color: var(--color-fg); white-space: nowrap; }
-.bulk-action-bar button {
-  font-size: var(--a-text-xs); font-weight: 600; padding: 6px 12px; border-radius: var(--radius-pill);
-  border: 1px solid var(--color-border);
-  background: var(--color-surface-solid);
-  white-space: nowrap;
-}
-.bulk-action-bar button:hover { border-color: var(--color-accent); color: var(--color-fg); }
-.bulk-action-bar button.danger:hover { border-color: var(--color-destructive); color: var(--color-destructive); }
+
+
+
+
+
+
+
+
+
 
 /* Tabs: the grouped tab navigation (sidebar / phone chips + group bar)
    lives in css/admin-shell.css. */

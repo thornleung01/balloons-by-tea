@@ -461,17 +461,27 @@ function closeCsvImport() {
   modal.classList.remove("open");
 }
 
+/* The four steps. `current` is 1 to 4; 5 marks them all done (final summary). */
+const CSV_STEPS = ["Upload", "Map columns", "Review", "Import"];
+function csvStepperHtml(current) {
+  return `<ol class="csv-steps" aria-label="Import steps">${CSV_STEPS.map((label, i) => {
+    const n = i + 1;
+    return `<li class="csv-step${n < current ? " is-done" : ""}"${n === current ? ' aria-current="step"' : ""}><span class="csv-step-label">${label}${n < current ? '<span class="a-visually-hidden"> (done)</span>' : ""}</span></li>`;
+  }).join("")}</ol>`;
+}
+
 function renderCsvPickStep(message) {
   const body = document.getElementById("csvImportBody");
   body.innerHTML = `
+    ${csvStepperHtml(1)}
     <label for="csvImportFile" class="upload-dropzone csv-dropzone" id="csvDropzone">
       <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M12 16V4M12 4l-4 4M12 4l4 4" stroke-linecap="round"/><path d="M4 16v3a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-3" stroke-linecap="round"/></svg>
       <strong>Choose a .csv file</strong>
       <span>or drop it here. Save from Excel / Google Sheets as "CSV".</span>
     </label>
     <input id="csvImportFile" type="file" accept=".csv,text/csv" class="visually-hidden-input"/>
-    ${message ? `<p class="form-status error">${escapeHtml(message)}</p>` : ""}
-    <p class="field-note">Expected columns: ${PRODUCT_CSV_FIELDS.map((f) => `<code>${escapeHtml(f.header)}</code>`).join(", ")}. Only Collection, Item Name and Price are required. Tip: "Export products CSV" gives you a file in exactly this format.</p>`;
+    ${message ? `<p class="a-inline-error" role="alert">${escapeHtml(message)}</p>` : ""}
+    <p class="field-note">Expected columns: ${PRODUCT_CSV_FIELDS.map((f) => `<code>${escapeHtml(f.header)}</code>`).join(", ")}. Only Collection, Item Name and Price are required. Tip: "Export CSV" gives you a file in exactly this format.</p>`;
   const input = document.getElementById("csvImportFile");
   input.addEventListener("change", () => { if (input.files[0]) readCsvImportFile(input.files[0]); });
   const zone = document.getElementById("csvDropzone");
@@ -511,33 +521,39 @@ function csvImportValidate() {
   });
 }
 
+function csvMissingRequired() {
+  return PRODUCT_CSV_FIELDS.filter((f) => f.required && !(csvImport.mapping[f.key] > -1));
+}
+
+/* Step 2: match columns, settle new categories, pick the update mode. */
 function renderCsvMapStep() {
   const body = document.getElementById("csvImportBody");
   const { table, mapping } = csvImport;
-  const options = (key) => `<option value="-1">— not in this file —</option>` +
+  const options = (key) => `<option value="-1">Not in this file</option>` +
     table.headers.map((h, i) => `<option value="${i}" ${mapping[key] === i ? "selected" : ""}>${escapeHtml(h || `Column ${i + 1}`)}</option>`).join("");
   const unknown = unknownImportCollections(table, mapping, collectionsCache);
   const extrasMapped = PRODUCT_CSV_EXTRA_KEYS.some((k) => mapping[k] > -1);
 
   body.innerHTML = `
-    <p class="csv-file-line"><strong>${escapeHtml(csvImport.fileName)}</strong> · ${table.rows.length} row${table.rows.length === 1 ? "" : "s"} <button type="button" class="link-btn" id="csvPickAnother">Choose another file</button></p>
-    <details class="csv-mapping" ${PRODUCT_CSV_FIELDS.some((f) => f.required && !(mapping[f.key] > -1)) ? "open" : ""}>
-      <summary>Columns <span class="pf-summary-meta">· ${PRODUCT_CSV_FIELDS.filter((f) => mapping[f.key] > -1).length} matched</span></summary>
-      <div class="csv-mapping-grid">
+    ${csvStepperHtml(2)}
+    <p class="csv-file-line"><strong>${escapeHtml(csvImport.fileName)}</strong> <span>${table.rows.length} row${table.rows.length === 1 ? "" : "s"}</span> <button type="button" class="link-btn" id="csvPickAnother">Choose another file</button></p>
+    <details class="pf-section csv-mapping" ${csvMissingRequired().length ? "open" : ""}>
+      <summary>Columns <span class="pf-summary-meta">${PRODUCT_CSV_FIELDS.filter((f) => mapping[f.key] > -1).length} of ${PRODUCT_CSV_FIELDS.length} matched</span></summary>
+      <div class="pf-body csv-mapping-grid">
         ${PRODUCT_CSV_FIELDS.map((f) => `
-          <label for="csvMap-${f.key}">${escapeHtml(f.header)}${f.required ? ' <span class="csv-required">*</span>' : ""}</label>
+          <label for="csvMap-${f.key}">${escapeHtml(f.header)}${f.required ? ' <span class="csv-required">(required)</span>' : ""}</label>
           <select id="csvMap-${f.key}" data-map-key="${f.key}">${options(f.key)}</select>`).join("")}
       </div>
     </details>
-    ${extrasMapped && productExtrasAvailable === false ? `<p class="form-status error">This file has SKU / sale price / stock / options / dates / tags / SEO columns; they'll be skipped until the database is updated. ${escapeHtml(PRODUCT_MIGRATION_HINT)}</p>` : ""}
+    ${extrasMapped && productExtrasAvailable === false ? `<p class="a-inline-error" role="alert">This file has SKU / sale price / stock / options / dates / tags / SEO columns; they'll be skipped until the database is updated. ${escapeHtml(PRODUCT_MIGRATION_HINT)}</p>` : ""}
     ${unknown.size ? `
       <div class="csv-unknown-collections">
         <h3>New categories in this file</h3>
         ${[...unknown.entries()].map(([lower, shown]) => `
           <div class="csv-collection-choice">
             <span>"${escapeHtml(shown)}"</span>
-            <select data-collection-choice="${escapeHtml(lower)}">
-              <option value="">Choose…</option>
+            <select data-collection-choice="${escapeHtml(lower)}" aria-label="What to do with category ${escapeHtml(shown)}">
+              <option value="">Choose...</option>
               <option value="__create__" ${csvImport.collectionChoices[lower] === "__create__" ? "selected" : ""}>Create a new category "${escapeHtml(shown)}"</option>
               ${collectionsCache.map((c) => `<option value="${escapeHtml(c.slug)}" ${csvImport.collectionChoices[lower] === c.slug ? "selected" : ""}>Put them in ${escapeHtml(c.title)}</option>`).join("")}
             </select>
@@ -545,10 +561,14 @@ function renderCsvMapStep() {
       </div>` : ""}
     <fieldset class="csv-mode">
       <legend>When a product already exists</legend>
-      <label><input type="radio" name="csvMode" value="add" ${csvImport.mode === "add" ? "checked" : ""}/> Add new only (skip products that already exist)</label>
-      <label><input type="radio" name="csvMode" value="update" ${csvImport.mode === "update" ? "checked" : ""}/> Update matching products (same SKU, otherwise same name in the same category) and add the rest</label>
+      <label><input type="radio" name="csvMode" value="add" ${csvImport.mode === "add" ? "checked" : ""}/> <span>Add new only (skip products that already exist)</span></label>
+      <label><input type="radio" name="csvMode" value="update" ${csvImport.mode === "update" ? "checked" : ""}/> <span>Update matching products (same SKU, otherwise same name in the same category) and add the rest</span></label>
     </fieldset>
-    <div id="csvPreview"></div>`;
+    <p class="csv-ready" id="csvReady" aria-live="polite"></p>
+    <div class="modal-actions">
+      <button type="button" class="btn btn-outline" data-close-csv-cancel>Cancel</button>
+      <button type="button" class="btn btn-primary btn-block" id="csvReviewBtn">Review</button>
+    </div>`;
 
   document.getElementById("csvPickAnother").addEventListener("click", () => { csvImport = null; renderCsvPickStep(); });
   body.querySelectorAll("[data-map-key]").forEach((sel) => sel.addEventListener("change", () => {
@@ -561,50 +581,71 @@ function renderCsvMapStep() {
   }));
   body.querySelectorAll("[data-collection-choice]").forEach((sel) => sel.addEventListener("change", () => {
     csvImport.collectionChoices[sel.dataset.collectionChoice] = sel.value;
-    renderCsvPreview();
+    updateCsvMapSummary();
   }));
   body.querySelectorAll('input[name="csvMode"]').forEach((radio) => radio.addEventListener("change", () => {
     csvImport.mode = radio.value;
-    renderCsvPreview();
+    updateCsvMapSummary();
   }));
-  renderCsvPreview();
+  body.querySelector("[data-close-csv-cancel]").addEventListener("click", closeCsvImport);
+  document.getElementById("csvReviewBtn").addEventListener("click", renderCsvReviewStep);
+  updateCsvMapSummary();
+}
+
+/* Re-checks the rows after a choice and says whether the file can go to Review. */
+function updateCsvMapSummary() {
+  csvImportValidate();
+  const missing = csvMissingRequired();
+  const ready = csvImport.rows.filter((r) => r.action === "add" || r.action === "update").length;
+  const note = document.getElementById("csvReady");
+  const btn = document.getElementById("csvReviewBtn");
+  if (!note || !btn) return;
+  if (missing.length) {
+    note.className = "a-inline-error";
+    note.textContent = `Pick a column for ${missing.map((f) => f.header).join(", ")} above.`;
+  } else {
+    note.className = "csv-ready";
+    note.textContent = `${ready} of ${csvImport.rows.length} row${csvImport.rows.length === 1 ? "" : "s"} ready to import.`;
+  }
+  btn.disabled = missing.length > 0;
 }
 
 const CSV_PREVIEW_LIMIT = 200;
 
-function renderCsvPreview() {
+/* Step 3: every row with its result, before anything is written. */
+function renderCsvReviewStep() {
   csvImportValidate();
-  const box = document.getElementById("csvPreview");
+  const body = document.getElementById("csvImportBody");
   const rows = csvImport.rows;
   const count = (action) => rows.filter((r) => r.action === action).length;
   const adds = count("add");
   const updates = count("update");
   const skips = count("skip");
   const errors = count("error");
-  const missingRequired = PRODUCT_CSV_FIELDS.filter((f) => f.required && !(csvImport.mapping[f.key] > -1));
   const total = adds + updates;
   const label = { add: "New", update: "Update", skip: "Skip (exists)", error: "Problem" };
+  const badge = { add: "success", update: "info", skip: "neutral", error: "danger" };
 
-  box.innerHTML = `
-    <div class="csv-counts">
-      <span class="csv-count is-add">${adds} new</span>
-      <span class="csv-count is-update">${updates} to update</span>
-      <span class="csv-count is-skip">${skips} skipped</span>
-      <span class="csv-count is-error">${errors} with problems</span>
+  body.innerHTML = `
+    ${csvStepperHtml(3)}
+    <div class="csv-counts" role="group" aria-label="Review summary">
+      <span class="a-badge a-badge--success">${adds} new</span>
+      <span class="a-badge a-badge--info">${updates} to update</span>
+      <span class="a-badge a-badge--neutral">${skips} skipped</span>
+      <span class="a-badge a-badge--danger">${errors} with problems</span>
     </div>
-    ${missingRequired.length ? `<p class="form-status error">Pick a column for ${missingRequired.map((f) => f.header).join(", ")} above.</p>` : ""}
     <div class="csv-preview-scroll">
-      <table class="csv-preview-table">
-        <thead><tr><th>Row</th><th>Status</th><th>Item</th><th>Collection</th><th>Price</th><th>Notes</th></tr></thead>
+      <table class="csv-preview-table csv-review-table">
+        <thead><tr><th scope="col">Row</th><th scope="col">Status</th><th scope="col">Item</th><th scope="col">Collection</th><th scope="col">Price</th><th scope="col">Notes</th></tr></thead>
         <tbody>
           ${rows.slice(0, CSV_PREVIEW_LIMIT).map((r) => `
             <tr class="is-${r.action}">
-              <td>${r.line}</td>
-              <td><span class="csv-status is-${r.action}">${label[r.action]}</span></td>
-              <td>${escapeHtml(r.name || "—")}</td>
-              <td>${escapeHtml(r.slug ? collectionTitle(r.slug) : r.collectionValue || "—")}</td>
-              <td>${r.values.price !== undefined ? escapeHtml(formatCatalogMoney(r.values.price)) : "—"}${r.values.sale_price ? ` <span class="csv-sale">sale ${escapeHtml(formatCatalogMoney(r.values.sale_price))}</span>` : ""}</td>
-              <td>${[...r.errors.map((m) => `<span class="csv-error">${escapeHtml(m)}</span>`), ...r.warnings.map((m) => `<span class="csv-warning">${escapeHtml(m)}</span>`)].join("<br>")}</td>
+              <td data-label="Row">${r.line}</td>
+              <td data-label="Status"><span class="a-badge a-badge--xs a-badge--${badge[r.action]}">${label[r.action]}</span></td>
+              <td data-label="Item">${escapeHtml(r.name || "-")}</td>
+              <td data-label="Collection">${escapeHtml(r.slug ? collectionTitle(r.slug) : r.collectionValue || "-")}</td>
+              <td data-label="Price">${r.values.price !== undefined ? escapeHtml(formatCatalogMoney(r.values.price)) : "-"}${r.values.sale_price ? ` <span class="csv-sale">sale ${escapeHtml(formatCatalogMoney(r.values.sale_price))}</span>` : ""}</td>
+              <td data-label="Notes">${[...r.errors.map((m) => `<span class="csv-error csv-note-line">${escapeHtml(m)}</span>`), ...r.warnings.map((m) => `<span class="csv-warning csv-note-line">${escapeHtml(m)}</span>`)].join("")}</td>
             </tr>`).join("")}
         </tbody>
       </table>
@@ -612,10 +653,10 @@ function renderCsvPreview() {
     ${rows.length > CSV_PREVIEW_LIMIT ? `<p class="field-note">Showing the first ${CSV_PREVIEW_LIMIT} of ${rows.length} rows; every row is checked.</p>` : ""}
     ${errors ? `<p class="field-note">Rows with problems are left out. Fix them in the file and import again (with "Update matching" so nothing is added twice).</p>` : ""}
     <div class="modal-actions">
-      <button type="button" class="btn btn-outline" data-close-csv-cancel>Cancel</button>
-      <button type="button" class="btn btn-primary btn-block" id="csvImportGo" ${total && !missingRequired.length ? "" : "disabled"}>Import ${total} product${total === 1 ? "" : "s"}</button>
+      <button type="button" class="btn btn-outline" id="csvBackToMap">Back</button>
+      <button type="button" class="btn btn-primary btn-block" id="csvImportGo" ${total ? "" : "disabled"}>Import ${total} product${total === 1 ? "" : "s"}</button>
     </div>`;
-  box.querySelector("[data-close-csv-cancel]").addEventListener("click", closeCsvImport);
+  document.getElementById("csvBackToMap").addEventListener("click", renderCsvMapStep);
   document.getElementById("csvImportGo").addEventListener("click", runCsvImport);
 }
 
@@ -645,23 +686,26 @@ async function runCsvImport() {
   csvImport.running = true;
   const body = document.getElementById("csvImportBody");
   body.innerHTML = `
-    <p id="csvProgressText">Starting…</p>
-    <progress class="csv-progress" id="csvProgress" max="${rows.length}" value="0"></progress>`;
+    ${csvStepperHtml(4)}
+    <p class="csv-running-label" id="csvProgressText" aria-live="polite">Starting...</p>
+    <div class="csv-progress" id="csvProgress" role="progressbar" aria-label="Import progress" aria-valuemin="0" aria-valuemax="${rows.length}" aria-valuenow="0"><span class="csv-progress-bar" id="csvProgressBar"></span></div>`;
   const progress = document.getElementById("csvProgress");
+  const progressBar = document.getElementById("csvProgressBar");
   const progressText = document.getElementById("csvProgressText");
   const client = getSupabaseClient();
   const result = { added: 0, updated: 0, failed: [], extrasDropped: false };
   let done = 0;
   const tick = () => {
     done = result.added + result.updated + result.failed.length;
-    progress.value = done;
-    progressText.textContent = `Imported ${done} of ${rows.length}…`;
+    progress.setAttribute("aria-valuenow", String(done));
+    progressBar.style.width = Math.round((done / rows.length) * 100) + "%";
+    progressText.textContent = `Imported ${done} of ${rows.length}...`;
   };
 
   const collectionError = await createImportCollections(client, rows);
   if (collectionError) {
     csvImport.running = false;
-    body.innerHTML = `<p class="form-status error">${escapeHtml(collectionError)}</p><p>Nothing was imported.</p><div class="modal-actions"><button type="button" class="btn btn-outline" id="csvBackBtn">Back</button></div>`;
+    body.innerHTML = `${csvStepperHtml(4)}<p class="a-inline-error" role="alert">${escapeHtml(collectionError)}</p><p>Nothing was imported.</p><div class="modal-actions"><button type="button" class="btn btn-outline" id="csvBackBtn">Back</button></div>`;
     document.getElementById("csvBackBtn").addEventListener("click", renderCsvMapStep);
     return;
   }
@@ -719,17 +763,19 @@ async function runCsvImport() {
   await refreshItemList();
   const skipped = csvImport.rows.length - rows.length;
   body.innerHTML = `
-    <h3 class="csv-summary-title">${result.failed.length ? "Import finished with some problems" : "Import complete"}</h3>
+    ${csvStepperHtml(5)}
+    <h3 class="csv-summary-title" tabindex="-1" id="csvSummaryTitle">${result.failed.length ? "Import finished with some problems" : "Import complete"}</h3>
     <ul class="csv-summary">
       <li><strong>${result.added}</strong> added</li>
       <li><strong>${result.updated}</strong> updated</li>
       <li><strong>${skipped}</strong> skipped (already there, or a problem in the file)</li>
-      ${result.failed.length ? `<li><strong>${result.failed.length}</strong> couldn't be saved</li>` : ""}
+      ${result.failed.length ? `<li class="is-problem"><strong>${result.failed.length}</strong> couldn't be saved</li>` : ""}
     </ul>
-    ${result.extrasDropped ? `<p class="form-status error">SKU / sale price / stock / options / dates / tags / SEO weren't saved. ${escapeHtml(PRODUCT_MIGRATION_HINT)}</p>` : ""}
+    ${result.extrasDropped ? `<p class="a-inline-error" role="alert">SKU / sale price / stock / options / dates / tags / SEO weren't saved. ${escapeHtml(PRODUCT_MIGRATION_HINT)}</p>` : ""}
     ${result.failed.length ? `<div class="csv-preview-scroll"><table class="csv-preview-table"><thead><tr><th>Row</th><th>Item</th><th>Problem</th></tr></thead><tbody>${result.failed.map((f) => `<tr class="is-error"><td>${f.line}</td><td>${escapeHtml(f.name)}</td><td>${escapeHtml(f.message)}</td></tr>`).join("")}</tbody></table></div>` : ""}
     <div class="modal-actions"><button type="button" class="btn btn-primary btn-block" id="csvDoneBtn">Done</button></div>`;
   document.getElementById("csvDoneBtn").addEventListener("click", closeCsvImport);
+  document.getElementById("csvSummaryTitle").focus();
 }
 
 /* ===== Wiring ===== */
@@ -737,11 +783,12 @@ async function runCsvImport() {
 onAdminInit(() => {
   const controls = document.querySelector("#productsPanel .admin-catalog-controls");
   if (!controls || document.getElementById("productCsvTools")) return;
-  controls.insertAdjacentHTML("afterend", `
-    <div class="product-tools" id="productCsvTools">
-      <button type="button" class="orders-export-btn" id="importProductsCsvBtn">Import CSV</button>
-      <button type="button" class="orders-export-btn" id="exportProductsCsvBtn">Export products CSV</button>
-    </div>`);
+  const toolsHtml = `
+      <button type="button" class="btn btn-outline btn-sm" id="importProductsCsvBtn">Import CSV</button>
+      <button type="button" class="btn btn-outline btn-sm" id="exportProductsCsvBtn">Export CSV</button>`;
+  const slot = document.getElementById("productCsvSlot");
+  if (slot) { slot.id = "productCsvTools"; slot.insertAdjacentHTML("beforeend", toolsHtml); }
+  else controls.insertAdjacentHTML("afterend", `<div class="product-tools" id="productCsvTools">${toolsHtml}</div>`);
   document.getElementById("importProductsCsvBtn").addEventListener("click", openCsvImport);
   document.getElementById("exportProductsCsvBtn").addEventListener("click", exportProductsCsv);
 });

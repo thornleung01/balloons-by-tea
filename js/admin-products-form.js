@@ -41,7 +41,7 @@ function pfSectionsMarkup() {
   return {
     pricing: `
       <details class="pf-section" id="pfPricing" open>
-        <summary>Pricing &amp; stock</summary>
+        <summary>Pricing &amp; stock <span class="pf-summary-meta" id="pfPricingSummary"></span></summary>
         <div class="pf-body" id="pfPricingBody">
           <div class="field">
             <label for="f-sale-price">Sale price <span class="pf-optional">(optional)</span></label>
@@ -56,6 +56,7 @@ function pfSectionsMarkup() {
             <div class="field">
               <label for="f-stock">Stock</label>
               <input id="f-stock" type="number" min="0" step="1" placeholder="Unlimited" inputmode="numeric"/>
+              <p class="field-note" id="pfStockNote" aria-live="polite"></p>
             </div>
           </div>
           <p class="field-note">Blank stock = made to order (no limit). 0 shows "Sold out" and turns off Add to cart. Stock isn't reduced automatically when an order comes in, so update it here.</p>
@@ -69,11 +70,11 @@ function pfSectionsMarkup() {
           <h4 class="pf-subhead">Sizes / options</h4>
           <p class="field-note">Customers pick one (the first is pre-selected). The price is what that option costs; leave it blank to use the product's price.</p>
           <div class="pf-option-rows" id="pfVariantRows"></div>
-          <button type="button" class="btn btn-outline btn-sm pf-add-row" id="pfAddVariantBtn">+ Add size / option</button>
+          <button type="button" class="btn btn-outline btn-sm pf-add-row" id="pfAddVariantBtn">Add size</button>
           <h4 class="pf-subhead">Add-ons</h4>
           <p class="field-note">Optional extras customers can tick. Their price is added on top.</p>
           <div class="pf-option-rows" id="pfAddonRows"></div>
-          <button type="button" class="btn btn-outline btn-sm pf-add-row" id="pfAddAddonBtn">+ Add add-on</button>
+          <button type="button" class="btn btn-outline btn-sm pf-add-row" id="pfAddAddonBtn">Add add-on</button>
         </div>
       </details>
       <details class="pf-section" id="pfVisibility">
@@ -102,9 +103,11 @@ function pfSectionsMarkup() {
         <summary>Tags <span class="pf-summary-meta" id="pfTagsSummary"></span></summary>
         <div class="pf-body">
           <div class="field">
-            <label for="f-tags">Tags</label>
-            <input id="f-tags" type="text" maxlength="400" placeholder="e.g. pastel, helium, number balloon" autocomplete="off"/>
-            <p class="field-note">Separate with commas. Handy for finding products in this list (the search box looks at tags) and in CSV files.</p>
+            <label for="f-tag-input">Add a tag</label>
+            <input id="f-tags" type="hidden"/>
+            <ul class="pf-tag-list" id="pfTagList" aria-label="Tags on this product"></ul>
+            <input id="f-tag-input" type="text" maxlength="40" placeholder="Type a tag, then press Enter or comma" autocomplete="off" enterkeyhint="done"/>
+            <p class="field-note">Handy for finding products in this list (the search box looks at tags) and in CSV files.</p>
             <div class="pf-tag-suggestions" id="pfTagSuggestions"></div>
           </div>
         </div>
@@ -114,16 +117,16 @@ function pfSectionsMarkup() {
         <div class="pf-body">
           <div class="field">
             <label for="f-seo-title">Search title</label>
-            <input id="f-seo-title" type="text" maxlength="120" autocomplete="off"/>
-            <p class="pf-counter" id="pfSeoTitleCounter"></p>
+            <input id="f-seo-title" type="text" maxlength="120" autocomplete="off" aria-describedby="pfSeoTitleCounter"/>
+            <p class="pf-counter is-ok" id="pfSeoTitleCounter"></p>
           </div>
           <div class="field">
             <label for="f-seo-description">Search description</label>
-            <textarea id="f-seo-description" maxlength="320"></textarea>
-            <p class="pf-counter" id="pfSeoDescriptionCounter"></p>
+            <textarea id="f-seo-description" maxlength="320" aria-describedby="pfSeoDescriptionCounter"></textarea>
+            <p class="pf-counter is-ok" id="pfSeoDescriptionCounter"></p>
           </div>
           <p class="field-note">Used for the browser tab title and the Google result when someone opens this product's link. Leave blank to keep the page's own.</p>
-          <div class="pf-snippet" aria-label="Google search result preview">
+          <div class="pf-snippet" role="group" aria-label="Google search result preview">
             <div class="pf-snippet-site">${escapeHtml(PF_SITE_HOST)} › all-products</div>
             <div class="pf-snippet-title" id="pfSnippetTitle"></div>
             <div class="pf-snippet-desc" id="pfSnippetDesc"></div>
@@ -131,11 +134,13 @@ function pfSectionsMarkup() {
         </div>
       </details>
       <details class="pf-section" id="pfPreview" open>
-        <summary>Preview card</summary>
+        <summary>Preview card <span class="pf-summary-meta">Live</span></summary>
         <div class="pf-body">
           <div class="pf-preview-stage"><div class="pf-preview-card" id="pfPreviewCard"></div></div>
-          <p class="field-note" id="pfPreviewNote"></p>
-          <a id="pfViewOnSite" class="btn btn-outline btn-sm pf-view-on-site" target="_blank" rel="noopener" hidden>View on site</a>
+          <div class="pf-preview-aside">
+            <p class="field-note" id="pfPreviewNote"></p>
+            <a id="pfViewOnSite" class="btn btn-outline btn-sm pf-view-on-site" target="_blank" rel="noopener" hidden>View on site</a>
+          </div>
         </div>
       </details>`
   };
@@ -151,11 +156,13 @@ function injectProductExtrasSections() {
   priceField.insertAdjacentHTML("beforebegin", markup.pricing);
   pfEl("pfPricingBody").prepend(priceField);
 
-  // Everything else goes just above the save status / buttons.
-  pfEl("formStatus").insertAdjacentHTML("beforebegin", markup.rest);
+  // Everything else goes just above the sticky save bar.
+  (pfEl("pfSaveBar") || pfEl("formStatus")).insertAdjacentHTML("beforebegin", markup.rest);
   // "Show on site" moves into Visibility.
   const activeField = pfEl("f-active").closest(".field");
   pfEl("pfVisibilityBody").prepend(activeField);
+  // On a phone the live preview starts collapsed, above the save bar.
+  if (window.matchMedia && window.matchMedia("(max-width: 860px)").matches) pfEl("pfPreview").open = false;
 }
 
 /* ===== Option row editors (sizes + add-ons) ===== */
@@ -165,13 +172,15 @@ function pfRenderOptionRows(kind) {
   const box = pfEl(kind === "variant" ? "pfVariantRows" : "pfAddonRows");
   const namePlaceholder = kind === "variant" ? "e.g. Large (6 ft)" : "e.g. Helium top-up";
   const pricePlaceholder = kind === "variant" ? "Product price" : "0";
-  box.innerHTML = rows.map((row, i) => `
+  const noun = kind === "variant" ? "Option" : "Add-on";
+  box.innerHTML = rows.length ? rows.map((row, i) => `
     <div class="pf-option-row" data-index="${i}">
-      <input type="text" class="pf-opt-name" maxlength="80" value="${escapeHtml(row.name)}" placeholder="${namePlaceholder}" aria-label="${kind === "variant" ? "Option" : "Add-on"} ${i + 1} name"/>
-      <div class="pf-opt-price-wrap"><span aria-hidden="true">${kind === "variant" ? "$" : "+$"}</span><input type="number" class="pf-opt-price" min="0" step="0.01" inputmode="decimal" value="${escapeHtml(row.price)}" placeholder="${pricePlaceholder}" aria-label="${kind === "variant" ? "Option" : "Add-on"} ${i + 1} price"/></div>
-      <button type="button" class="pf-opt-move" data-move="-1" ${i === 0 ? "disabled" : ""} aria-label="Move up" title="Move up">&uarr;</button>
-      <button type="button" class="pf-opt-remove" aria-label="Remove" title="Remove">&times;</button>
-    </div>`).join("");
+      <input type="text" class="pf-opt-name" maxlength="80" value="${escapeHtml(row.name)}" placeholder="${namePlaceholder}" aria-label="${noun} ${i + 1} name"/>
+      <div class="pf-opt-price-wrap"><span aria-hidden="true">${kind === "variant" ? "$" : "+$"}</span><input type="number" class="pf-opt-price" min="0" step="0.01" inputmode="decimal" value="${escapeHtml(row.price)}" placeholder="${pricePlaceholder}" aria-label="${noun} ${i + 1} price"/></div>
+      <button type="button" class="pf-opt-move" data-move="-1" ${i === 0 ? "disabled" : ""} aria-label="Move ${noun.toLowerCase()} ${i + 1} up" title="Move up"><span aria-hidden="true">&uarr;</span></button>
+      <button type="button" class="pf-opt-remove" aria-label="Remove ${noun.toLowerCase()} ${i + 1}" title="Remove"><span aria-hidden="true">&times;</span></button>
+    </div>`).join("")
+    : `<p class="pf-empty-hint">${kind === "variant" ? "No sizes yet. Shoppers see the product price only." : "No add-ons yet."}</p>`;
   pfUpdateSummaries();
 }
 
@@ -281,7 +290,7 @@ function pfReadExtras(basePrice) {
   if (from === undefined || until === undefined) errors.push("One of the availability dates isn't a valid date.");
   if (from && until && Date.parse(until) <= Date.parse(from)) errors.push('"Available until" has to be after "Available from".');
 
-  const tags = parseTagList(v("f-tags"));
+  const tags = parseTagList(pfTagsText());
   if (tags.some((t) => t.length > 40)) errors.push("Keep each tag under 40 characters.");
 
   return {
@@ -322,7 +331,7 @@ function productExtrasFormState() {
   return {
     sale: v("f-sale-price"), sku: v("f-sku"), stock: v("f-stock"),
     featured: pfEl("f-featured").checked, from: v("f-available-from"), until: v("f-available-until"),
-    tags: v("f-tags"), seoTitle: v("f-seo-title"), seoDescription: v("f-seo-description"),
+    tags: v("f-tags"), tagInput: v("f-tag-input"), seoTitle: v("f-seo-title"), seoDescription: v("f-seo-description"),
     variants: pfVariantRows.map((r) => [r.name, r.price]), addons: pfAddonRows.map((r) => [r.name, r.price])
   };
 }
@@ -338,6 +347,7 @@ function loadProductExtrasIntoForm(row) {
   set("f-available-from", pfToLocalInput(r.available_from));
   set("f-available-until", pfToLocalInput(r.available_until));
   set("f-tags", parseTagList(r.tags).join(", "));
+  set("f-tag-input", "");
   set("f-seo-title", r.seo_title);
   set("f-seo-description", r.seo_description);
   pfVariantRows = normalizeProductOptions(r.variants).map((o) => ({ name: o.name, price: o.price === null ? "" : String(o.price) }));
@@ -359,11 +369,13 @@ function pfUpdateSaleNote() {
   const price = toNumberOrNull(pfEl("f-price").value) || 0;
   const sale = toNumberOrNull(pfEl("f-sale-price").value);
   note.classList.remove("is-error");
+  pfEl("f-sale-price").removeAttribute("aria-invalid");
   if (pfEl("f-sale-price").value.trim() === "" || sale === null) {
     note.textContent = "";
   } else if (sale >= price) {
     note.textContent = "Must be lower than the regular price to show as a sale.";
     note.classList.add("is-error");
+    pfEl("f-sale-price").setAttribute("aria-invalid", "true");
   } else {
     const pct = price > 0 ? Math.round((1 - sale / price) * 100) : 0;
     note.textContent = `${pct}% off (saves ${formatCatalogMoney(price - sale)}). Shown as ${formatCatalogMoney(price)} crossed out, then ${formatCatalogMoney(sale)}.`;
@@ -375,9 +387,11 @@ function pfUpdateScheduleNote() {
   const from = pfFromLocalInput(pfEl("f-available-from").value);
   const until = pfFromLocalInput(pfEl("f-available-until").value);
   note.classList.remove("is-error");
+  pfEl("f-available-until").removeAttribute("aria-invalid");
   if (from && until && Date.parse(until) <= Date.parse(from)) {
     note.textContent = '"Available until" has to be after "Available from".';
     note.classList.add("is-error");
+    pfEl("f-available-until").setAttribute("aria-invalid", "true");
     return;
   }
   const state = productAvailabilityState(from, until);
@@ -387,9 +401,83 @@ function pfUpdateScheduleNote() {
   else note.textContent = "Leave both blank to show it all the time (while \"Show on site\" is on).";
 }
 
+/* Counter states: ok, near (85% of the limit or more), over. The wording
+   says the state too, so color is never the only signal. */
 function pfCounter(el, length, limit) {
-  el.textContent = `${length} / ${limit} characters${length > limit ? " — Google will cut it short" : ""}`;
-  el.classList.toggle("is-over", length > limit);
+  const over = length > limit;
+  const near = !over && length >= Math.ceil(limit * 0.85);
+  el.textContent = `${length} / ${limit} characters${over ? ". Google will cut it short" : (near ? ". Close to the limit" : "")}`;
+  el.classList.toggle("is-over", over);
+  el.classList.toggle("is-near", near);
+  el.classList.toggle("is-ok", !over && !near);
+}
+
+/* Marks an input invalid (or clears it) and writes the message under it. */
+function pfSetFieldError(inputId, noteEl, message) {
+  const input = pfEl(inputId);
+  if (input) {
+    if (message) input.setAttribute("aria-invalid", "true");
+    else input.removeAttribute("aria-invalid");
+  }
+  if (noteEl) {
+    noteEl.classList.toggle("is-error", !!message);
+    if (message !== undefined && message !== null) noteEl.textContent = message;
+  }
+}
+
+function pfUpdatePriceNote() {
+  const note = pfEl("pfPriceNote");
+  const raw = pfEl("f-price").value.trim();
+  let message = "";
+  if (raw !== "") {
+    const n = Number(raw);
+    if (!Number.isFinite(n) || n < 0) message = "Enter a price of 0 or more.";
+  }
+  pfSetFieldError("f-price", note, message);
+}
+
+function pfUpdateStockNote() {
+  const note = pfEl("pfStockNote");
+  const raw = pfEl("f-stock").value.trim();
+  let message = "";
+  if (raw !== "") {
+    const n = Number(raw);
+    if (!Number.isInteger(n) || n < 0) message = "Use a whole number, 0 or more.";
+  }
+  pfSetFieldError("f-stock", note, message);
+}
+
+/* ===== Tag chips =====
+   #f-tags (hidden) holds the committed tags as "a, b, c", exactly what the
+   old text field held, so loading, saving and the dirty check are unchanged.
+   #f-tag-input is where a new tag is typed. */
+function pfTagsText() {
+  const typed = pfEl("f-tag-input") ? pfEl("f-tag-input").value : "";
+  return pfEl("f-tags").value + (typed ? "," + typed : "");
+}
+
+function pfCommitTagInput() {
+  const input = pfEl("f-tag-input");
+  const added = parseTagList(input.value);
+  input.value = "";
+  if (!added.length) return;
+  const tags = parseTagList(pfEl("f-tags").value);
+  added.forEach((t) => { if (!tags.some((x) => x.toLowerCase() === t.toLowerCase())) tags.push(t); });
+  pfEl("f-tags").value = tags.join(", ");
+  pfUpdateAll();
+}
+
+let pfTagListRendered = null;
+function pfRenderTagChips() {
+  const list = pfEl("pfTagList");
+  if (!list) return;
+  const tags = parseTagList(pfEl("f-tags").value);
+  const key = tags.join("\n");
+  if (key === pfTagListRendered) return;
+  pfTagListRendered = key;
+  list.hidden = tags.length === 0;
+  list.innerHTML = tags.map((t) => `
+    <li class="pf-tag-pill"><span>${escapeHtml(t)}</span><button type="button" class="pf-tag-remove" data-tag="${escapeHtml(t)}" aria-label="Remove tag ${escapeHtml(t)}"><span aria-hidden="true">&times;</span></button></li>`).join("");
 }
 
 function pfUpdateSeo() {
@@ -427,11 +515,32 @@ function pfUpdateSummaries() {
   if (state === "scheduled") vis.push(["scheduled", "Scheduled"]);
   if (state === "expired") vis.push(["expired", "Expired"]);
   if (pfEl("f-featured").checked) vis.push(["featured", "Featured"]);
-  pfEl("pfVisibilitySummary").innerHTML = vis.map(([k, label]) => `<span class="product-status-badge is-${k}">${label}</span>`).join("");
+  pfEl("pfVisibilitySummary").innerHTML = vis.length
+    ? vis.map(([k, label]) => productBadgeHtml(k, label)).join("")
+    : "On site";
 
-  const tags = parseTagList(pfEl("f-tags").value);
-  pfEl("pfTagsSummary").textContent = tags.length ? `· ${tags.length}` : "";
-  pfEl("pfSeoSummary").textContent = pfEl("f-seo-title").value.trim() || pfEl("f-seo-description").value.trim() ? "· set" : "";
+  const tags = parseTagList(pfTagsText());
+  pfEl("pfTagsSummary").textContent = tags.length ? `${tags.length} tag${tags.length === 1 ? "" : "s"}` : "None";
+  pfEl("pfSeoSummary").textContent = pfEl("f-seo-title").value.trim() || pfEl("f-seo-description").value.trim() ? "Set" : "Not set";
+
+  // Collapsed-section summaries for the sections in admin.html.
+  const money = (raw) => { const n = toNumberOrNull(raw); return n === null ? null : formatCatalogMoney(n); };
+  const price = money(pfEl("f-price").value);
+  const sale = money(pfEl("f-sale-price").value);
+  const stockRaw = pfEl("f-stock").value.trim();
+  const priceParts = [];
+  priceParts.push(price ? `Price ${price}` : "No price yet");
+  if (sale) priceParts.push(`sale ${sale}`);
+  if (stockRaw !== "") priceParts.push(`stock ${stockRaw}`);
+  pfEl("pfPricingSummary").textContent = priceParts.join(", ");
+  const basicsName = pfEl("f-name").value.trim();
+  const collectionSelect = pfEl("f-collection");
+  const collectionLabel = collectionSelect.selectedOptions && collectionSelect.selectedOptions[0] ? collectionSelect.selectedOptions[0].textContent : "";
+  if (pfEl("pfBasicsSummary")) pfEl("pfBasicsSummary").textContent = [basicsName || "No name yet", collectionLabel].filter(Boolean).join(", ");
+  if (pfEl("pfPhotosSummary")) {
+    const n = (typeof currentPhotoEntries !== "undefined" ? currentPhotoEntries : []).length;
+    pfEl("pfPhotosSummary").textContent = n ? `${n} photo${n === 1 ? "" : "s"}` : "None yet";
+  }
 }
 
 /* Clickable chips for tags already used on other products. */
@@ -549,6 +658,10 @@ function pfUpdateMigrationNote() {
 }
 
 function pfUpdateAll() {
+  pfUpdatePriceNote();
+  pfUpdateStockNote();
+  pfRenderTagChips();
+  if (typeof updateItemFormDirtyUI === "function") updateItemFormDirtyUI();
   pfUpdateSaleNote();
   pfUpdateScheduleNote();
   pfUpdateSeo();
@@ -568,6 +681,23 @@ onAdminInit(() => {
   form.addEventListener("input", pfUpdateAll);
   form.addEventListener("change", pfUpdateAll);
   form.addEventListener("reset", () => setTimeout(pfUpdateAll, 0));
+  const tagInput = pfEl("f-tag-input");
+  tagInput.addEventListener("keydown", (e) => {
+    if (e.key === "Enter" || e.key === ",") { e.preventDefault(); pfCommitTagInput(); }
+    else if (e.key === "Backspace" && !tagInput.value) {
+      const tags = parseTagList(pfEl("f-tags").value);
+      if (tags.length) { tags.pop(); pfEl("f-tags").value = tags.join(", "); pfUpdateAll(); }
+    }
+  });
+  tagInput.addEventListener("blur", pfCommitTagInput);
+  pfEl("pfTagList").addEventListener("click", (e) => {
+    const btn = e.target.closest(".pf-tag-remove");
+    if (!btn) return;
+    const tags = parseTagList(pfEl("f-tags").value).filter((t) => t !== btn.dataset.tag);
+    pfEl("f-tags").value = tags.join(", ");
+    pfUpdateAll();
+    tagInput.focus();
+  });
   pfEl("pfTagSuggestions").addEventListener("click", (e) => {
     const chip = e.target.closest(".pf-tag-chip");
     if (!chip) return;

@@ -171,51 +171,63 @@
     </section>
 
     <div id="productsPanel" class="admin-grid" hidden>
-      <div class="admin-card">
+      <div class="admin-card product-form-card">
         <h2 id="formTitle">Add Item</h2>
         <form id="itemForm" novalidate>
-          <div class="field">
-            <label for="f-collection">Collection</label>
-            <select id="f-collection" name="collection" required>
-              <option value="anniversary">Anniversary</option>
-              <option value="birthday">Birthday</option>
-              <option value="kids">Kids</option>
-              <option value="other-occasions">Other Occasions</option>
-            </select>
-          </div>
-          <div class="field">
-            <label for="f-name">Item name</label>
-            <input id="f-name" name="name" type="text" required/>
-          </div>
-          <div class="field">
+          <details class="pf-section" id="pfBasics" open>
+            <summary>Basics <span class="pf-summary-meta" id="pfBasicsSummary"></span></summary>
+            <div class="pf-body">
+              <div class="field">
+                <label for="f-collection">Collection</label>
+                <select id="f-collection" name="collection" required>
+                  <option value="anniversary">Anniversary</option>
+                  <option value="birthday">Birthday</option>
+                  <option value="kids">Kids</option>
+                  <option value="other-occasions">Other Occasions</option>
+                </select>
+              </div>
+              <div class="field">
+                <label for="f-name">Item name</label>
+                <input id="f-name" name="name" type="text" required/>
+              </div>
+              <div class="field">
+                <label for="f-description">Description</label>
+                <textarea id="f-description" name="description"></textarea>
+              </div>
+              <div class="field">
+                <label for="f-style">Style (used if no photo)</label>
+                <select id="f-style" name="style">
+                  <option value="">Use collection default</option>
+                  <option value="golden classic">Golden Classic</option>
+                  <option value="ivory romance">Ivory Romance</option>
+                  <option value="sage whisper">Sage Whisper</option>
+                  <option value="charcoal noir">Charcoal Noir</option>
+                  <option value="blush luxe">Blush Luxe</option>
+                </select>
+              </div>
+            </div>
+          </details>
+          <details class="pf-section" id="pfPhotos" open>
+            <summary>Photos <span class="pf-summary-meta" id="pfPhotosSummary"></span></summary>
+            <div class="pf-body">
+              <div class="field">
+                <label for="f-photo" class="pf-photo-label">The first photo is the cover shown on the product card. Drag photos, or use the arrows, to reorder.</label>
+                <div class="photo-gallery" id="photoGallery"></div>
+                <label for="f-photo" class="upload-dropzone photo-upload-dropzone" id="photoDropzone">
+                  <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M12 16V4M12 4l-4 4M12 4l4 4" stroke-linecap="round"/><path d="M4 16v3a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-3" stroke-linecap="round"/></svg>
+                  <strong>Click to add photos, or drop them here</strong>
+                  <span>PNG or JPG, you can pick more than one</span>
+                </label>
+                <input id="f-photo" name="photo" type="file" accept="image/*" multiple/>
+                <p class="a-inline-error a-inline-error--plain" id="photoDropError" role="alert" hidden></p>
+                <button type="button" id="openPhotoLibraryBtn" class="btn btn-outline btn-sm photo-library-trigger">Choose from library</button>
+              </div>
+            </div>
+          </details>
+          <div class="field pf-price-field">
             <label for="f-price">Price</label>
-            <input id="f-price" name="price" type="number" min="0" step="0.01" required/>
-          </div>
-          <div class="field">
-            <label for="f-description">Description</label>
-            <textarea id="f-description" name="description"></textarea>
-          </div>
-          <div class="field">
-            <label for="f-style">Style (used if no photo)</label>
-            <select id="f-style" name="style">
-              <option value="">Use collection default</option>
-              <option value="golden classic">Golden Classic</option>
-              <option value="ivory romance">Ivory Romance</option>
-              <option value="sage whisper">Sage Whisper</option>
-              <option value="charcoal noir">Charcoal Noir</option>
-              <option value="blush luxe">Blush Luxe</option>
-            </select>
-          </div>
-          <div class="field">
-            <label for="f-photo">Photos (optional, first one is the card thumbnail)</label>
-            <div class="photo-gallery" id="photoGallery"></div>
-            <label for="f-photo" class="upload-dropzone photo-upload-dropzone">
-              <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M12 16V4M12 4l-4 4M12 4l4 4" stroke-linecap="round"/><path d="M4 16v3a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-3" stroke-linecap="round"/></svg>
-              <strong>Click to add photos</strong>
-              <span>PNG or JPG, you can pick more than one</span>
-            </label>
-            <input id="f-photo" name="photo" type="file" accept="image/*" multiple/>
-            <button type="button" id="openPhotoLibraryBtn" class="btn btn-outline btn-sm photo-library-trigger">Choose from library</button>
+            <input id="f-price" name="price" type="number" min="0" step="0.01" required inputmode="decimal"/>
+            <p class="field-note" id="pfPriceNote" aria-live="polite"></p>
           </div>
           <div class="field">
             <label for="f-active" class="a-inline-flex-center">
@@ -223,20 +235,29 @@
               Show on site
             </label>
           </div>
-          <div class="form-status" id="formStatus"></div>
-          <div class="modal-actions">
-            <button type="button" class="btn btn-outline" id="cancelEditBtn" hidden>Cancel edit</button>
-            <button type="submit" class="btn btn-primary btn-block" id="saveBtn">Add Item</button>
+          <div class="pf-savebar" id="pfSaveBar">
+            <div class="pf-savebar-status">
+              <p class="pf-dirty" id="pfDirty" hidden><span class="pf-dirty-dot" aria-hidden="true"></span>Unsaved changes</p>
+              <div class="pf-progress" id="pfUploadProgress" role="progressbar" aria-label="Uploading photos" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" hidden><span class="pf-progress-bar" id="pfUploadProgressBar"></span></div>
+              <div class="form-status" id="formStatus" role="status" aria-live="polite"></div>
+            </div>
+            <div class="modal-actions">
+              <button type="button" class="btn btn-outline" id="cancelEditBtn" hidden>Cancel edit</button>
+              <button type="submit" class="btn btn-primary" id="saveBtn">Add Item</button>
+            </div>
           </div>
         </form>
       </div>
 
-      <div class="admin-card">
-        <h2>Current Items</h2>
+      <div class="admin-card product-list-card">
+        <div class="product-list-head">
+          <h2>Current Items <span class="product-count" id="productCount"></span></h2>
+          <div class="product-tools" id="productCsvSlot"></div>
+        </div>
         <div class="catalog-controls admin-catalog-controls">
           <div class="search-field">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.35-4.35" stroke-linecap="round"/></svg>
-            <input type="search" id="itemSearch" placeholder="Search products..." aria-label="Search products"/>
+            <input type="search" id="itemSearch" placeholder="Search by name, SKU or tag" aria-label="Search products"/>
           </div>
           <select id="itemFilter" class="filter-select" aria-label="Filter by category">
             <option value="all">All Products</option>
@@ -254,15 +275,27 @@
             <input type="checkbox" id="itemSelectAll"/>
             <span>Select all</span>
           </label>
-          <div class="bulk-action-bar" id="bulkActionBar" hidden>
+        </div>
+        <div id="itemList" aria-live="polite"></div>
+        <div class="bulk-action-bar" id="bulkActionBar" role="region" aria-label="Bulk actions for selected items" hidden>
+          <div class="bulk-count">
             <span id="bulkSelectedCount">0 selected</span>
-            <button type="button" id="bulkShowBtn">Show</button>
-            <button type="button" id="bulkHideBtn">Hide</button>
-            <button type="button" class="danger" id="bulkDeleteBtn">Delete</button>
-            <button type="button" id="bulkClearBtn">Clear</button>
+            <button type="button" class="bulk-clear" id="bulkClearBtn">Clear</button>
+          </div>
+          <div class="bulk-groups">
+            <div class="bulk-group" role="group" aria-label="Visibility">
+              <span class="bulk-group-label" aria-hidden="true">Visibility</span>
+              <button type="button" id="bulkShowBtn">Show</button>
+              <button type="button" id="bulkHideBtn">Hide</button>
+            </div>
+            <div class="bulk-group" id="bulkEditGroup" role="group" aria-label="Price and tags">
+              <span class="bulk-group-label" aria-hidden="true">Edit</span>
+            </div>
+            <div class="bulk-group bulk-group-danger">
+              <button type="button" class="danger" id="bulkDeleteBtn">Delete</button>
+            </div>
           </div>
         </div>
-        <div id="itemList"></div>
       </div>
     </div>
 
@@ -449,24 +482,30 @@
     <div id="libraryPanel" hidden>
       <div class="admin-card">
         <h2>Photo Library</h2>
-        <p class="panel-subtitle">Every photo you've uploaded, organized into folders. Browse here, or pick from it when adding/editing a product.</p>
-        <div class="library-breadcrumb" id="libraryTabBreadcrumb"></div>
-        <div class="library-toolbar">
-          <button type="button" class="btn btn-outline btn-sm" id="libraryNewFolderBtn">New folder</button>
-          <label class="btn btn-outline btn-sm" for="libraryUploadInput">Upload photos</label>
-          <input id="libraryUploadInput" type="file" accept="image/*" multiple hidden/>
-          <button type="button" class="btn btn-outline btn-sm" id="findUnusedPhotosBtn">Find unused photos</button>
+        <p class="panel-subtitle">Every photo you've uploaded, organized into folders. Browse here, or pick from it when adding or editing a product.</p>
+        <nav class="library-breadcrumb" id="libraryTabBreadcrumb" aria-label="Photo folders"></nav>
+        <div class="library-toolbar" role="toolbar" aria-label="Library actions">
+          <div class="library-toolbar-group">
+            <button type="button" class="btn btn-outline btn-sm" id="libraryNewFolderBtn">New folder</button>
+            <input id="libraryUploadInput" class="a-visually-hidden library-upload-input" type="file" accept="image/*" multiple/>
+            <label class="btn btn-outline btn-sm" for="libraryUploadInput">Upload photos</label>
+          </div>
+          <div class="library-toolbar-group">
+            <button type="button" class="btn btn-outline btn-sm" id="findUnusedPhotosBtn">Find unused photos</button>
+          </div>
         </div>
+        <ul class="library-upload-status" id="libraryUploadStatus" aria-live="polite" hidden></ul>
         <div class="photo-library-grid" id="libraryTabGrid"></div>
 
         <div class="unused-photos-section" id="unusedPhotosSection" hidden>
           <div class="unused-photos-head">
             <h3>Unused photos</h3>
-            <button type="button" class="icon-btn" id="closeUnusedPhotosBtn" aria-label="Close">&times;</button>
+            <button type="button" class="icon-btn" id="closeUnusedPhotosBtn" aria-label="Close unused photos">&times;</button>
           </div>
-          <p class="unused-photos-status" id="unusedPhotosStatus"></p>
+          <p class="unused-photos-status" id="unusedPhotosStatus" role="status"></p>
           <div class="photo-library-grid" id="unusedPhotosGrid"></div>
           <div class="unused-photos-actions" id="unusedPhotosActions" hidden>
+            <span class="unused-selected-count" id="unusedSelectedCount" aria-live="polite">None selected</span>
             <button type="button" class="btn btn-outline btn-sm" id="unusedSelectAllBtn">Select all shown</button>
             <button type="button" class="btn btn-outline btn-sm" id="unusedSelectNoneBtn">Clear selection</button>
             <button type="button" class="btn btn-primary btn-sm btn-delete-danger" id="deleteUnusedPhotosBtn" disabled>Delete selected</button>

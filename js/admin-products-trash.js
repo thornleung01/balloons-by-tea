@@ -47,16 +47,23 @@ function renderTrashPanel() {
   }
 
   panel.innerHTML = `
-    <div class="orders-head trash-head">
-      <h2>Trash</h2>
-      <div class="trash-actions">
-        <button type="button" class="orders-export-btn" id="trashPurgeOldBtn" ${dueCount ? "" : "disabled"}>Delete items older than ${TRASH_PURGE_DAYS} days${dueCount ? ` (${dueCount})` : ""}</button>
-        <button type="button" class="orders-export-btn danger" id="trashEmptyBtn" ${rows.length ? "" : "disabled"}>Empty trash</button>
-      </div>
-    </div>
-    <p class="panel-subtitle">Deleted products wait here and are hidden from the site. Restore puts one back exactly as it was. Anything here longer than ${TRASH_PURGE_DAYS} days is marked "will be purged"; nothing is removed until you press a button. Photos stay in the Library either way.</p>
+    <h2>Trash${rows.length ? ` <span class="a-badge a-badge--neutral">${rows.length}</span>` : ""}</h2>
+    <p class="panel-subtitle">Deleted products wait here, hidden from the site. Restore puts one back exactly as it was. Nothing is removed until you press a delete button, and photos stay in the Library either way.</p>
     <p class="form-status" id="trashStatus" role="status" aria-live="polite"></p>
-    <div id="trashList">${rows.length ? rows.map((row) => trashRowMarkup(row, now)).join("") : `<p class="empty-note">The Trash is empty.</p>`}</div>
+    <div id="trashList">${rows.length ? rows.map((row) => trashRowMarkup(row, now)).join("") : `
+      <div class="a-empty trash-empty">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13M10 11v6M14 11v6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        <p class="a-empty-title">Trash is empty</p>
+        <p class="a-empty-text">Deleted products wait here for ${TRASH_PURGE_DAYS} days before you can clear them out. Restore one at any time.</p>
+      </div>`}</div>
+    ${rows.length ? `
+    <div class="trash-footer">
+      <p>Clearing the Trash deletes products for good. This can't be undone.</p>
+      <div class="trash-footer-actions">
+        <button type="button" class="btn btn-outline btn-sm" id="trashPurgeOldBtn" ${dueCount ? "" : "disabled"}>Delete items older than ${TRASH_PURGE_DAYS} days${dueCount ? ` (${dueCount})` : ""}</button>
+        <button type="button" class="btn btn-outline btn-sm" id="trashEmptyBtn">Empty trash</button>
+      </div>
+    </div>` : ""}
   `;
 
   panel.querySelectorAll("[data-trash-restore]").forEach((btn) => btn.addEventListener("click", () => restoreTrashedProducts([btn.dataset.trashRestore], btn)));
@@ -79,19 +86,28 @@ function renderTrashPanel() {
 function trashRowMarkup(row, now) {
   const days = trashAgeDays(row, now);
   const due = days >= TRASH_PURGE_DAYS;
+  const left = TRASH_PURGE_DAYS - days;
   const when = new Date(row.deleted_at).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
   const ago = days <= 0 ? "today" : days === 1 ? "yesterday" : `${days} days ago`;
+  // Warning pair in the last week, a danger pair once it is past the limit.
+  const countdown = due
+    ? `<span class="a-badge a-badge--danger" title="In the Trash for ${days} days">Purge due</span>`
+    : (left < 7
+      ? `<span class="a-badge a-badge--warning">Purge in ${left} day${left === 1 ? "" : "s"}</span>`
+      : `<span class="a-badge a-badge--neutral">Purge in ${left} days</span>`);
+  const name = escapeHtml(row.name);
   return `
-    <div class="admin-item-row trash-row" data-id="${row.id}">
-      <div class="admin-item-thumb">${row.image_url ? `<img src="${escapeHtml(row.image_url)}" alt=""/>` : ""}</div>
+    <div class="admin-item-row product-row trash-row ${due ? "is-due" : ""}" data-id="${row.id}">
+      <div class="admin-item-thumb">${row.image_url ? `<img src="${escapeHtml(row.image_url)}" alt=""/>` : PRODUCT_THUMB_PLACEHOLDER}</div>
       <div class="admin-item-body">
-        <div class="name">${escapeHtml(row.name)}</div>
-        <div class="meta">${escapeHtml(collectionTitle(row.collection))} &middot; ${formatCatalogMoney(Number(row.price) || 0)} &middot; deleted ${escapeHtml(when)} (${ago})</div>
-        ${due ? `<div class="product-badges"><span class="product-status-badge is-purge">Will be purged</span></div>` : ""}
+        <div class="name">${name}</div>
+        <div class="meta">${escapeHtml(collectionTitle(row.collection))}<span class="meta-sep" aria-hidden="true">&middot;</span>${formatCatalogMoney(Number(row.price) || 0)}</div>
+        <div class="meta">Deleted ${escapeHtml(ago)} (${escapeHtml(when)})</div>
+        <div class="product-badges">${countdown}</div>
       </div>
       <div class="admin-item-actions">
-        <button type="button" data-trash-restore="${row.id}">Restore</button>
-        <button type="button" class="danger" data-trash-delete="${row.id}">Delete forever</button>
+        <button type="button" class="btn btn-primary btn-sm" data-trash-restore="${row.id}" aria-label="Restore ${name}">Restore</button>
+        <button type="button" class="btn btn-outline btn-sm trash-delete" data-trash-delete="${row.id}" aria-label="Delete ${name} forever">Delete forever</button>
       </div>
     </div>`;
 }
