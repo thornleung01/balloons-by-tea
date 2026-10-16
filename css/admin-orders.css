@@ -340,6 +340,9 @@ body.order-drawer-open { overflow: hidden; }
   border: var(--a-border-w) solid var(--a-border-strong); border-radius: var(--a-radius-sm);
 }
 .order-drawer-wrap .order-status-select { width: auto; min-width: 12rem; font-size: var(--a-text-base); font-weight: var(--a-weight-semibold); }
+.order-drawer-wrap .order-event-grid .order-status-select { width: 100%; min-width: 0; }
+.order-drawer-wrap .order-money-field input { padding-left: 28px; }
+.order-drawer:focus-visible { outline: none; }
 :is(.order-money-grid, .order-event-grid) :is(input, select):focus-visible,
 .order-drawer-wrap .order-status-select:focus-visible { outline: var(--a-ring-w) solid var(--a-focus); outline-offset: var(--a-ring-offset); border-color: var(--a-focus); }
 .order-balance-box { display: flex; flex-direction: column; justify-content: center; gap: 2px; min-height: var(--a-tap); padding: var(--a-space-2) var(--a-space-3); background: var(--a-surface-sunken); border-radius: var(--a-radius-sm); align-self: end; }
