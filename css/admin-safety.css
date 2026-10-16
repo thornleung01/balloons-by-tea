@@ -131,7 +131,9 @@
 .activity-retention .form-status { margin: 0; }
 @media (max-width: 640px) {
   .activity-undo-btn, .activity-pager .btn, .activity-retention .btn, .activity-head .btn { min-height: var(--a-tap); }
-  .activity-filters { grid-template-columns: 1fr 1fr; }
+  .activity-filters { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+  .activity-filters label { min-width: 0; }
+  .activity-filters input[type="date"] { min-width: 0; max-width: 100%; }
   .activity-filters label:nth-child(-n+3) { grid-column: 1 / -1; }
   .activity-filters select, .activity-filters input[type="date"] { min-height: var(--a-tap); }
   /* before / after readable on a phone: stack each row */
