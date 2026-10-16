@@ -514,7 +514,7 @@ function csvImportValidate() {
 function renderCsvMapStep() {
   const body = document.getElementById("csvImportBody");
   const { table, mapping } = csvImport;
-  const options = (key) => `<option value="-1">— not in this file —</option>` +
+  const options = (key) => `<option value="-1">Not in this file</option>` +
     table.headers.map((h, i) => `<option value="${i}" ${mapping[key] === i ? "selected" : ""}>${escapeHtml(h || `Column ${i + 1}`)}</option>`).join("");
   const unknown = unknownImportCollections(table, mapping, collectionsCache);
   const extrasMapped = PRODUCT_CSV_EXTRA_KEYS.some((k) => mapping[k] > -1);
@@ -601,9 +601,9 @@ function renderCsvPreview() {
             <tr class="is-${r.action}">
               <td>${r.line}</td>
               <td><span class="csv-status is-${r.action}">${label[r.action]}</span></td>
-              <td>${escapeHtml(r.name || "—")}</td>
-              <td>${escapeHtml(r.slug ? collectionTitle(r.slug) : r.collectionValue || "—")}</td>
-              <td>${r.values.price !== undefined ? escapeHtml(formatCatalogMoney(r.values.price)) : "—"}${r.values.sale_price ? ` <span class="csv-sale">sale ${escapeHtml(formatCatalogMoney(r.values.sale_price))}</span>` : ""}</td>
+              <td>${escapeHtml(r.name || "-")}</td>
+              <td>${escapeHtml(r.slug ? collectionTitle(r.slug) : r.collectionValue || "-")}</td>
+              <td>${r.values.price !== undefined ? escapeHtml(formatCatalogMoney(r.values.price)) : "-"}${r.values.sale_price ? ` <span class="csv-sale">sale ${escapeHtml(formatCatalogMoney(r.values.sale_price))}</span>` : ""}</td>
               <td>${[...r.errors.map((m) => `<span class="csv-error">${escapeHtml(m)}</span>`), ...r.warnings.map((m) => `<span class="csv-warning">${escapeHtml(m)}</span>`)].join("<br>")}</td>
             </tr>`).join("")}
         </tbody>

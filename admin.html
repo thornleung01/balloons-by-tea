@@ -474,24 +474,30 @@
     <div id="libraryPanel" hidden>
       <div class="admin-card">
         <h2>Photo Library</h2>
-        <p class="panel-subtitle">Every photo you've uploaded, organized into folders. Browse here, or pick from it when adding/editing a product.</p>
-        <div class="library-breadcrumb" id="libraryTabBreadcrumb"></div>
-        <div class="library-toolbar">
-          <button type="button" class="btn btn-outline btn-sm" id="libraryNewFolderBtn">New folder</button>
-          <label class="btn btn-outline btn-sm" for="libraryUploadInput">Upload photos</label>
-          <input id="libraryUploadInput" type="file" accept="image/*" multiple hidden/>
-          <button type="button" class="btn btn-outline btn-sm" id="findUnusedPhotosBtn">Find unused photos</button>
+        <p class="panel-subtitle">Every photo you've uploaded, organized into folders. Browse here, or pick from it when adding or editing a product.</p>
+        <nav class="library-breadcrumb" id="libraryTabBreadcrumb" aria-label="Photo folders"></nav>
+        <div class="library-toolbar" role="toolbar" aria-label="Library actions">
+          <div class="library-toolbar-group">
+            <button type="button" class="btn btn-outline btn-sm" id="libraryNewFolderBtn">New folder</button>
+            <input id="libraryUploadInput" class="a-visually-hidden library-upload-input" type="file" accept="image/*" multiple/>
+            <label class="btn btn-outline btn-sm" for="libraryUploadInput">Upload photos</label>
+          </div>
+          <div class="library-toolbar-group">
+            <button type="button" class="btn btn-outline btn-sm" id="findUnusedPhotosBtn">Find unused photos</button>
+          </div>
         </div>
+        <ul class="library-upload-status" id="libraryUploadStatus" aria-live="polite" hidden></ul>
         <div class="photo-library-grid" id="libraryTabGrid"></div>
 
         <div class="unused-photos-section" id="unusedPhotosSection" hidden>
           <div class="unused-photos-head">
             <h3>Unused photos</h3>
-            <button type="button" class="icon-btn" id="closeUnusedPhotosBtn" aria-label="Close">&times;</button>
+            <button type="button" class="icon-btn" id="closeUnusedPhotosBtn" aria-label="Close unused photos">&times;</button>
           </div>
-          <p class="unused-photos-status" id="unusedPhotosStatus"></p>
+          <p class="unused-photos-status" id="unusedPhotosStatus" role="status"></p>
           <div class="photo-library-grid" id="unusedPhotosGrid"></div>
           <div class="unused-photos-actions" id="unusedPhotosActions" hidden>
+            <span class="unused-selected-count" id="unusedSelectedCount" aria-live="polite">None selected</span>
             <button type="button" class="btn btn-outline btn-sm" id="unusedSelectAllBtn">Select all shown</button>
             <button type="button" class="btn btn-outline btn-sm" id="unusedSelectNoneBtn">Clear selection</button>
             <button type="button" class="btn btn-primary btn-sm btn-delete-danger" id="deleteUnusedPhotosBtn" disabled>Delete selected</button>

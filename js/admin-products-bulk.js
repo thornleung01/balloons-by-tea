@@ -189,7 +189,7 @@ function renderBulkSale(body, items) {
         return { name: p.name, before, after: "no sale" };
       }
       const next = computeBulkPrice(p.price, mode, -1, amount, rounding);
-      if (!(next < Number(p.price)) || !(amount > 0)) return { name: p.name, before, after: "—", warn: "skipped (not lower than the price)" };
+      if (!(next < Number(p.price)) || !(amount > 0)) return { name: p.name, before, after: "-", warn: "skipped (not lower than the price)" };
       patches[p.id] = { sale_price: next };
       return { name: p.name, before, after: formatCatalogMoney(next) };
     });

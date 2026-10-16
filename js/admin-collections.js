@@ -6,6 +6,7 @@
 /* ===== Collections ===== */
 
 let collectionsCache = [];
+let collectionsLoadError = null; // message from the last failed load, for the list's error state
 let currentCollectionEditId = null;
 let currentCollectionPhotoFile = null;
 /* The form's values when it was last loaded/reset — compared against for
@@ -40,6 +41,7 @@ function slugify(text) {
 async function loadCollectionsCache() {
   const client = getSupabaseClient();
   const { data, error } = await client.from("collections").select("*").order("sort_order", { ascending: true });
+  collectionsLoadError = error ? error.message : null;
   if (error) return;
   collectionsCache = data || [];
   const select = document.getElementById("f-collection");
@@ -55,34 +57,70 @@ async function loadCollectionsCache() {
   }
 }
 
+let collectionsLoadedOnce = false;
+
+function collectionSkeletonRows(count) {
+  return `<div class="collection-skeleton" role="status" aria-label="Loading categories">${'<span class="a-skeleton"></span>'.repeat(count)}</div>`;
+}
+
 async function refreshCollectionList() {
-  await loadCollectionsCache();
   const listEl = document.getElementById("collectionList");
+  if (!collectionsLoadedOnce) listEl.innerHTML = collectionSkeletonRows(4);
+  await loadCollectionsCache();
+
+  if (collectionsLoadError && !collectionsCache.length) {
+    listEl.innerHTML = `
+      <div class="a-inline-error" role="alert">
+        <span>Couldn't load categories: ${escapeHtml(collectionsLoadError)}</span>
+        <button type="button" class="btn btn-outline btn-sm" id="retryCollectionsBtn">Try again</button>
+      </div>`;
+    document.getElementById("retryCollectionsBtn").addEventListener("click", refreshCollectionList);
+    return;
+  }
+  collectionsLoadedOnce = true;
 
   if (!collectionsCache.length) {
-    listEl.innerHTML = `<p class="empty-note">No categories yet.</p>`;
+    listEl.innerHTML = `
+      <div class="a-empty">
+        <p class="a-empty-title">No categories yet</p>
+        <p class="a-empty-text">Add a category with the form. Products are grouped under categories, and each one gets its own page on the site.</p>
+      </div>`;
     return;
   }
 
   const client = getSupabaseClient();
   const { data: productRows } = await client.from("products").select("collection");
   const usedSlugs = new Set((productRows || []).map((p) => p.collection));
+  // Counts for display: every product row that points at the category (Trash included,
+  // because those still block deleting it).
+  const productCounts = {};
+  (productRows || []).forEach((p) => { productCounts[p.collection] = (productCounts[p.collection] || 0) + 1; });
 
-  listEl.innerHTML = collectionsCache.map((c, i) => `
+  listEl.innerHTML = collectionsCache.map((c, i) => {
+    const count = productCounts[c.slug] || 0;
+    const inUse = usedSlugs.has(c.slug);
+    const helperId = `collectionHelp-${c.id}`;
+    const helper = c.is_legacy
+      ? "Built-in categories can't be deleted."
+      : (inUse ? `Can't delete while ${count} product${count === 1 ? "" : "s"} use${count === 1 ? "s" : ""} it (Trash included). Move or delete ${count === 1 ? "it" : "them"} first.` : "");
+    return `
     <div class="admin-item-row draggable-row" data-id="${c.id}" data-index="${i}" draggable="${!isRowLocked("collections", c.id)}">
       ${lockHandleMarkup("collections", c.id)}
       <span class="drag-handle" aria-hidden="true" title="Drag to reorder">&#8942;&#8942;</span>
-      <div class="admin-item-thumb">${c.card_image_url ? `<img src="${escapeHtml(c.card_image_url)}" alt=""/>` : ""}</div>
+      <div class="admin-item-thumb">${c.card_image_url ? `<img src="${escapeHtml(c.card_image_url)}" alt=""/>` : PRODUCT_THUMB_PLACEHOLDER}</div>
       <div class="admin-item-body">
-        <div class="name">${escapeHtml(c.title)} ${c.is_legacy ? '<span class="form-status a-inline">(built-in)</span>' : ""}</div>
-        <div class="meta">${escapeHtml(c.tagline || "")}</div>
+        <div class="name">${escapeHtml(c.title)}${c.is_legacy ? ' <span class="a-badge a-badge--neutral a-badge--xs">Built-in</span>' : ""}</div>
+        <div class="meta">${escapeHtml(c.tagline || "No tagline")}</div>
+        <div class="collection-count">${count} product${count === 1 ? "" : "s"}</div>
       </div>
       <div class="admin-item-actions">
-        <button type="button" class="edit-btn" data-id="${c.id}">Edit</button>
-        ${c.is_legacy ? "" : `<button type="button" class="danger delete-btn" data-id="${c.id}">Delete</button>`}
+        <button type="button" class="edit-btn" data-id="${c.id}" aria-label="Edit ${escapeHtml(c.title)}">Edit</button>
+        ${c.is_legacy ? "" : `<button type="button" class="danger delete-btn" data-id="${c.id}" aria-label="Delete ${escapeHtml(c.title)}" ${inUse ? `disabled aria-describedby="${helperId}"` : ""}>Delete</button>`}
+        ${helper ? `<p class="collection-helper" id="${helperId}">${escapeHtml(helper)}</p>` : ""}
       </div>
     </div>
-  `).join("");
+  `;
+  }).join("");
 
   listEl.querySelectorAll(".edit-btn").forEach((btn) => {
     btn.addEventListener("click", async () => {
@@ -192,7 +230,7 @@ async function handleDeleteCollection(id, usedSlugs) {
   const row = collectionsCache.find((c) => String(c.id) === String(id));
   if (!row) return;
   if (usedSlugs.has(row.slug)) {
-    await adminAlert(`Can't delete "${row.title}" — it still has products assigned to it. Move or delete those products first.`, { title: "Category in use" });
+    await adminAlert(`Can't delete "${row.title}": it still has products assigned to it. Move or delete those products first.`, { title: "Category in use" });
     return;
   }
   if (!(await adminConfirm({ title: `Delete category "${row.title}"?`, message: "This can't be undone.", confirmLabel: "Delete category", danger: true }))) return;

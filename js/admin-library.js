@@ -157,9 +157,9 @@ function libraryBreadcrumbSegments(path) {
 
 function libraryBreadcrumbHtml(path, navAttr) {
   const segs = libraryBreadcrumbSegments(path);
-  return segs.map((seg, i) => `
-    <button type="button" class="library-breadcrumb-item" ${navAttr}="${escapeHtml(seg.path)}" ${i === segs.length - 1 ? "disabled" : ""}>${escapeHtml(seg.label)}</button>
-  `).join(`<span class="library-breadcrumb-sep">/</span>`);
+  // The container is a <nav aria-label="Photo folders">; the last item is the current page.
+  return `<ol class="library-breadcrumb-list">${segs.map((seg, i) => `
+    <li><button type="button" class="library-breadcrumb-item" ${navAttr}="${escapeHtml(seg.path)}" ${i === segs.length - 1 ? 'disabled aria-current="page"' : ""} title="${escapeHtml(seg.label)}">${escapeHtml(seg.label)}</button></li>`).join("")}</ol>`;
 }
 
 /* Finds every real, human-readable place a given photo URL is currently
@@ -266,7 +266,7 @@ async function deleteLibraryFolder(path) {
   // file manager would require.
   const { folders, files, error: listError } = await listLibraryPath(path);
   if (listError) return `Couldn't check whether that folder is empty, so it wasn't deleted: ${listError}`;
-  if (folders.length || files.length) return "That folder isn't empty — move or delete what's inside it first.";
+  if (folders.length || files.length) return "That folder isn't empty. Move or delete what's inside it first.";
   const client = getSupabaseClient();
   const { error } = await client.storage.from("product-photos").remove([`${path}/.keep`]);
   return error ? error.message : null;
@@ -315,12 +315,12 @@ async function moveLibraryFile(fromPath, toFolder) {
       revertProblem = err.message;
     }
     if (revertProblem) {
-      return `Photo move failed and the file was put back, but some listings couldn't be pointed back at it — check products using "${filename}" for broken images. (${reason}; revert: ${revertProblem})`;
+      return `Photo move failed and the file was put back, but some listings couldn't be pointed back at it. Check products using "${filename}" for broken images. (${reason}; revert: ${revertProblem})`;
     }
-    return `Photo not moved — couldn't update ${failed.length} place${failed.length === 1 ? "" : "s"} that use it (${reason}). Nothing was changed.`;
+    return `Photo not moved: couldn't update ${failed.length} place${failed.length === 1 ? "" : "s"} that use it (${reason}). Nothing was changed.`;
   }
   if (forward.length > 0) {
-    adminToast(`Moved — and updated ${forward.length} place${forward.length === 1 ? "" : "s"} that was using this photo so it keeps working.`, { kind: "success" });
+    adminToast(`Moved. Updated ${forward.length} place${forward.length === 1 ? "" : "s"} that was using this photo so it keeps working.`, { kind: "success" });
   }
   return null;
 }
@@ -332,25 +332,56 @@ function libraryGridHtml(path, entries, selectedUrls) {
   const { folders, files } = entries;
   const upTile = path ? `
     <div class="library-folder-item library-up-item" data-nav-up>
+      <button type="button" class="library-tile-open" aria-label="Up one folder level"></button>
       <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M12 19V5M5 12l7-7 7 7" stroke-linecap="round" stroke-linejoin="round"/></svg>
       <span>Up one level</span>
     </div>
   ` : "";
   const folderHtml = folders.map((name) => `
     <div class="library-folder-item" data-open-folder="${escapeHtml(name)}">
-      <button type="button" class="library-item-delete" data-delete-folder="${escapeHtml(name)}" aria-label="Delete folder ${escapeHtml(name)}">&times;</button>
-      <svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M3 7a1 1 0 0 1 1-1h5l2 2h9a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1Z" stroke-linejoin="round"/></svg>
+      <button type="button" class="library-tile-open" aria-label="Open folder ${escapeHtml(name)}"></button>
+      <button type="button" class="library-item-delete" data-delete-folder="${escapeHtml(name)}" aria-label="Delete folder ${escapeHtml(name)}"><span aria-hidden="true">&times;</span></button>
+      <svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M3 7a1 1 0 0 1 1-1h5l2 2h9a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1Z" stroke-linejoin="round"/></svg>
       <span>${escapeHtml(name)}</span>
     </div>
   `).join("");
-  const fileHtml = files.map((f) => `
-    <div class="photo-library-item ${selectedUrls && selectedUrls.has(f.url) ? "selected" : ""}" data-url="${escapeHtml(f.url)}" data-path="${escapeHtml(f.path)}" draggable="true">
-      <img src="${escapeHtml(f.url)}" alt="${escapeHtml(f.name)}"/>
-      <button type="button" class="library-item-delete" data-delete-file="${escapeHtml(f.path)}" aria-label="Delete photo ${escapeHtml(f.name)}">&times;</button>
+  const fileHtml = files.map((f) => {
+    const picked = !!(selectedUrls && selectedUrls.has(f.url));
+    // In the picker a tile toggles selection; on the Library tab it opens the photo.
+    const openLabel = selectedUrls ? `Select photo ${f.name}` : `Open photo ${f.name}`;
+    return `
+    <div class="photo-library-item ${picked ? "selected" : ""}" data-url="${escapeHtml(f.url)}" data-path="${escapeHtml(f.path)}" draggable="true">
+      <img src="${escapeHtml(f.url)}" alt="" loading="lazy"/>
+      <button type="button" class="library-tile-open" aria-label="${escapeHtml(openLabel)}" ${selectedUrls ? `aria-pressed="${picked}"` : ""}></button>
+      <span class="library-tile-name" title="${escapeHtml(f.name)}">${escapeHtml(f.name)}</span>
+      <button type="button" class="library-item-delete" data-delete-file="${escapeHtml(f.path)}" aria-label="Delete photo ${escapeHtml(f.name)}"><span aria-hidden="true">&times;</span></button>
     </div>
-  `).join("");
-  if (!upTile && !folderHtml && !fileHtml) return `<p class="empty-note">Nothing here yet — upload a photo or create a folder.</p>`;
+  `;
+  }).join("");
+  if (!upTile && !folderHtml && !fileHtml) return libraryEmptyHtml();
   return upTile + folderHtml + fileHtml;
+}
+
+/* Empty folder: says what to do. The Library tab also accepts dropped files. */
+function libraryEmptyHtml() {
+  return `
+    <div class="a-empty library-empty">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="3"/><circle cx="9" cy="10" r="1.6"/><path d="M4 18l5-5 4 4 3-3 4 4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      <p class="a-empty-title">This folder is empty</p>
+      <p class="a-empty-text">Drop photos here or use Upload photos. You can also make a folder to sort them.</p>
+    </div>`;
+}
+
+function librarySkeletonTiles(count) {
+  return Array.from({ length: count }, () => `<span class="photo-library-item is-skeleton a-skeleton" aria-hidden="true"></span>`).join("");
+}
+
+function libraryErrorHtml(message) {
+  return `
+    <div class="a-inline-error library-error" role="alert">
+      <span>Couldn't load photos: ${escapeHtml(message)}</span>
+      <button type="button" class="btn btn-outline btn-sm" data-library-retry>Try again</button>
+    </div>`;
 }
 
 /* Wires click/delete/drag-drop behavior onto a freshly-rendered library
@@ -442,16 +473,59 @@ async function createFolderAt(basePath, rawName) {
   return { error: null };
 }
 
-async function uploadFilesToLibrary(basePath, files) {
+/* `report` is optional UI only: report.start(files), report.file(i, "active" | "done" | "error", message), report.end(). */
+async function uploadFilesToLibrary(basePath, files, report) {
   const client = getSupabaseClient();
-  for (const file of files) {
+  if (report) report.start(files);
+  for (let i = 0; i < files.length; i++) {
+    const file = files[i];
+    if (report) report.file(i, "active");
     const compressed = await compressImageFile(file);
     const safeName = compressed.name.replace(/[^a-zA-Z0-9.-]/g, "_");
     const path = basePath ? `${basePath}/${Date.now()}-${safeName}` : `${Date.now()}-${safeName}`;
     const { error } = await client.storage.from("product-photos").upload(path, compressed, { upsert: true });
-    if (error) return { error: error.message };
+    if (error) {
+      if (report) { report.file(i, "error", error.message); report.end(); }
+      return { error: error.message };
+    }
+    if (report) report.file(i, "done");
   }
+  if (report) report.end();
   return { error: null };
+}
+
+/* Per-file upload rows (waiting, uploading, done, failed) in the list with this id. */
+function libraryUploadReporter(listId) {
+  const label = { waiting: "Waiting", active: "Uploading", done: "Done", error: "Failed" };
+  let rows = [];
+  const list = () => document.getElementById(listId);
+  return {
+    start(files) {
+      const el = list();
+      if (!el) return;
+      el.hidden = false;
+      el.innerHTML = files.map((f) => `
+        <li class="library-upload-row" data-state="waiting">
+          <span class="library-upload-name">${escapeHtml(f.name)}</span>
+          <span class="library-upload-state">${label.waiting}</span>
+          <span class="library-upload-bar" role="progressbar" aria-label="Uploading ${escapeHtml(f.name)}" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><span></span></span>
+        </li>`).join("");
+      rows = Array.from(el.children);
+    },
+    file(i, state, message) {
+      const row = rows[i];
+      if (!row) return;
+      row.className = "library-upload-row is-" + state;
+      row.querySelector(".library-upload-state").textContent = state === "error" && message ? `Failed: ${message}` : label[state];
+      row.querySelector(".library-upload-bar").setAttribute("aria-valuenow", state === "done" ? "100" : (state === "active" ? "50" : "0"));
+    },
+    end() {
+      // Keep the finished rows on screen briefly, then clear them (failures stay until the next upload).
+      const el = list();
+      if (!el) return;
+      setTimeout(() => { if (!el.querySelector(".is-error")) { el.hidden = true; el.innerHTML = ""; } }, 2500);
+    }
+  };
 }
 
 /* ----- Picker modal (used from the item form) ----- */
@@ -477,14 +551,18 @@ function ensurePhotoLibraryModal() {
         <button type="button" class="icon-btn" data-close-library aria-label="Close">&times;</button>
       </div>
       <div class="modal-body">
-        <div class="library-breadcrumb" id="pickerBreadcrumb"></div>
-        <div class="library-toolbar">
-          <button type="button" class="btn btn-outline btn-sm" id="pickerNewFolderBtn">New folder</button>
-          <label class="btn btn-outline btn-sm" for="pickerUploadInput">Upload here</label>
-          <input id="pickerUploadInput" type="file" accept="image/*" multiple hidden/>
+        <nav class="library-breadcrumb" id="pickerBreadcrumb" aria-label="Photo folders"></nav>
+        <div class="library-toolbar" role="toolbar" aria-label="Library actions">
+          <div class="library-toolbar-group">
+            <button type="button" class="btn btn-outline btn-sm" id="pickerNewFolderBtn">New folder</button>
+            <input id="pickerUploadInput" class="a-visually-hidden library-upload-input" type="file" accept="image/*" multiple/>
+            <label class="btn btn-outline btn-sm" for="pickerUploadInput">Upload here</label>
+          </div>
         </div>
+        <ul class="library-upload-status" id="pickerUploadStatus" aria-live="polite" hidden></ul>
         <div class="photo-library-grid" id="photoLibraryGrid"></div>
-        <div class="modal-actions">
+        <div class="modal-actions library-picker-footer">
+          <span class="library-picker-count" id="pickerSelectedCount" aria-live="polite">No photos selected</span>
           <button type="button" class="btn btn-primary" id="photoLibraryAddBtn" disabled>Add selected</button>
         </div>
       </div>
@@ -505,7 +583,7 @@ function ensurePhotoLibraryModal() {
     const files = Array.from(e.target.files || []);
     e.target.value = "";
     if (!files.length) return;
-    const { error } = await uploadFilesToLibrary(pickerPath, files);
+    const { error } = await uploadFilesToLibrary(pickerPath, files, libraryUploadReporter("pickerUploadStatus"));
     if (error) { adminToast("Upload failed: " + error, { kind: "error" }); return; }
     await navigatePickerTo(pickerPath);
   });
@@ -519,10 +597,13 @@ function ensurePhotoLibraryModal() {
 async function navigatePickerTo(path) {
   pickerPath = path || "";
   const grid = document.getElementById("photoLibraryGrid");
-  grid.innerHTML = `<p class="empty-note">Loading...</p>`;
+  grid.setAttribute("aria-busy", "true");
+  grid.innerHTML = librarySkeletonTiles(8);
   pickerEntries = await listLibraryPath(pickerPath);
+  grid.removeAttribute("aria-busy");
   if (pickerEntries.error) {
-    grid.innerHTML = `<p class="form-status error">Couldn't load photos: ${escapeHtml(pickerEntries.error)}</p>`;
+    grid.innerHTML = libraryErrorHtml(pickerEntries.error);
+    grid.querySelector("[data-library-retry]").addEventListener("click", () => navigatePickerTo(pickerPath));
     return;
   }
   renderPhotoLibraryGrid();
@@ -552,7 +633,9 @@ function updatePhotoLibraryAddBtn() {
   if (!btn) return;
   const count = photoLibrarySelected.size;
   btn.disabled = count === 0;
-  btn.textContent = count > 0 ? `Add selected (${count})` : "Add selected";
+  btn.textContent = count > 0 ? `Add ${count} photo${count === 1 ? "" : "s"}` : "Add selected";
+  const label = document.getElementById("pickerSelectedCount");
+  if (label) label.textContent = count > 0 ? `${count} selected` : "No photos selected";
 }
 
 /* Gallery tab (js/admin-gallery.js) reuses this picker: it passes
@@ -606,10 +689,15 @@ async function navigateLibraryTab(path) {
   libraryTabPath = path || "";
   const grid = document.getElementById("libraryTabGrid");
   if (!grid) return;
-  grid.innerHTML = `<p class="empty-note">Loading...</p>`;
+  grid.setAttribute("aria-busy", "true");
+  grid.innerHTML = librarySkeletonTiles(12);
   libraryTabEntries = await listLibraryPath(libraryTabPath);
+  grid.removeAttribute("aria-busy");
+  const breadcrumb = document.getElementById("libraryTabBreadcrumb");
+  if (breadcrumb) breadcrumb.innerHTML = libraryBreadcrumbHtml(libraryTabPath, "data-library-nav");
   if (libraryTabEntries.error) {
-    grid.innerHTML = `<p class="form-status error">Couldn't load photos: ${escapeHtml(libraryTabEntries.error)}</p>`;
+    grid.innerHTML = libraryErrorHtml(libraryTabEntries.error);
+    grid.querySelector("[data-library-retry]").addEventListener("click", () => navigateLibraryTab(libraryTabPath));
     return;
   }
   renderLibraryTabGrid();
@@ -651,14 +739,14 @@ async function openUnusedPhotosSection() {
   actions.hidden = true;
   grid.innerHTML = "";
   unusedPhotosSelected = new Set();
-  status.textContent = "Scanning the whole photo library and checking it against every product, collection, and setting — this can take a moment...";
+  status.textContent = "Scanning the whole photo library and checking it against every product, collection, and setting. This can take a moment...";
   if (triggerBtn) triggerBtn.disabled = true;
 
   try {
     unusedPhotosCandidates = await findUnusedLibraryPhotos();
     renderUnusedPhotosSection();
   } catch (err) {
-    status.textContent = "Couldn't finish the scan (" + (err.message || err) + "). Nothing was checked or deleted — try again.";
+    status.textContent = "Couldn't finish the scan (" + (err.message || err) + "). Nothing was checked or deleted. Try again.";
   } finally {
     if (triggerBtn) triggerBtn.disabled = false;
   }
@@ -679,25 +767,31 @@ function renderUnusedPhotosSection() {
 
   const count = unusedPhotosCandidates.length;
   if (!count) {
-    status.textContent = "No unused photos found — every file in Storage is referenced by a product, collection, or setting.";
+    status.textContent = "No unused photos found. Every file in Storage is referenced by a product, collection, or setting.";
     grid.innerHTML = "";
     actions.hidden = true;
     return;
   }
 
-  status.textContent = `${count} photo${count === 1 ? "" : "s"} appear${count === 1 ? "s" : ""} unused. Nothing is deleted until you select photos below and click "Delete selected" — this can't be undone.`;
+  status.textContent = `${count} photo${count === 1 ? "" : "s"} appear${count === 1 ? "s" : ""} unused. Nothing is deleted until you select photos below and click "Delete selected". This can't be undone.`;
   grid.innerHTML = unusedPhotosCandidates.map((f) => `
-    <div class="photo-library-item ${unusedPhotosSelected.has(f.url) ? "selected" : ""}" data-url="${escapeHtml(f.url)}" role="checkbox" aria-checked="${unusedPhotosSelected.has(f.url)}" title="${escapeHtml(f.path)}">
-      <img src="${escapeHtml(f.url)}" alt="${escapeHtml(f.name)}"/>
+    <div class="photo-library-item ${unusedPhotosSelected.has(f.url) ? "selected" : ""}" data-url="${escapeHtml(f.url)}" role="checkbox" tabindex="0" aria-checked="${unusedPhotosSelected.has(f.url)}" aria-label="${escapeHtml(f.name)}" title="${escapeHtml(f.path)}">
+      <img src="${escapeHtml(f.url)}" alt="" loading="lazy"/>
+      <span class="library-tile-name">${escapeHtml(f.name)}</span>
     </div>
   `).join("");
+  const toggleUnused = (el) => {
+    const url = el.dataset.url;
+    if (unusedPhotosSelected.has(url)) unusedPhotosSelected.delete(url);
+    else unusedPhotosSelected.add(url);
+    renderUnusedPhotosSection();
+    // The grid was rebuilt: keep keyboard focus on the same tile.
+    const again = Array.from(grid.querySelectorAll(".photo-library-item")).find((t) => t.dataset.url === url);
+    if (again && document.activeElement === document.body) again.focus();
+  };
   grid.querySelectorAll(".photo-library-item").forEach((el) => {
-    el.addEventListener("click", () => {
-      const url = el.dataset.url;
-      if (unusedPhotosSelected.has(url)) unusedPhotosSelected.delete(url);
-      else unusedPhotosSelected.add(url);
-      renderUnusedPhotosSection();
-    });
+    el.addEventListener("click", () => toggleUnused(el));
+    el.addEventListener("keydown", (e) => { if (e.key === " " || e.key === "Enter") { e.preventDefault(); toggleUnused(el); } });
   });
   actions.hidden = false;
   updateDeleteUnusedPhotosBtn();
@@ -709,6 +803,8 @@ function updateDeleteUnusedPhotosBtn() {
   const n = unusedPhotosSelected.size;
   btn.disabled = n === 0;
   btn.textContent = n > 0 ? `Delete selected (${n})` : "Delete selected";
+  const label = document.getElementById("unusedSelectedCount");
+  if (label) label.textContent = n > 0 ? `${n} of ${unusedPhotosCandidates.length} selected` : `None selected`;
 }
 
 async function handleDeleteSelectedUnusedPhotos() {
@@ -739,7 +835,7 @@ async function handleDeleteSelectedUnusedPhotos() {
   const failures = [];
   const succeededPaths = new Set();
   for (const f of toDelete) {
-    if (referenced.has(f.url)) { failures.push(`${f.name}: now used by a listing — skipped`); continue; }
+    if (referenced.has(f.url)) { failures.push(`${f.name}: now used by a listing, skipped`); continue; }
     const result = await deleteLibraryFile(f.path, { skipReferenceCheck: true });
     if (result.deleted) succeededPaths.add(f.path);
     else failures.push(`${f.name}: ${result.error || "not deleted"}`);
@@ -774,7 +870,22 @@ onAdminInit(() => {
     const files = Array.from(e.target.files || []);
     e.target.value = "";
     if (!files.length) return;
-    const { error } = await uploadFilesToLibrary(libraryTabPath, files);
+    const { error } = await uploadFilesToLibrary(libraryTabPath, files, libraryUploadReporter("libraryUploadStatus"));
+    if (error) { adminToast("Upload failed: " + error, { kind: "error" }); return; }
+    await navigateLibraryTab(libraryTabPath);
+  });
+  // Drop photos straight onto the grid to upload them into the folder being browsed.
+  const tabGrid = document.getElementById("libraryTabGrid");
+  const hasFiles = (e) => e.dataTransfer && Array.from(e.dataTransfer.types || []).includes("Files");
+  tabGrid.addEventListener("dragover", (e) => { if (!hasFiles(e)) return; e.preventDefault(); tabGrid.classList.add("is-drop-target"); });
+  tabGrid.addEventListener("dragleave", (e) => { if (!tabGrid.contains(e.relatedTarget)) tabGrid.classList.remove("is-drop-target"); });
+  tabGrid.addEventListener("drop", async (e) => {
+    tabGrid.classList.remove("is-drop-target");
+    if (!hasFiles(e) || e.target.closest("[data-open-folder], [data-nav-up]")) return;
+    e.preventDefault();
+    const files = Array.from(e.dataTransfer.files).filter((f) => /^image\//.test(f.type));
+    if (!files.length) { adminToast("Only image files can be added to the library.", { kind: "error" }); return; }
+    const { error } = await uploadFilesToLibrary(libraryTabPath, files, libraryUploadReporter("libraryUploadStatus"));
     if (error) { adminToast("Upload failed: " + error, { kind: "error" }); return; }
     await navigateLibraryTab(libraryTabPath);
   });
