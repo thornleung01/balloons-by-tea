@@ -414,12 +414,13 @@
     }
     section.dataset.ready = "1";
     section.innerHTML = `
-      <h2>Security</h2>
+      <div class="sys-head"><h2>Security</h2><span class="a-badge a-badge--neutral" id="secBadge">Checking</span></div>
+      <p class="sys-desc">Protect the admin login. These settings apply to the account you are logged in with.</p>
       <div class="safety-block">
         <h3>2-step login</h3>
         <p class="safety-help">After your password, the login also asks for a 6-digit code from an authenticator app on your phone (Google Authenticator, Microsoft Authenticator, 1Password, Authy...). Someone who learns your password still can't get in.</p>
         <div id="mfaFactorList" class="mfa-factor-list"></div>
-        <button type="button" class="btn btn-outline btn-sm" id="mfaEnrollBtn">Turn on 2-step login</button>
+        <div class="sys-actions"><button type="button" class="btn btn-outline btn-sm" id="mfaEnrollBtn">Turn on 2-step login</button></div>
         <div class="mfa-enroll" id="mfaEnrollArea" hidden>
           <ol class="mfa-steps">
             <li>Open your authenticator app and add an account by scanning this code:
@@ -446,7 +447,7 @@
         <button type="button" class="btn btn-outline btn-sm" id="secPasswordBtn">Change password</button>
         <div class="form-status" id="secPasswordStatus" role="status" aria-live="polite"></div>
       </div>
-      <div class="safety-block">
+      <div class="safety-block sys-danger">
         <h3>Other devices</h3>
         <p class="safety-help">Lost a phone, or logged in on a shared computer? This logs out every other device and browser. You stay logged in here.</p>
         <button type="button" class="btn btn-outline btn-sm" id="signOutOthersBtn">Log out other devices</button>
@@ -469,6 +470,11 @@
         return [];
       }
       const verified = factors.filter((f) => f.status === "verified");
+      const secBadge = $("secBadge");
+      if (secBadge) {
+        secBadge.className = `a-badge a-badge--${verified.length ? "success" : "warning"}`;
+        secBadge.textContent = verified.length ? "2-step login on" : "2-step login off";
+      }
       list.innerHTML = verified.length
         ? `<p class="mfa-on">2-step login is <strong>on</strong>.</p><ul class="mfa-factors">${verified.map((f) => `
             <li><span>${escapeHtml(f.friendly_name || "Authenticator app")} <small>added ${escapeHtml(new Date(f.created_at).toLocaleDateString())}</small></span>
@@ -582,8 +588,8 @@
     if (!section.dataset.ready) {
       section.dataset.ready = "1";
       section.innerHTML = `
-        <h2>Team</h2>
-        <p class="safety-help"><strong>Owner</strong>: everything. <strong>Staff</strong>: can see products and orders and update an order's status, notes and payment, but can't delete anything, change settings, products, categories, nav, FAQ or photos, or see the activity log.</p>
+        <div class="sys-head"><h2>Team</h2><span class="a-badge a-badge--neutral" id="teamBadge">People</span></div>
+        <p class="sys-desc"><strong>Owner</strong>: everything. <strong>Staff</strong>: can see products and orders and update an order's status, notes and payment, but can't delete anything, change settings, products, categories, nav, FAQ or photos, or see the activity log.</p>
         <div id="teamList" class="team-list"></div>
         <form id="teamAddForm" class="team-add" novalidate>
           <h3>Add someone</h3>
@@ -593,7 +599,7 @@
             <div class="field"><label for="teamName">Name (shown in Activity)</label><input id="teamName" type="text" maxlength="60" autocomplete="off"/></div>
             <div class="field"><label for="teamRole">Role</label><select id="teamRole"><option value="staff">Staff</option><option value="owner">Owner</option></select></div>
           </div>
-          <button type="submit" class="btn btn-outline btn-sm" id="teamAddBtn">Add to team</button>
+          <div class="sys-actions"><button type="submit" class="btn btn-outline btn-sm" id="teamAddBtn">Add to team</button></div>
         </form>
         <div class="form-status" id="teamStatus" role="status" aria-live="polite"></div>
       `;
@@ -638,6 +644,8 @@
     }
     $("teamAddForm").hidden = false;
     teamCache = data || [];
+    const teamBadge = $("teamBadge");
+    if (teamBadge) teamBadge.textContent = `${teamCache.length} ${teamCache.length === 1 ? "person" : "people"}`;
     const myEmail = (await currentEmail(client)).toLowerCase();
     listEl.innerHTML = `
       <table class="team-table">
@@ -646,12 +654,12 @@
           <tr data-email="${escapeHtml(m.email)}">
             <td><strong>${escapeHtml(m.display_name || m.email)}</strong>${m.display_name ? `<br><small>${escapeHtml(m.email)}</small>` : ""}${m.email === myEmail ? " <small>(you)</small>" : ""}</td>
             <td>${m.builtin
-              ? "Owner <small>(original account)</small>"
+              ? 'Owner <span class="a-badge a-badge--neutral">Original account</span>'
               : `<select class="team-role-select" aria-label="Role for ${escapeHtml(m.email)}">
                   <option value="owner" ${m.role === "owner" ? "selected" : ""}>Owner</option>
                   <option value="staff" ${m.role === "staff" ? "selected" : ""}>Staff</option>
                 </select>`}</td>
-            <td>${m.last_sign_in_at ? escapeHtml(new Date(m.last_sign_in_at).toLocaleDateString()) : "never"}</td>
+            <td>${m.last_sign_in_at ? escapeHtml(new Date(m.last_sign_in_at).toLocaleDateString()) : "Never"}</td>
             <td>${m.builtin ? "" : `<button type="button" class="btn btn-outline btn-sm team-remove-btn">Remove</button>`}</td>
           </tr>`).join("")}</tbody>
       </table>`;

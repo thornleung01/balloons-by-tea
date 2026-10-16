@@ -257,7 +257,7 @@ function updateSeoField(input) {
   const counter = document.querySelector(`.seo-counter[data-counter-for="${input.id}"]`);
   const len = input.value.trim().length;
   if (counter) {
-    counter.textContent = len ? `${len} / ${limit} characters${len > limit ? " (may be cut off)" : ""}` : `Using the built-in text · aim for up to ${limit} characters`;
+    counter.textContent = len ? `${len} / ${limit} characters${len > limit ? " (may be cut off)" : ""}` : `Using the built-in text. Aim for up to ${limit} characters.`;
     counter.classList.toggle("is-over", len > limit);
   }
   const page = input.closest("[data-seo-page]");
@@ -280,6 +280,14 @@ function updateSeoSnippet(page) {
   if (state) {
     state.textContent = custom ? "Custom" : "Built-in";
     state.classList.toggle("is-custom", custom);
+    state.classList.toggle("a-badge--accent", custom);
+    state.classList.toggle("a-badge--neutral", !custom);
+  }
+  const count = page.querySelector(".seo-page-count");
+  if (count) {
+    const tl = title.length, dl = desc.length;
+    count.textContent = `Title ${tl}/${SEO_TITLE_LIMIT} · Description ${dl}/${SEO_DESCRIPTION_LIMIT}`;
+    count.classList.toggle("is-over", tl > SEO_TITLE_LIMIT || dl > SEO_DESCRIPTION_LIMIT);
   }
 }
 

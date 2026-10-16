@@ -52,14 +52,17 @@
       <h2>Unavailable dates</h2>
       <p class="panel-subtitle">Customers can't choose these dates on the checkout or custom-order forms.</p>
       <form id="blockDatesForm" novalidate>
-        <div class="field">
-          <label for="bd-from">Date</label>
-          <input id="bd-from" name="from" type="date" min="${today}" required/>
+        <div class="avail-dates">
+          <div class="field">
+            <label for="bd-from">Date</label>
+            <input id="bd-from" name="from" type="date" min="${today}" required/>
+          </div>
+          <div class="field">
+            <label for="bd-to">Until (optional)</label>
+            <input id="bd-to" name="to" type="date" min="${today}"/>
+          </div>
         </div>
-        <div class="field">
-          <label for="bd-to">Until (optional, to block a range)</label>
-          <input id="bd-to" name="to" type="date" min="${today}"/>
-        </div>
+        <p class="field-note avail-range-note">Fill in Until to block a whole range, like a vacation.</p>
         <div class="field">
           <label for="bd-reason">Reason (optional)</label>
           <input id="bd-reason" name="reason" type="text" maxlength="200" list="bd-reason-options" placeholder="e.g. Fully booked, Vacation"/>
@@ -68,7 +71,7 @@
             <option value="Vacation"></option>
             <option value="Closed"></option>
           </datalist>
-          <p class="field-note">Visible to anyone who looks closely — keep it short, nothing private.</p>
+          <p class="field-note">Visible to anyone who looks closely, so keep it short and nothing private.</p>
         </div>
         <div class="form-status" id="blockDatesStatus" role="status"></div>
         <button type="submit" class="btn btn-primary btn-block" id="blockDatesBtn">Block date</button>
@@ -76,7 +79,7 @@
 
       <div class="availability-section">
         <h3>Coming up</h3>
-        <div id="blockedDatesList"><p class="empty-note">Loading...</p></div>
+        <div id="blockedDatesList">${adminSkeletonList(2)}</div>
       </div>
 
       <div class="availability-section">
@@ -84,7 +87,11 @@
         <form id="capacityForm" novalidate>
           <div class="field">
             <label for="bd-capacity">Max orders per day</label>
-            <input id="bd-capacity" name="capacity" type="number" min="0" step="1" inputmode="numeric" placeholder="No limit"/>
+            <div class="avail-limit">
+              <button type="button" class="avail-step" id="bd-capacity-down" aria-label="One fewer order per day">&minus;</button>
+              <input id="bd-capacity" name="capacity" type="number" min="0" step="1" inputmode="numeric" placeholder="No limit"/>
+              <button type="button" class="avail-step" id="bd-capacity-up" aria-label="One more order per day">+</button>
+            </div>
             <p class="field-note">Once a date has this many orders (checkout + custom), it shows as fully booked. Leave blank for no limit.</p>
           </div>
           <div class="form-status" id="capacityStatus" role="status"></div>
@@ -106,6 +113,10 @@
     toInput.addEventListener("change", syncLabel);
     document.getElementById("blockDatesForm").addEventListener("submit", handleBlock);
     document.getElementById("capacityForm").addEventListener("submit", handleSaveCapacity);
+    const capInput = document.getElementById("bd-capacity");
+    const stepCap = (delta) => { capInput.value = String(Math.max(0, (parseInt(capInput.value, 10) || 0) + delta) || ""); };
+    document.getElementById("bd-capacity-down").addEventListener("click", () => stepCap(-1));
+    document.getElementById("bd-capacity-up").addEventListener("click", () => stepCap(1));
   }
 
   function setStatus(id, text, kind) {
@@ -130,19 +141,19 @@
     const listEl = document.getElementById("blockedDatesList");
     if (!listEl) return;
     if (!blockedCache.length) {
-      listEl.innerHTML = `<p class="empty-note">No upcoming dates blocked.</p>`;
+      listEl.innerHTML = adminEmptyHtml("No dates blocked", "Pick a date above and press Block date. Customers can't choose a blocked date on the order forms.");
       return;
     }
     const ranges = groupRanges(blockedCache);
     listEl.innerHTML = ranges.map((r, i) => {
       const count = daysBetween(r.from, r.to) + 1;
       const label = count === 1 ? friendly(r.from) : `${friendly(r.from)} – ${friendly(r.to)}`;
-      const meta = [r.reason, count > 1 ? `${count} days` : ""].filter(Boolean).join(" · ");
+      const fullyBooked = /^fully booked$/i.test(r.reason || "");
       return `
         <div class="admin-item-row">
           <div class="admin-item-body">
-            <div class="name">${escapeHtml(label)}</div>
-            ${meta ? `<div class="meta">${escapeHtml(meta)}</div>` : ""}
+            <div class="site-row-name">${escapeHtml(label)}${count > 1 ? ` <span class="a-badge a-badge--info">${count} days</span>` : ""}${fullyBooked ? ' <span class="a-badge a-badge--warning">Fully booked</span>' : ""}</div>
+            ${r.reason && !fullyBooked ? `<div class="site-row-meta">${escapeHtml(r.reason)}</div>` : ""}
           </div>
           <div class="admin-item-actions">
             <button type="button" class="danger" data-range-index="${i}">Unblock</button>
@@ -157,7 +168,7 @@
   function showMissingTable() {
     root().innerHTML = `
       <h2>Unavailable dates</h2>
-      <p class="form-status error">The blocked_dates table doesn't exist yet — run the latest supabase-setup.sql in your Supabase SQL Editor to turn on date blocking and the daily order limit. Until then, customers can order for any future date.</p>`;
+      <p class="a-inline-error" role="alert">The blocked_dates table doesn't exist yet. Run the latest supabase-setup.sql in your Supabase SQL Editor to turn on date blocking and the daily order limit. Until then, customers can order for any future date.</p>`;
   }
 
   async function loadBlocked() {
@@ -197,15 +208,15 @@
     const { data, error } = await client.rpc("fully_booked_dates", { from_day: from, to_day: localIsoDate(toDate) });
     if (error) {
       el.innerHTML = isMissingTableError(error, "fully_booked_dates")
-        ? `<p class="form-status error">The fully_booked_dates function doesn't exist yet — run the latest supabase-setup.sql so the limit takes effect.</p>`
-        : `<p class="form-status error">Couldn't check fully booked dates: ${escapeHtml(error.message)}</p>`;
+        ? `<p class="a-inline-error" role="alert">The fully_booked_dates function doesn't exist yet. Run the latest supabase-setup.sql so the limit takes effect.</p>`
+        : `<p class="a-inline-error" role="alert">Couldn't check fully booked dates: ${escapeHtml(error.message)}</p>`;
       return;
     }
     const days = (data || [])
       .map((row) => String(row && typeof row === "object" ? (row.day || row.fully_booked_dates) : row).slice(0, 10))
       .filter((d) => ISO_DAY_RE.test(d));
     el.innerHTML = days.length
-      ? `<p class="field-note availability-full-note">Fully booked by orders: ${days.map((d) => escapeHtml(friendly(d))).join(", ")}</p>`
+      ? `<p class="avail-full-title">Fully booked by orders</p><div class="avail-full-list">${days.map((d) => `<span class="a-badge a-badge--warning">${escapeHtml(friendly(d))}</span>`).join("")}</div>`
       : `<p class="field-note availability-full-note">No upcoming date has reached the limit yet.</p>`;
   }
 
@@ -221,7 +232,7 @@
     if (from < todayIso()) return setStatus("blockDatesStatus", "That date has already passed.", "error");
     if (to < from) return setStatus("blockDatesStatus", "\"Until\" must be on or after the first date.", "error");
     const span = daysBetween(from, to) + 1;
-    if (span > MAX_RANGE_DAYS) return setStatus("blockDatesStatus", `That's ${span} days — block at most ${MAX_RANGE_DAYS} at a time.`, "error");
+    if (span > MAX_RANGE_DAYS) return setStatus("blockDatesStatus", `That's ${span} days. Block at most ${MAX_RANGE_DAYS} at a time.`, "error");
 
     const rows = [];
     for (let d = from; d <= to; d = nextIso(d)) rows.push({ day: d, reason });
@@ -276,7 +287,7 @@
     btn.disabled = false;
     if (error) return setStatus("capacityStatus", "Couldn't save: " + error.message, "error");
     input.value = value;
-    setStatus("capacityStatus", value ? `Limit saved: ${value} order${value === "1" ? "" : "s"} per day.` : "Limit removed — no daily cap.", "success");
+    setStatus("capacityStatus", value ? `Limit saved: ${value} order${value === "1" ? "" : "s"} per day.` : "Limit removed. No daily cap.", "success");
     await loadFullyBooked(!!value);
   }
 
@@ -285,7 +296,7 @@
     if (error) {
       if (isMissingTableError(error, "blocked_dates")) return showMissingTable();
       const listEl = document.getElementById("blockedDatesList");
-      if (listEl) listEl.innerHTML = `<p class="form-status error">Couldn't load blocked dates: ${escapeHtml(error.message)}</p>`;
+      if (listEl) listEl.innerHTML = `<p class="a-inline-error" role="alert">Couldn't load blocked dates: ${escapeHtml(error.message)}</p>`;
       return;
     }
     renderBlockedList();
@@ -299,7 +310,7 @@
     const { error } = await loadBlocked();
     if (error) {
       if (isMissingTableError(error, "blocked_dates")) return showMissingTable();
-      document.getElementById("blockedDatesList").innerHTML = `<p class="form-status error">Couldn't load blocked dates: ${escapeHtml(error.message)}</p>`;
+      document.getElementById("blockedDatesList").innerHTML = `<p class="a-inline-error" role="alert">Couldn't load blocked dates: ${escapeHtml(error.message)}</p>`;
     } else {
       renderBlockedList();
     }

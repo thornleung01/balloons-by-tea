@@ -193,7 +193,7 @@ async function renderContentHistoryList() {
       <li class="content-history-item" data-history-id="${escapeHtml(row.id)}">
         <div class="content-history-meta">
           <span class="content-history-when" title="${escapeHtml(when.abs || "")}">${escapeHtml(when.rel || "")}<span class="content-history-abs"> · ${escapeHtml(when.abs || "")}</span></span>
-          ${i === 0 ? '<span class="content-history-tag">Latest</span>' : ""}
+          ${i === 0 ? '<span class="content-history-tag a-badge a-badge--accent">Latest</span>' : ""}
         </div>
         <p class="content-history-note">${escapeHtml(row.note || "Saved")}${row.actor_email ? ` <span class="content-history-who">by ${escapeHtml(row.actor_email)}</span>` : ""}</p>
         ${summary}

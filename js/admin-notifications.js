@@ -93,19 +93,19 @@
   }
 
   function statusItem(state, label, detail) {
-    const icon = { ok: "✓", warn: "!", off: "–", bad: "✕" }[state] || "–";
-    return `<li class="notify-status-item notify-${state}"><span class="notify-status-icon" aria-hidden="true">${icon}</span><span><strong>${escapeHtml(label)}</strong>${detail ? ` <span class="notify-status-detail">${escapeHtml(detail)}</span>` : ""}</span></li>`;
+    const info = { ok: ["success", "Done"], warn: ["warning", "Check"], off: ["neutral", "Optional"], bad: ["danger", "Fix"] }[state] || ["neutral", ""];
+    return `<li class="notify-status-item notify-${state}"><span class="notify-status-icon a-badge a-badge--${info[0]}">${info[1]}</span><span class="notify-status-text"><strong>${escapeHtml(label)}</strong>${detail ? `<span class="notify-status-detail">${escapeHtml(detail)}</span>` : ""}</span></li>`;
   }
 
   /* ===== Rendering ===== */
 
   function renderShell(root) {
     root.innerHTML = `
-      <h2>Notifications</h2>
+      <div class="sys-head"><h2>Notifications</h2><span class="a-badge a-badge--neutral" id="notifyBadge">Not checked</span></div>
       <p class="backup-intro">Get an email (and optionally a text message) the moment a new order comes in. Setup takes about 15 minutes, step by step in <code>docs/admin-notifications.md</code>.</p>
 
       <h3 class="notify-subheading">Setup status</h3>
-      <ul class="notify-status-list" id="notifyStatusList"><li class="notify-status-item">Not checked yet.</li></ul>
+      <ul class="notify-status-list" id="notifyStatusList"><li class="notify-status-item">Not checked yet. Press Check setup.</li></ul>
       <div class="notify-actions">
         <button type="button" class="btn btn-outline" id="notifyCheckBtn">Check setup</button>
         <button type="button" class="btn btn-primary" id="notifyTestBtn">Send test notification</button>
@@ -119,7 +119,7 @@
         <div class="field">
           <label for="notifySecret">Shared secret</label>
           <div class="notify-inline">
-            <input id="notifySecret" type="text" autocomplete="off" spellcheck="false" placeholder="Leave empty to keep the saved secret"/>
+            <input id="notifySecret" class="notify-token" type="text" autocomplete="off" spellcheck="false" placeholder="Leave empty to keep the saved secret"/>
             <button type="button" class="btn btn-outline" id="notifyGenerateBtn">Generate</button>
             <button type="button" class="btn btn-outline" id="notifyCopyBtn">Copy</button>
           </div>
@@ -261,12 +261,19 @@
     const list = $("notifyStatusList");
     const btn = $("notifyCheckBtn");
     btn.disabled = true;
-    list.innerHTML = `<li class="notify-status-item">Checking…</li>`;
+    list.innerHTML = `<li class="notify-status-item">Checking the setup...</li>`;
     try {
       const [db, fn] = await Promise.all([checkDatabase(), checkFunction()]);
       const deployed = !fn.some((html) => html.includes("Function not deployed"));
       const reach = deployed ? await checkPublicReachability() : [];
-      list.innerHTML = [...fn, ...reach, ...db].join("");
+      const items = [...fn, ...reach, ...db];
+      list.innerHTML = items.join("");
+      const worst = items.some((h) => h.includes("notify-bad")) ? "bad" : items.some((h) => h.includes("notify-warn")) ? "warn" : "ok";
+      const badge = $("notifyBadge");
+      if (badge) {
+        badge.className = `a-badge a-badge--${{ bad: "danger", warn: "warning", ok: "success" }[worst]}`;
+        badge.textContent = { bad: "Needs attention", warn: "Almost ready", ok: "Ready" }[worst];
+      }
     } finally {
       btn.disabled = false;
     }
@@ -285,7 +292,8 @@
     const btn = $("notifyTestBtn");
     const statusEl = $("notifyTestStatus");
     btn.disabled = true;
-    setStatus(statusEl, "Sending a sample order…");
+    setStatus(statusEl, "Sending a sample order...");
+    btn.textContent = "Sending...";
     try {
       const { data, status, error } = await invokeFunction({ action: "test" });
       const results = data && data.results;
@@ -307,6 +315,7 @@
       }
     } finally {
       btn.disabled = false;
+      btn.textContent = "Send test notification";
     }
   }
 
@@ -319,6 +328,11 @@
     try {
       await navigator.clipboard.writeText(value);
       setStatus(statusEl, "Secret copied. Paste it as NOTIFY_WEBHOOK_SECRET in the function's secrets.", "success");
+      const copyBtn = $("notifyCopyBtn");
+      if (copyBtn) {
+        copyBtn.textContent = "Copied";
+        setTimeout(() => { copyBtn.textContent = "Copy"; }, 2000);
+      }
     } catch (e) {
       $("notifySecret").select();
       setStatus(statusEl, "Couldn't copy automatically. It's selected, press Ctrl+C (Cmd+C on a Mac).", "error");

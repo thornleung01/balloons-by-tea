@@ -36,7 +36,7 @@
       </div>
       <div class="form-status" id="galleryAdminStatus" role="status" aria-live="polite"></div>
       <datalist id="galleryOccasionOptions"></datalist>
-      <div id="galleryAdminList"><p class="empty-note">Loading...</p></div>
+      <div id="galleryAdminList">${adminSkeletonList(3, true)}</div>
     `;
     root.querySelector("#galleryAddFromLibraryBtn").addEventListener("click", () => {
       openPhotoLibrary({
@@ -81,7 +81,7 @@
     if (toolbar) toolbar.hidden = true;
     setStatus("", null);
     if (listEl) {
-      listEl.innerHTML = `<p class="form-status error gallery-admin-missing">The gallery isn't set up yet. Run the latest supabase-setup.sql in your Supabase SQL Editor, then reopen this tab.</p>`;
+      listEl.innerHTML = adminErrorHtml("The gallery isn't set up yet. Run the latest supabase-setup.sql in your Supabase SQL Editor, then reopen this tab.");
     }
   }
 
@@ -117,17 +117,14 @@
     if (!listEl) return;
     renderOccasionOptions();
     if (!galleryCache.length) {
-      listEl.innerHTML = `<p class="empty-note">No gallery photos yet. Add some from the library or upload new ones. Until then the public page shows a friendly "photos are on their way" message.</p>`;
+      listEl.innerHTML = adminEmptyHtml("No gallery photos yet", "Choose Add from library or Upload new photos above. Until you add some, the public page shows a friendly \"photos are on their way\" message.");
       return;
     }
-    const last = galleryCache.length - 1;
     listEl.innerHTML = galleryCache.map((g, i) => `
       <div class="admin-item-row draggable-row gallery-admin-row ${g.active === false ? "inactive" : ""}" data-id="${escapeHtml(g.id)}" data-index="${i}" draggable="false">
         <div class="gallery-admin-order">
           ${lockHandleMarkup("gallery", g.id)}
           <span class="drag-handle" aria-hidden="true" title="Drag to reorder">&#8942;&#8942;</span>
-          <button type="button" class="gallery-admin-move" data-move="-1" ${i === 0 ? "disabled" : ""} aria-label="Move up">&uarr;</button>
-          <button type="button" class="gallery-admin-move" data-move="1" ${i === last ? "disabled" : ""} aria-label="Move down">&darr;</button>
         </div>
         <div class="admin-item-thumb gallery-admin-thumb" data-preview-index="${i}"><img src="${escapeHtml(g.image_url)}" alt="" loading="lazy"/></div>
         <div class="gallery-admin-fields">
@@ -142,9 +139,9 @@
           <span class="gallery-admin-row-status" aria-live="polite"></span>
         </div>
         <div class="admin-item-actions">
-          <label class="toggle-switch" title="${g.active === false ? "Hidden, click to show on the gallery page" : "Showing on the gallery page, click to hide"}">
-            <input type="checkbox" class="gallery-active-toggle" data-id="${escapeHtml(g.id)}" aria-label="Show on gallery page" ${g.active !== false ? "checked" : ""}/>
-            <span class="toggle-slider"></span>
+          <label class="site-switch" title="${g.active === false ? "Hidden, switch on to show on the gallery page" : "Showing on the gallery page, switch off to hide"}">
+            <span class="toggle-switch"><input type="checkbox" class="gallery-active-toggle" data-id="${escapeHtml(g.id)}" aria-label="Show on gallery page" ${g.active !== false ? "checked" : ""}/><span class="toggle-slider"></span></span>
+            <span class="site-switch-text">${g.active === false ? "Hidden" : "Showing"}</span>
           </label>
           <button type="button" class="danger gallery-delete-btn" data-id="${escapeHtml(g.id)}">Remove</button>
         </div>
@@ -169,18 +166,6 @@
     const thumb = e.target.closest(".gallery-admin-thumb");
     if (thumb) {
       openImagePreviewSet(galleryCache.map((g) => g.image_url), Number(thumb.dataset.previewIndex) || 0);
-      return;
-    }
-    const move = e.target.closest(".gallery-admin-move");
-    if (move && !move.disabled) {
-      const found = rowFor(move);
-      if (!found || busy) return;
-      const from = galleryCache.indexOf(found.item);
-      const to = from + Number(move.dataset.move);
-      if (to < 0 || to >= galleryCache.length) return;
-      [galleryCache[from], galleryCache[to]] = [galleryCache[to], galleryCache[from]];
-      busy = true;
-      try { await persistOrder(galleryCache); } finally { busy = false; }
       return;
     }
     const del = e.target.closest(".gallery-delete-btn");
@@ -322,7 +307,7 @@
     if (galleryRes.error) {
       if (isMissingTableError(galleryRes.error, TABLE)) return showMissingTable();
       const listEl = document.getElementById("galleryAdminList");
-      if (listEl) listEl.innerHTML = `<p class="form-status error">Couldn't load the gallery: ${escapeHtml(galleryRes.error.message)}</p>`;
+      if (listEl) { listEl.innerHTML = adminErrorHtml("Couldn't load the gallery: " + galleryRes.error.message, "Try again"); const retry = listEl.querySelector("[data-retry]"); if (retry) retry.addEventListener("click", () => { listEl.innerHTML = adminSkeletonList(3, true); loadList(); }); }
       return;
     }
     const toolbar = document.getElementById("galleryAdminToolbar");

@@ -29,30 +29,34 @@ function navFormIsDirty() {
 
 async function refreshNavList() {
   const client = getSupabaseClient();
-  const { data, error } = await client.from("nav_items").select("*").order("sort_order", { ascending: true });
   const listEl = document.getElementById("navList");
+  if (!listEl.children.length) listEl.innerHTML = adminSkeletonList(3);
+  const { data, error } = await client.from("nav_items").select("*").order("sort_order", { ascending: true });
   if (error) {
-    listEl.innerHTML = `<p class="form-status error">Couldn't load nav items: ${escapeHtml(error.message)}</p>`;
+    listEl.innerHTML = adminErrorHtml("Couldn't load nav items: " + error.message, "Try again");
+    listEl.querySelector("[data-retry]").addEventListener("click", refreshNavList);
     return;
   }
   navCache = data || [];
   if (!navCache.length) {
-    listEl.innerHTML = `<p class="empty-note">No nav items yet.</p>`;
+    listEl.innerHTML = adminEmptyHtml("No nav items yet", "Use the form to add a link to the site menu. Pick where it goes and whether it shows.");
     return;
   }
 
   listEl.innerHTML = navCache.map((n, i) => `
     <div class="admin-item-row draggable-row ${n.visible === false ? "inactive" : ""}" data-id="${n.id}" data-index="${i}" draggable="${!isRowLocked("nav", n.id)}">
-      ${lockHandleMarkup("nav", n.id)}
-      <span class="drag-handle" aria-hidden="true" title="Drag to reorder">&#8942;&#8942;</span>
+      <div class="row-ctl">
+        ${lockHandleMarkup("nav", n.id)}
+        <span class="drag-handle" aria-hidden="true" title="Drag to reorder">&#8942;&#8942;</span>
+      </div>
       <div class="admin-item-body">
-        <div class="name">${escapeHtml(n.label)} ${n.key ? '<span class="form-status a-inline">(built-in)</span>' : ""}</div>
-        <div class="meta">${escapeHtml(n.href)} ${n.visible === false ? "&middot; hidden" : ""}</div>
+        <div class="site-row-name">${escapeHtml(n.label)}${n.key ? ' <span class="a-badge a-badge--neutral">Built-in</span>' : ""}${n.visible === false ? ' <span class="a-badge a-badge--status-hidden">Hidden</span>' : ""}</div>
+        <div class="site-row-meta">${escapeHtml(n.href)}</div>
       </div>
       <div class="admin-item-actions">
-        <label class="toggle-switch" title="${n.visible === false ? "Hidden, click to show in nav" : "Showing in nav, click to hide"}">
-          <input type="checkbox" class="nav-visible-toggle" data-id="${n.id}" aria-label="Show &quot;${escapeHtml(n.label)}&quot; in nav"${n.visible !== false ? "checked" : ""}/>
-          <span class="toggle-slider"></span>
+        <label class="site-switch" title="${n.visible === false ? "Hidden, switch on to show in nav" : "Showing in nav, switch off to hide"}">
+          <span class="toggle-switch"><input type="checkbox" class="nav-visible-toggle" data-id="${n.id}" aria-label="Show &quot;${escapeHtml(n.label)}&quot; in nav"${n.visible !== false ? "checked" : ""}/><span class="toggle-slider"></span></span>
+          <span class="site-switch-text">In nav</span>
         </label>
         <button type="button" class="edit-btn" data-id="${n.id}">Edit</button>
         ${n.key ? "" : `<button type="button" class="danger delete-btn" data-id="${n.id}">Delete</button>`}

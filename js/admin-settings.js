@@ -99,7 +99,10 @@ function renderSeoPageFields() {
       <summary>
         <span class="seo-page-name">${escapeHtml(p.label)}</span>
         <span class="seo-page-file">${escapeHtml(p.file)}</span>
-        <span class="seo-page-state" data-seo-state="${p.key}"></span>
+        <span class="seo-page-meta">
+          <span class="seo-page-count" data-seo-count="${p.key}"></span>
+          <span class="seo-page-state a-badge a-badge--neutral" data-seo-state="${p.key}"></span>
+        </span>
       </summary>
       <div class="seo-page-body">
         <div class="field">
@@ -331,7 +334,7 @@ async function loadSettingsIntoForm() {
   const client = getSupabaseClient();
   const { data, error } = await client.from("site_settings").select("*");
   if (error) {
-    statusEl.textContent = `Couldn't load settings (${error.message}). Saving is disabled so blank fields can't overwrite the live site — reload the page to try again.`;
+    statusEl.textContent = `Couldn't load settings (${error.message}). Saving is disabled so blank fields can't overwrite the live site. Reload the page to try again.`;
     statusEl.className = "form-status error";
     return; // Save stays disabled
   }
@@ -452,7 +455,7 @@ async function handleSaveSettings(e) {
   if (settingsBaseline) {
     const firstInvalid = validateSettingsForm();
     if (firstInvalid) {
-      statusEl.textContent = "Some fields need fixing before you can save — see the messages in red.";
+      statusEl.textContent = "Some fields need fixing before you can save. See the messages in red.";
       statusEl.className = "form-status error";
       if (typeof showSettingsSectionFor === "function") showSettingsSectionFor(firstInvalid);
       firstInvalid.focus();
@@ -493,7 +496,7 @@ async function handleSaveSettings(e) {
     }
 
     if (!rows.length) {
-      statusEl.textContent = "Nothing has changed — nothing to save.";
+      statusEl.textContent = "Nothing has changed, so there is nothing to save.";
       statusEl.className = "form-status";
       return;
     }

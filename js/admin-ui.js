@@ -24,6 +24,13 @@
 
   /* ================= Toasts ================= */
   var MAX_TOASTS = 5;
+  /* Static markup (no user text). Each kind has its own shape so it never relies on colour alone. */
+  var ICON_OPEN = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/>';
+  var TOAST_ICONS = {
+    success: ICON_OPEN + '<path d="M8 12.5l2.8 2.8L16 9.5"/></svg>',
+    error: ICON_OPEN + '<path d="M12 7.5v5.5M12 16.5v.01"/></svg>',
+    info: ICON_OPEN + '<path d="M12 11v5.5M12 7.5v.01"/></svg>'
+  };
   var toastHost = null;
 
   function getToastHost() {
@@ -45,6 +52,10 @@
     var t = el("div", "aui-toast aui-toast-" + kind);
     t.setAttribute("role", kind === "error" ? "alert" : "status");
     t.setAttribute("aria-live", kind === "error" ? "assertive" : "polite");
+    var ic = el("span", "aui-toast-icon");
+    ic.setAttribute("aria-hidden", "true");
+    ic.innerHTML = TOAST_ICONS[kind];
+    t.appendChild(ic);
     t.appendChild(el("div", "aui-toast-msg", message == null ? "" : message));
 
     var gone = false, timer = null, remaining = duration, startedAt = 0;
@@ -102,10 +113,14 @@
     if (lockCount++ === 0) {
       savedOverflow = doc.documentElement.style.overflow;
       doc.documentElement.style.overflow = "hidden";
+      doc.documentElement.classList.add("aui-modal-open");
     }
   }
   function unlockScroll() {
-    if (lockCount > 0 && --lockCount === 0) doc.documentElement.style.overflow = savedOverflow;
+    if (lockCount > 0 && --lockCount === 0) {
+      doc.documentElement.style.overflow = savedOverflow;
+      doc.documentElement.classList.remove("aui-modal-open");
+    }
   }
 
   var FOCUSABLE = 'button:not([disabled]), input:not([disabled]), [href], select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
@@ -288,6 +303,27 @@
       cancelLabel: null
     }).then(function () { /* resolves undefined */ });
   }
+
+  /* ================= List state helpers (loading, empty, error) =================
+     Return HTML strings for the three states every site-content list needs,
+     so Gallery, Nav, FAQ, Delivery and Activity look the same. `title`,
+     `text` and `message` are escaped here. */
+  function esc(s) { return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]; }); }
+  var EMPTY_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="5" width="16" height="14" rx="3"/><path d="M8 10h8M8 14h5"/></svg>';
+  window.adminSkeletonList = function (rows, withThumb) {
+    var one = '<div class="a-skel-row" aria-hidden="true">' + (withThumb ? '<span class="a-skeleton a-skel-thumb"></span>' : "") +
+      '<span class="a-skel-body"><span class="a-skeleton a-skeleton--line a-skel-w60"></span><span class="a-skeleton a-skeleton--line a-skel-w40"></span></span><span class="a-skeleton a-skeleton--pill"></span></div>';
+    var out = "";
+    for (var i = 0; i < (rows || 3); i++) out += one;
+    return '<div class="a-skel-list" role="status" aria-label="Loading">' + out + "</div>";
+  };
+  window.adminEmptyHtml = function (title, text) {
+    return '<div class="a-empty">' + EMPTY_ICON + '<p class="a-empty-title">' + esc(title) + "</p>" + (text ? '<p class="a-empty-text">' + esc(text) + "</p>" : "") + "</div>";
+  };
+  window.adminErrorHtml = function (message, retry) {
+    return '<div class="a-inline-error" role="alert"><span class="a-inline-error-text">' + esc(message) + "</span>" +
+      (retry ? '<button type="button" class="btn btn-outline btn-sm" data-retry>' + esc(retry) + "</button>" : "") + "</div>";
+  };
 
   window.adminToast = adminToast;
   window.adminConfirm = adminConfirm;
